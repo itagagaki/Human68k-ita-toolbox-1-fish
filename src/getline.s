@@ -267,10 +267,10 @@ getline_comment_cut_done:
 		tst.b	d3
 		beq	getline_done
 
-		cmpa.l	a0,a4
+		cmpa.l	a4,a0
 		beq	getline_newline_not_escaped
 
-		cmpi.b	#'\',-1(a4)
+		cmpi.b	#'\',-1(a0)
 		bne	getline_newline_not_escaped
 
 		movea.l	a4,a3
@@ -2024,7 +2024,7 @@ filec_numprecious_ok:
 		beq	filec_redraw_ok
 
 		moveq	#0,d0
-		move.w	nbytes(a6),d0
+		move.w	point(a6),d0
 		sub.l	filec_patlen(a4),d0
 		movea.l	line_top(a6),a1
 		adda.l	d0,a1
@@ -2544,7 +2544,7 @@ filec_file_sub_listlinks:
 
 		moveq	#'@',d3				*  '@' : linked to non-directory
 		tst.b	filec_command(a4)
-		beq	filec_file_sub_regular
+		beq	filec_file_matched_regular
 
 		move.l	d0,d2
 filec_file_sub_check_exec:
@@ -2660,6 +2660,9 @@ filec_file_test_executable_2:
 filec_file_test_magic:
 		tst.b	d3
 		bpl	filec_file_test_executable_ng
+
+		tst.b	flag_execbit(a5)
+		bne	filec_file_test_executable_ng
 
 		move.l	a0,-(a7)
 		bsr	make_pathname

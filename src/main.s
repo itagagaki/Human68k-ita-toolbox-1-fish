@@ -417,9 +417,10 @@ check_l:
 		lea	str_option_l,a1
 		bsr	strcmp
 		bne	begin_parse_args
+
+		moveq	#0,d5
 set_login_shell_flag:
 		st	i_am_login_shell(a5)		*  ログイン・シェルとなる
-		moveq	#0,d5				*  ログイン・シェルでは引数を無視する
 		*
 		*  $HOME に chdir する
 		*
@@ -5048,6 +5049,8 @@ find_more_check_mode_x:
 		bne	find_more_ok
 find_more_cannot_exec:
 		moveq	#6,d4
+		cmp.l	d1,d4
+		bhs	find_more_next
 find_more_ok:
 		move.l	d4,d1
 		tst.b	d3
@@ -5566,7 +5569,7 @@ fish_author:	dc.b	'板垣 史彦 ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'7',0		*  minor version
-		dc.b	'0',0		*  patch level
+		dc.b	'1',0		*  patch level
 
 .even
 statement_table:
