@@ -28,7 +28,6 @@
 .xref hash_misses
 .xref hash_flag
 .xref hash_table
-.xref hash_table2			*  ［デバッグ用］
 
 .text
 
@@ -177,10 +176,6 @@ rehash_continue:
 rehash_start:
 		dbra	d1,rehash_loop
 rehash_done:
-		lea	hash_table(a5),a1
-		lea	hash_table2(a5),a0
-		move.l	#1024,d0
-		bsr	memmovi
 		movem.l	(a7)+,d0-d2/a0-a4
 		unlk	a6
 		st	hash_flag(a5)

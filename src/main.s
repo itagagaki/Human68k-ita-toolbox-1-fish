@@ -764,16 +764,6 @@ noarg_argv0_ok:
 		move.l	a0,mainjmp(a5)
 		sf	exitflag(a5)
 main:
-		**** ［デバッグ］
-		lea	hash_table(a5),a1
-		lea	hash_table2(a5),a0
-		move.l	#1024,d0
-		bsr	memcmp
-		beq	debug_ok
-
-		lea	msg_hashtable_broken,a0
-		bsr	enputs
-debug_ok:
 		bsr	do_line_getline
 		tst.b	exitflag(a5)			* exit?
 		bne	exit_shell_status
@@ -1493,7 +1483,8 @@ dup_history_done:
 		move.l	a5,-(a7)			*  親のBSSポインタを保存
 		movea.l	a4,a5				*  このプロセスのBSSポインタをセット
 		move.l	a7,fork_stackp(a5)		*  スタック・ポインタを保存
-		lea	bsssize+STACKSIZE(a5),a7	*  このプロセスのスタック・ポインタをセット
+		lea	bsssize(a5),a7
+		adda.l	#STACKSIZE,a7			*  このプロセスのスタック・ポインタをセット
 		move.l	a7,stackp(a5)			*  stackp をセット
 		lea	fork_ran(pc),a0
 		move.l	a0,mainjmp(a5)			*  mainjmp をセット
@@ -4534,7 +4525,7 @@ fish_author:	dc.b	'板垣 史彦 ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'2',0		*  minor version
-		dc.b	'1',0		*  patch level
+		dc.b	'2',0		*  patch level
 
 .even
 statement_table:
@@ -4811,7 +4802,6 @@ msg_endif_not_found:		dc.b	'endif がありません',0
 msg_endsw_not_found:		dc.b	'endsw がありません',0
 msg_end_not_found:		dc.b	'end がありません',0
 msg_cannot_load_unseekable:	dc.b	'シークできないデバイスからはロードできません',0
-msg_hashtable_broken:		dc.b	'ハッシュ表が壊れてる！',0
 *****************************************************************
 *****************************************************************
 *****************************************************************
@@ -4865,7 +4855,6 @@ bsstop:
 .xdef command_name
 .xdef hash_flag
 .xdef hash_table
-.xdef hash_table2			*  ［デバッグ用］
 .xdef hash_hits
 .xdef hash_misses
 .xdef shell_timer_high
@@ -4963,7 +4952,6 @@ pipe2_name:		ds.b	MAXPATH+1
 save_cwd:		ds.b	MAXPATH+1
 hash_flag:		ds.b	1
 hash_table:		ds.b	1024
-hash_table2:		ds.b	1024			*  ［デバッグ用］
 line:			ds.b	MAXLINELEN+1		* ［shucks! subst_command_2 で使ってる］
 tmpline:		ds.b	MAXLINELEN+1		* ［shucks! subst_command で使ってる］
 args:			ds.b	MAXWORDLISTSIZE+1	* ［+1は要らなくする］
