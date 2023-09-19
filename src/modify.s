@@ -716,6 +716,7 @@ modify_done:
 		rts
 ****************************************************************
 is_special_pattern:
+		clr.b	special_pattern(a6)
 		tst.b	1(a1)
 		bne	is_special_pattern_return
 

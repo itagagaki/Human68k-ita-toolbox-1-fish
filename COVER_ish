@@ -1,15 +1,17 @@
 
-概要        :  fish v0.7 に対する公式パッチ#3
-必須環境    :  Human68k v2.0以降，fish v0.7.2 のセット，patch および Bup
-データ名    :  FISH07p3.ish
+概要        :  fish v0.7 に対する公式パッチ#4
+必須環境    :  Human68k v2.0以降，fish v0.7.3 のセット，patch および Bup
+データ名    :  FISH07p4.ish
 符号化方式  :  LHA → ISH(SJIS)
 著者        :  板垣　史彦
 
 特記事項    :
 
-  * いくつかの bug fix を行いました。
+  * 履歴置換の &修飾の不具合を除去しました。
 
-  * これは fish v0.7.2 のセットに適用して fish v0.7.3 のセットを生成する差
+  * 行編集機能 history-search-{back,for}ward-circular を加えました。
+
+  * これは fish v0.7.3 のセットに適用して fish v0.7.4 のセットを生成する差
     分パッケージです。
 
 

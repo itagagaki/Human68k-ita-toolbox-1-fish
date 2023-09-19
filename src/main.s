@@ -5572,7 +5572,7 @@ fish_author:	dc.b	'板垣 史彦 ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'7',0		*  minor version
-		dc.b	'3',0		*  patch level
+		dc.b	'4',0		*  patch level
 
 .even
 statement_table:
@@ -6004,8 +6004,8 @@ msg_missing_input:		dc.b	'入力ファイル名がありません',0
 msg_missing_output:		dc.b	'出力ファイル名がありません',0
 msg_input_ambiguous:		dc.b	'入力の切り換えが曖昧です',0
 msg_output_ambiguous:		dc.b	'出力の切り換えが曖昧です',0
-msg_not_inputable_device:	dc.b	'このデバイスは入力不可です',0
-msg_not_outputable_device:	dc.b	'このデバイスが出力不可です',0
+msg_not_inputable_device:	dc.b	'入力不可です',0
+msg_not_outputable_device:	dc.b	'出力不可です',0
 msg_invalid_null_command:	dc.b	'無効な空コマンドです',0
 msg_no_command:			dc.b	'コマンドが見当たりません',0
 msg_command_ambiguous:		dc.b	'コマンド名が'

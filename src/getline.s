@@ -515,7 +515,8 @@ bottombytes = nbytes-2
 keymap_offset = bottombytes-2
 quote = keymap_offset-1
 killing = quote-1
-pad = killing-0				*  偶数バウンダリーに合わせる
+x_hist_circle = killing-1
+pad = x_hist_circle-1			*  偶数バウンダリーに合わせる
 
 getline_x:
 		link	a6,#pad
@@ -534,6 +535,7 @@ getline_x_0:
 getline_x_1:
 		sf	killing(a6)
 getline_x_2:
+		bclr.b	#1,x_hist_circle(a6)
 x_no_op:
 		clr.w	keymap_offset(a6)
 getline_x_3:
@@ -1130,16 +1132,6 @@ x_history_prev:
 		bmi	x_history_bottom
 
 		movea.l	HIST_PREV(a1),a1
-		bra	x_history_return
-
-x_history_null:
-		clr.l	a1
-		bra	x_history_return
-
-x_history_bottom:
-		movea.l	history_bot(a5),a1
-x_history_return:
-		cmpa.l	#0,a1
 		rts
 ********************************
 x_history_next:
@@ -1149,18 +1141,30 @@ x_history_next:
 
 		movea.l	HIST_NEXT(a1),a1
 		cmpa.l	#0,a1
-		bne	x_history_return
+		beq	x_history_over
+
+		rts
+
+x_history_null:
+		clr.l	a1
+		rts
+
 x_history_over:
 		movea.l	#-1,a1
-		bra	x_history_return
+		rts
+
+x_history_bottom:
+		movea.l	history_bot(a5),a1
+		rts
 ********************************
 *  up-history
 ********************************
 x_up_history:
 		moveq	#-1,d3
-		move.l	x_histptr(a6),d0
-		movea.l	d0,a1
+		move.l	x_histptr(a6),d4
+		movea.l	d4,a1
 		bsr	x_history_prev
+		cmpa.l	#0,a1
 		beq	x_error
 
 		bra	save_and_insert_history
@@ -1171,6 +1175,7 @@ x_down_history:
 		moveq	#-1,d3
 		movea.l	x_histptr(a6),a1
 		bsr	x_history_next
+		cmpa.l	#0,a1
 		beq	x_error
 		bpl	insert_history
 ********************************
@@ -1199,12 +1204,23 @@ x_quit_history_3:
 		bra	copy_history_done
 ********************************
 *  history-search-forward
+*  history-search-forward-circular
 ********************************
+x_history_search_forward_circular:
+		bset.b	#0,x_hist_circle(a6)
+		bra	x_history_search_forward_start
+
 x_history_search_forward:
-		movea.l	x_histptr(a6),a1
+		bclr.b	#0,x_hist_circle(a6)
+x_history_search_forward_start:
+		bclr	#2,x_hist_circle(a6)
+		move.l	x_histptr(a6),d4
+		movea.l	d4,a1
 x_history_search_forward_more:
 		bsr	x_history_next
-		beq	x_error
+x_history_search_forward_more_1:
+		cmpa.l	#0,a1
+		beq	x_history_search_forward_fail
 
 		movea.l	line_top(a6),a0
 		moveq	#0,d0
@@ -1219,44 +1235,77 @@ x_history_search_forward_more:
 		bsr	histcmp2
 		beq	x_history_search_forward_more
 
-		bra	insert_history
+		bra	save_and_insert_history
 
 x_history_search_forward_1:
-		move.l	d0,d3
-		beq	x_history_search_forward_2
+		bsr	histcmp_bottom
+		beq	x_quit_history_1
+x_history_search_forward_fail:
+		btst.b	#0,x_hist_circle(a6)
+		beq	x_history_search_circle_warning
 
-		move.l	bottomline(a6),d2
-		beq	x_error
+		btst	#1,x_hist_circle(a6)
+		beq	x_history_search_circle_warning
 
-		movea.l	d2,a1
-		move.l	d0,d3
-		bsr	memcmp
-		bne	x_error
-x_history_search_forward_2:
-		bra	x_quit_history_1
+		btst	#2,x_hist_circle(a6)
+		bne	x_history_search_circle_warning
+
+		movea.l	history_top(a5),a1
+		bclr.b	#0,x_hist_circle(a6)
+		bra	x_history_search_forward_more_1
+
+x_history_search_circle_warning:
+		bset	#1,x_hist_circle(a6)
+		bsr	beep
+		bra	x_no_op
 ********************************
 *  history-search-backward
+*  history-search-backward-circular
 ********************************
+x_history_search_backward_circular:
+		bset.b	#0,x_hist_circle(a6)
+		bra	x_history_search_backward_start
+
 x_history_search_backward:
+		bclr.b	#0,x_hist_circle(a6)
+x_history_search_backward_start:
+		bset	#2,x_hist_circle(a6)
 		move.l	x_histptr(a6),d4
 		movea.l	d4,a1
 x_history_search_backward_more:
-		bsr	x_history_prev
-		beq	x_error
-
 		movea.l	line_top(a6),a0
 		moveq	#0,d0
 		move.w	point(a6),d0
+		bsr	x_history_prev
+		cmpa.l	#0,a1
+		beq	x_history_search_backward_fail
+
 		moveq	#HIST_PREV,d3
 		bsr	history_search
-		beq	x_error
+		bne	x_history_search_backward_found
+x_history_search_backward_fail:
+		btst.b	#0,x_hist_circle(a6)
+		beq	x_history_search_circle_warning
 
+		btst	#1,x_hist_circle(a6)
+		beq	x_history_search_circle_warning
+
+		btst	#2,x_hist_circle(a6)
+		beq	x_history_search_circle_warning
+
+		bsr	histcmp_bottom
+		beq	x_quit_history_1
+
+		movea.l	#-1,a1
+		bclr.b	#0,x_hist_circle(a6)
+		bra	x_history_search_backward_more
+
+x_history_search_backward_found:
 		bsr	histcmp2
 		beq	x_history_search_backward_more
 
-		move.l	d4,d0
 save_and_insert_history:
-		tst.l	d0
+		move.l	d4,d0
 		bpl	insert_history
 
 		lea	bottomline(a6),a0
@@ -1407,6 +1456,23 @@ histcmp2:
 		tst.w	d2
 histcmp2_return:
 		rts
+****************************************************************
+histcmp_bottom:
+		move.l	d0,d3
+		beq	histcmp_bottom_return
+
+		move.l	bottomline(a6),d2
+		beq	histcmp_bottom_fail
+
+		movea.l	d2,a1
+		move.l	d0,d3
+		bsr	memcmp
+histcmp_bottom_return:
+		rts
+
+histcmp_bottom_fail:
+		moveq	#1,d0
+		bra	histcmp_bottom_return
 ****************************************************************
 * histcmp
 *
@@ -4228,6 +4294,8 @@ key_function_jump_table:
 		dc.l	x_transpose_words
 		dc.l	x_history_search_backward
 		dc.l	x_history_search_forward
+		dc.l	x_history_search_backward_circular
+		dc.l	x_history_search_forward_circular
 		dc.l	x_complete
 		dc.l	x_complete_command
 		dc.l	x_complete_file

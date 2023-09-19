@@ -38,66 +38,68 @@
 .xref keymacromap
 .xref tmpargs
 
-X_SELF_INSERT			equ	0
-X_ERROR				equ	1
-X_NO_OP				equ	2
-X_MACRO				equ	3
-X_PREFIX_1			equ	4
-X_PREFIX_2			equ	5
-X_ABORT				equ	6
-X_EOF				equ	7
-X_ACCEPT_LINE			equ	8
-X_QUOTED_INSERT			equ	9
-X_REDRAW			equ	10
-X_CLEAR_AND_REDRAW		equ	11
-X_SET_MARK			equ	12
-X_EXG_POINT_AND_MARK		equ	13
-X_SEARCH_CHARACTER		equ	14
-X_BOL				equ	15
-X_EOL				equ	16
-X_BACKWARD_CHAR			equ	17
-X_FORWARD_CHAR			equ	18
-X_BACKWARD_WORD			equ	19
-X_FORWARD_WORD			equ	20
-X_DEL_BACK_CHAR			equ	21
-X_DEL_FOR_CHAR			equ	22
-X_KILL_BACK_WORD		equ	23
-X_KILL_FOR_WORD			equ	24
-X_KILL_BOL			equ	25
-X_KILL_EOL			equ	26
-X_KILL_WHOLE_LINE		equ	27
-X_KILL_REGION			equ	28
-X_COPY_REGION			equ	29
-X_YANK				equ	30
-X_UPCASE_CHAR			equ	31
-X_DOWNCASE_CHAR			equ	32
-X_UPCASE_WORD			equ	33
-X_DOWNCASE_WORD			equ	34
-X_UPCASE_REGION			equ	35
-X_DOWNCASE_REGION		equ	36
-X_TRANSPOSE_CHARS		equ	37
-X_TRANSPOSE_WORDS		equ	38
-X_HISTORY_SEARCH_BACKWARD	equ	39
-X_HISTORY_SEARCH_FORWARD	equ	40
-X_COMPLETE			equ	41
-X_COMPLETE_COMMAND		equ	42
-X_COMPLETE_FILE			equ	43
-X_COMPLETE_VARIABLE		equ	44
-X_COMPLETE_ENVIRONMENT_VARIABLE	equ	45
-X_COMPLETE_SHELL_VARIABLE	equ	46
-X_LIST				equ	47
-X_LIST_COMMAND			equ	48
-X_LIST_FILE			equ	49
-X_LIST_VARIABLE			equ	50
-X_LIST_ENVIRONMENT_VARIABLE	equ	51
-X_LIST_SHELL_VARIABLE		equ	52
-X_LIST_OR_EOF			equ	53
-X_DEL_FOR_CHAR_OR_LIST		equ	54
-X_DEL_FOR_CHAR_OR_LIST_OR_EOF	equ	55
-X_COPY_PREV_WORD		equ	56
-X_UP_HISTORY			equ	57
-X_DOWN_HISTORY			equ	58
-X_QUIT_HISTORY			equ	59
+X_SELF_INSERT				equ	0
+X_ERROR					equ	1
+X_NO_OP					equ	2
+X_MACRO					equ	3
+X_PREFIX_1				equ	4
+X_PREFIX_2				equ	5
+X_ABORT					equ	6
+X_EOF					equ	7
+X_ACCEPT_LINE				equ	8
+X_QUOTED_INSERT				equ	9
+X_REDRAW				equ	10
+X_CLEAR_AND_REDRAW			equ	11
+X_SET_MARK				equ	12
+X_EXG_POINT_AND_MARK			equ	13
+X_SEARCH_CHARACTER			equ	14
+X_BOL					equ	15
+X_EOL					equ	16
+X_BACKWARD_CHAR				equ	17
+X_FORWARD_CHAR				equ	18
+X_BACKWARD_WORD				equ	19
+X_FORWARD_WORD				equ	20
+X_DEL_BACK_CHAR				equ	21
+X_DEL_FOR_CHAR				equ	22
+X_KILL_BACK_WORD			equ	23
+X_KILL_FOR_WORD				equ	24
+X_KILL_BOL				equ	25
+X_KILL_EOL				equ	26
+X_KILL_WHOLE_LINE			equ	27
+X_KILL_REGION				equ	28
+X_COPY_REGION				equ	29
+X_YANK					equ	30
+X_UPCASE_CHAR				equ	31
+X_DOWNCASE_CHAR				equ	32
+X_UPCASE_WORD				equ	33
+X_DOWNCASE_WORD				equ	34
+X_UPCASE_REGION				equ	35
+X_DOWNCASE_REGION			equ	36
+X_TRANSPOSE_CHARS			equ	37
+X_TRANSPOSE_WORDS			equ	38
+X_HISTORY_SEARCH_BACKWARD		equ	39
+X_HISTORY_SEARCH_FORWARD		equ	40
+X_HISTORY_SEARCH_BACKWARD_CIRCULAR	equ	41
+X_HISTORY_SEARCH_FORWARD_CIRCULAR	equ	42
+X_COMPLETE				equ	43
+X_COMPLETE_COMMAND			equ	44
+X_COMPLETE_FILE				equ	45
+X_COMPLETE_VARIABLE			equ	46
+X_COMPLETE_ENVIRONMENT_VARIABLE		equ	47
+X_COMPLETE_SHELL_VARIABLE		equ	48
+X_LIST					equ	49
+X_LIST_COMMAND				equ	50
+X_LIST_FILE				equ	51
+X_LIST_VARIABLE				equ	52
+X_LIST_ENVIRONMENT_VARIABLE		equ	53
+X_LIST_SHELL_VARIABLE			equ	54
+X_LIST_OR_EOF				equ	55
+X_DEL_FOR_CHAR_OR_LIST			equ	56
+X_DEL_FOR_CHAR_OR_LIST_OR_EOF		equ	57
+X_COPY_PREV_WORD			equ	58
+X_UP_HISTORY				equ	59
+X_DOWN_HISTORY				equ	60
+X_QUIT_HISTORY				equ	61
 
 .text
 
@@ -522,6 +524,8 @@ key_function_name_table:
 		dc.w	name_transpose_words-key_function_names_top
 		dc.w	name_history_search_backward-key_function_names_top
 		dc.w	name_history_search_forward-key_function_names_top
+		dc.w	name_history_search_backward_circular-key_function_names_top
+		dc.w	name_history_search_forward_circular-key_function_names_top
 		dc.w	name_complete-key_function_names_top
 		dc.w	name_complete_command-key_function_names_top
 		dc.w	name_complete_file-key_function_names_top
@@ -592,6 +596,8 @@ name_transpose_chars:			dc.b	'transpose-chars',0
 name_transpose_words:			dc.b	'transpose-words',0
 name_history_search_backward:		dc.b	'history-search-backward',0
 name_history_search_forward:		dc.b	'history-search-forward',0
+name_history_search_backward_circular:	dc.b	'history-search-backward-circular',0
+name_history_search_forward_circular:	dc.b	'history-search-forward-circular',0
 name_complete:				dc.b	'complete',0
 name_complete_command:			dc.b	'complete-command',0
 name_complete_file:			dc.b	'complete-file',0
