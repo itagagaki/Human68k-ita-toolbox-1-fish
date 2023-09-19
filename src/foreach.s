@@ -15,7 +15,7 @@
 .xref skip_varname
 .xref subst_var_wordlist
 .xref expand_wordlist
-.xref set_svar
+.xref set_shellvar
 .xref expression
 .xref find_history
 .xref delete_old_history
@@ -43,6 +43,8 @@
 .xref loop_top_eventno
 .xref keep_loop
 .xref loop_fail
+
+.text
 
 *****************************************************************
 * foreach
@@ -138,7 +140,7 @@ continue_foreach:
 		exg	a0,a1
 		moveq	#1,d0
 		st	d1
-		bra	set_svar
+		bra	set_shellvar
 
 cannot_alloc_foreach_memory:
 		lea	msg_cannot_foreach,a0

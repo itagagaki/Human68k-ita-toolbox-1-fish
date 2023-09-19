@@ -37,8 +37,7 @@ OBJS_MISC     = chkwild.o echo.o error.o expr.o file.o f_getenv.o \
 OBJS_SUBST    = enterhis.o expwords.o glob.o modify.o substali.o substcom.o \
                 substhis.o substvar.o unpack.o
 
-OBJS_VAR      = f_setenv.o findvar.o flagvar.o printvar.o setvar.o \
-                setsvar.o svartou.o
+OBJS_VAR      = var.o f_setenv.o flagvar.o setsvar.o svartou.o
 
 OBJS_STATE    = ifthen.o switchcase.o foreach.o function.o
 
@@ -109,7 +108,7 @@ fish_loader.o main.o b_ctty.o b_dirs.o b_eval.o b_source.o b_srand.o \
 expr.o getline.o glob.o ifthen.o malloc.o modify.o substcom.o substhis.o \
 substvar.o switchcase.o unpack.o wordlist.o : fish.h
 
-main.o b_setenv.o f_getenv.o f_setenv.o substvar.o pathname.o misc.o : var.h
+main.o b_set.o b_unset.o b_setenv.o b_unsetenv.o f_getenv.o f_setenv.o var.o : var.h
 
 main.o foreach.o getline.o b_goto.o substvar.o : source.h
 

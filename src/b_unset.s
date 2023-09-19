@@ -3,90 +3,82 @@
 *
 * Itagaki Fumihiko 15-Jul-90  Create.
 
-.xref strfor1
-.xref memmovi
+.include ../src/var.h
+
 .xref strcmp
 .xref strpcmp
+.xref strfor1
+.xref free
 .xref escape_quoted
 .xref flagvarptr
 .xref too_few_args
-.xref word_histchars
 .xref tmpword1
 
-.xref alias
-.xref shellvar
+.xref word_histchars
+
+.xref alias_top
+.xref shellvar_top
 .xref histchar1
 .xref histchar2
 
 .text
 
 ****************************************************************
-* unset_var - 変数を削除する
+* unsetvar - 変数を削除する
 *
 * CALL
-*      A0     変数領域の先頭アドレス
+*      A0     変数リストの根ポインタのアドレス
 *      A1     削除する変数名パターンを指す
 *      D0.B   0 : シェル変数である
 *
 * RETURN
 *      none
 ****************************************************************
-unset_var:
-		movem.l	d0-d1/a0-a2,-(a7)
+unsetvar:
+		movem.l	d0-d1/a0/a2-a3,-(a7)
 		move.b	d0,d1
-		movea.l	a0,a2			* A2 : 変数領域の先頭アドレス
-		addq.l	#8,a0
-unset_var_loop:
-		tst.w	(a0)			* この変数が占めるバイト数
-		beq	unset_var_return	* 0ならおしまい
+		movea.l	a0,a3
+unsetvar_loop:
+		tst.l	(a3)
+		beq	unsetvar_return
 
-		addq.l	#4,a0
+		movea.l	(a3),a2
+		lea	var_body(a2),a0
 		moveq	#0,d0
 		bsr	strpcmp
-		subq.l	#4,a0
-		tst.l	d0
-		bne	nomatch
+		bne	notmatch
 ****************
-		movem.l	a0-a1,-(a7)
-		addq.l	#4,a0
 		tst.b	d1
 		bne	delete_entry
 
 		bsr	flagvarptr
-		tst.l	d0
 		beq	not_flagvar
 
-		movea.l	d0,a1
-		sf	(a1)
+		movea.l	d0,a0
+		sf	(a0)
 		bra	delete_entry
 
 not_flagvar:
+		move.l	a1,-(a7)
 		lea	word_histchars,a1
 		bsr	strcmp
+		movea.l	(a7)+,a1
 		bne	delete_entry
 
 		move.w	#'!',histchar1(a5)
 		move.w	#'^',histchar2(a5)
 delete_entry:
-		subq.l	#4,a0
-		movea.l	a0,a1
-		adda.w	(a1),a1			* A1 : 次の変数のアドレス　（正しい）
+		move.l	var_next(a2),(a3)
 		move.l	a2,d0
-		add.l	4(a2),d0		* 最後の変数の次のアドレス
-		sub.l	a1,d0
-		bsr	memmovi
-		clr.w	(a0)
-		suba.l	a2,a0
-		move.l	a0,4(a2)
-		movem.l	(a7)+,a0-a1
-		bra	unset_var_loop
+		bsr	free
+		bra	unsetvar_loop
 ****************
-nomatch:
-		adda.w	(a0),a0			* 次の変数のアドレスをセット　（正しい）
-		bra	unset_var_loop		* 繰り返す
+notmatch:
+		lea	var_next(a2),a3
+		bra	unsetvar_loop
 ****************
-unset_var_return:
-		movem.l	(a7)+,d0-d1/a0-a2
+unsetvar_return:
+		movem.l	(a7)+,d0-d1/a0/a2-a3
 		rts
 ****************************************************************
 *  Name
@@ -101,12 +93,12 @@ unset_var_return:
 .xdef cmd_unset
 
 cmd_unalias:
-		movea.l	alias(a5),a2
+		lea	alias_top(a5),a2
 		moveq	#1,d1
 		bra	start
 
 cmd_unset:
-		movea.l	shellvar(a5),a2
+		lea	shellvar_top(a5),a2
 		moveq	#0,d1
 start:
 		move.w	d0,d2
@@ -117,7 +109,7 @@ loop:
 		bsr	escape_quoted		* A1 : クオートをエスケープに代えた検索文字列
 		exg	a0,a2
 		move.b	d1,d0
-		bsr	unset_var
+		bsr	unsetvar
 		exg	a0,a2
 		bsr	strfor1
 		dbra	d2,loop

@@ -6,7 +6,7 @@
 .xref strcmp
 .xref strfor1
 
-.xref envtop
+.xref env_top
 
 .text
 
@@ -17,15 +17,20 @@
 *      A0     検索する変数名の先頭アドレス
 *
 * RETURN
-*      D0.L   見つかった変数のヘッダの先頭アドレス．
+*      A0     変数名よりも辞書的に前方に位置する最後の変数のアドレス
+*             あるいは 0
+*
+*      D0.L   見つかった変数のアドレス．
 *             見つからなければ 0．
+*
 *      CCR    TST.L D0
 *****************************************************************
 .xdef fish_getenv
 
 fish_getenv:
-		movem.l	a1-a2,-(a7)
-		movea.l	envtop(a5),a2
+		movem.l	a1-a3,-(a7)
+		movea.l	env_top(a5),a2
+		suba.l	a3,a3
 loop:
 		cmpa.l	#0,a2
 		beq	done
@@ -34,12 +39,14 @@ loop:
 		bsr	strcmp
 		beq	done
 
-		movea.l	var_next(a2),a2
+		movea.l	a2,a3
+		movea.l	var_next(a3),a2
 		bra	loop
 
 done:
+		movea.l	a3,a0
 		move.l	a2,d0
-		movem.l	(a7)+,a1-a2
+		movem.l	(a7)+,a1-a3
 		rts
 
 .end

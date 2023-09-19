@@ -54,6 +54,7 @@
 .xref contains_dos_wildcard
 .xref headtail
 .xref find_shellvar
+.xref get_var_value
 .xref svartol
 .xref common_spell
 .xref getcwdx
@@ -133,9 +134,6 @@ getline_more:
 		jsr	(a2)
 		bne	getline_return
 
-		cmpa.l	a4,a0				*  入力された文字数が0ならば
-		beq	getline_done			*  終わり
-
 		suba.l	a1,a1
 ****************
 		move.b	d3,d5				*  行の先頭でのクオート・フラグを保存
@@ -145,7 +143,7 @@ getline_more:
 		movea.l	a4,a3
 getline_cont_check_loop:
 		cmpa.l	a0,a3
-		beq	getline_not_cont
+		beq	getline_newline_not_escaped
 
 		move.b	(a3)+,d0
 		bsr	issjis
@@ -157,11 +155,14 @@ getline_cont_check_loop:
 		cmp.b	#"'",d0
 		beq	getline_cont_check_quote
 
+		cmp.b	#'`',d0
+		beq	getline_cont_check_quote
+
 		cmp.b	#'\',d0
 		bne	getline_cont_check_loop
 
 		cmpa.l	a0,a3
-		beq	getline_cont_check_done		*  D0.B is always '\' here.
+		beq	getline_newline_escaped
 
 		move.b	(a3),d0
 		bsr	issjis
@@ -172,20 +173,23 @@ getline_cont_check_skip:
 
 getline_cont_check_quote:
 		tst.b	d3
-		bne	getline_cont_check_loop
+		beq	getline_cont_check_quote_open
 
+		cmp.b	d3,d0
+		bne	getline_cont_check_loop
+getline_cont_check_quote_open:
 		eor.b	d0,d3
 		bra	getline_cont_check_loop
 
 getline_cont_check_sjis:
 		cmpa.l	a0,a3
 		bne	getline_cont_check_skip
-getline_not_cont:
-		moveq	#0,d0
-getline_cont_check_done:
-		move.b	d0,d6				*  D6.B : 行継続フラグ
-		beq	getline_process_comment
+getline_newline_not_escaped:
+		move.b	d3,d6				*  クオートの中ならば行継続する
+		bra	getline_process_comment
 
+getline_newline_escaped:
+		st	d6				*  行継続フラグを立てる
 		move.b	#' ',-1(a0)
 		tst.b	d3
 		beq	getline_process_comment
@@ -1571,11 +1575,9 @@ filec_match:
 
 		*  $@addsuffix[1] == exact でなければサフィックスを追加する
 
-		addq.l	#2,a0
-		tst.w	(a0)+
+		bsr	get_var_value
 		beq	filec_addsuffix
 
-		bsr	strfor1
 		lea	word_exact,a1
 		bsr	strcmp
 		beq	filec_done
@@ -1770,10 +1772,9 @@ filec_entry_2:
 		move.l	filec_fignore(a4),d0
 		beq	filec_enter_ignored
 
-		movea.l	d0,a0
-		addq.l	#2,a0
-		move.w	(a0)+,d4			*  D4.W : fignore の要素数
-		bra	check_fignore_continue
+		bsr	get_var_value
+		move.w	d0,d4				*  D4.W : fignore の要素数
+		bra	check_fignore_start
 
 check_fignore_loop:
 		bsr	strlen
@@ -1789,6 +1790,7 @@ check_fignore_loop:
 		beq	filec_enter_ignored
 check_fignore_continue:
 		bsr	strfor1
+check_fignore_start:
 		dbra	d4,check_fignore_loop
 not_ignore:
 		addq.w	#1,filec_numprecious(a4)
@@ -1846,15 +1848,15 @@ find_matchbeep:
 		bsr	find_shellvar
 		beq	find_matchbeep_return		*  D0.L == 0
 
-		moveq	#1,d0
-		addq.l	#2,a0
-		tst.w	(a0)+
-		beq	find_matchbeep_return		*  D0.L == 1
+		bsr	get_var_value
+		beq	find_matchbeep_1
 
-		bsr	strfor1
 		moveq	#-1,d0				*  D0.L == -1
 find_matchbeep_return:
-		tst.l	d0
+		rts
+
+find_matchbeep_1:
+		moveq	#1,d0				*  D0.L == 1
 		rts
 *****************************************************************
 getline_x_getletter:
@@ -2641,11 +2643,9 @@ no_prompt_function:
 		bsr	find_shellvar
 		beq	prompt_done
 
-		addq.l	#2,a0
-		tst.w	(a0)+
+		bsr	get_var_value
 		beq	prompt_done
 
-		bsr	strfor1
 		movea.l	a0,a1
 prompt_loop:
 		move.b	(a1)+,d0

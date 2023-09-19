@@ -25,8 +25,11 @@ cmd_logout:
 		bne	too_many_args
 
 		tst.b	i_am_login_shell(a5)
-		bne	logout
+		beq	dont_logout
 
+		jmp	logout
+
+dont_logout:
 		lea	msg_not_login_shell,a0
 		bra	enputs1
 ****************************************************************

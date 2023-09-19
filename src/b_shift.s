@@ -5,7 +5,8 @@
 
 .xref strfor1
 .xref find_shellvar
-.xref set_svar
+.xref get_var_value
+.xref set_shellvar
 .xref undefined
 .xref too_many_args
 .xref command_error
@@ -33,23 +34,19 @@ cmd_shift:
 
 		lea	word_argv,a0
 shift_var:
-		movea.l	a0,a2				*  A2 : •Ï”–¼
+		movea.l	a0,a2
 		bsr	find_shellvar
-		exg	a0,a2				*  A0 : •Ï”–¼   A2 : var ptr
 		beq	undefined
 
-		move.w	2(a2),d0			*  D0.W : ‚±‚Ì•Ï”‚Ì—v‘f”
+		bsr	get_var_value
 		beq	no_more_words
 
-		exg	a0,a2
-		addq.l	#4,a0
 		bsr	strfor1
-		bsr	strfor1
-		subq.w	#1,d0
 		movea.l	a0,a1
+		subq.w	#1,d0
 		movea.l	a2,a0
 		st	d1				*  export ‚·‚é
-		bra	set_svar
+		bra	set_shellvar
 
 no_more_words:
 		lea	msg_no_more_words,a0

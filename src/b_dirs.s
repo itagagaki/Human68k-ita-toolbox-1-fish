@@ -32,15 +32,16 @@
 .xref getcwd
 .xref is_under_home
 .xref find_shellvar
-.xref set_svar
+.xref set_shellvar
 .xref fish_setenv
+.xref get_var_value
 .xref perror1
 .xref perror_command_name
 .xref command_error
 .xref usage
-.xref no_space_for
 .xref bad_arg
 .xref too_many_args
+.xref dstack_not_deep
 .xref word_cdpath
 .xref word_home
 .xref pathname_buf
@@ -51,36 +52,6 @@ cwdbuf = -(((MAXPATH+1)+1)>>1<<1)
 
 .text
 
-.if 0
-****************************************************************
-* xchdir - change current working directory and/or drive
-*          if it differs to current working directory.
-*
-* CALL
-*      A0     string point
-*
-* RETURN
-*      D0.L   DOS status code
-*      CCR    TST.L D0
-*****************************************************************
-.xdef xchdir
-
-xchdir:
-		link	a6,#cwdbuf
-		move.l	a1,-(a7)
-		movea.l	a0,a1
-		lea	cwdbuf(a6),a0
-		bsr	getcwd
-		bsr	strcmp
-		movea.l	a1,a0
-		beq	xchdir_done
-
-		bsr	chdir
-xchdir_done:
-		movea.l	(a7)+,a1
-		unlk	a6
-		rts
-.endif
 ****************************************************************
 * chdir_var - Change current working drive/directory to $varname
 *
@@ -88,31 +59,23 @@ xchdir_done:
 *      A0     varname
 *
 * RETURN
-*      D0.L   エラーならば負数（ＯＳのエラー・コード）
-*             シェル変数が無いか，値の単語が無いか，最初の単語が空ならば 1
-*             $varname[1]に chdir できたならば 0
+*      D0.L   1 ならば シェル変数が無いか，値の単語が無いか，最初の単語が空．
+*             さもなくば，ＯＳのエラーコード
 *
 *      CCR    TST.L D0
 *****************************************************************
-.xdef chdir_var
-
 chdir_var:
 		move.l	a0,-(a7)
 		bsr	find_shellvar
 		beq	chdir_var_fail			*  変数が無い
 
-		lea	2(a0),a0
-		move.w	(a0)+,d1			*  D1.W : 単語数  A0 : 値
+		bsr	get_var_value
 		beq	chdir_var_fail			*  単語が無い
 
-		bsr	strfor1
 		bsr	isfullpath
-		bne	chdir_var_fail			*  最初の単語が空
+		bne	chdir_var_fail			*  完全パス名でない
 
 		bsr	chdir
-		bmi	chdir_var_done
-
-		moveq	#0,d0
 chdir_var_done:
 		movea.l	(a7)+,a0
 chdir_home_return:
@@ -209,9 +172,8 @@ chdirx_1:
 		bsr	find_shellvar
 		beq	try_varname
 
-		addq.l	#2,a0
-		move.w	(a0)+,d1			*  D1.W : cdpath の単語数
-		bsr	strfor1
+		bsr	get_var_value
+		move.w	d0,d1				*  D1.W : $#cdpath
 		movea.l	a0,a1				*  A1 : cdpath の単語並び
 		lea	pathname_buf,a0
 		bra	try_cdpath_continue
@@ -286,8 +248,8 @@ cmd_cd_n:
 		tst.b	(a0)			*  NULでなければ
 		bne	cd_bad_arg		*  エラー．
 
-		bsr	get_dstack_element	*  D1.L : 数値-1  A0 : 要素のアドレス
-		bne	cd_return		*  エラならおしまい．
+		bsr	get_dstack_arg		*  D1.L : 数値-1  A0 : 要素のアドレス
+		bne	cd_return		*  エラーならおしまい．
 
 		bsr	popd_sub		*  そこに移動してその要素を削除する．
 		bne	cd_return		*  エラーならおしまい．
@@ -337,7 +299,7 @@ reset_cwd:
 		lea	word_cwd,a0
 		moveq	#1,d0
 		sf	d1
-		bsr	set_svar
+		bsr	set_shellvar
 		movea.l	a1,a0
 		bsr	sltobsl
 		lea	word_upper_pwd,a0
@@ -396,7 +358,7 @@ cmd_pushd_n:
 		tst.b	(a0)			*  NULでなければ
 		bne	pushd_bad_arg		*  エラー．
 
-		bsr	get_dstack_element	*  D1.L : 数値-1  A0 : 要素のアドレス
+		bsr	get_dstack_arg		*  D1.L : 数値-1  A0 : 要素のアドレス
 		bne	cmd_pushd_return	*  エラーならおしまい．
 
 		bsr	pushd_exchange_sub	*  A0が示す要素にポップし，カレントをプッシュする．
@@ -501,7 +463,7 @@ cmd_popd:
 		tst.b	(a0)			*  NULでなければ
 		bne	bad_arg			*  エラー．
 
-		bsr	get_dstack_element	*  A0 : 数値が示す要素のアドレス
+		bsr	get_dstack_arg		*  A0 : 数値が示す要素のアドレス
 		bne	popd_return		*  エラーならばおしまい．
 
 		bsr	popd_sub_delete		*  要素を削除する．
@@ -673,7 +635,35 @@ print_stacklevel:
 print_stack_level_done:
 		rts
 ****************************************************************
-* get_dstack_element
+* get_dstack_d0
+*
+* CALL
+*      D0.L   要素番号
+*
+* RETURN
+*      A0     ディレクトリ・スタックの D1.L番目の要素（dstackの n-1 番目の単語）のアドレス
+*      CCR    D1.L が要素数よりも大きいならば HI，さもなくば Z
+*****************************************************************
+.xdef get_dstack_d0
+
+get_dstack_d0:
+		movea.l	dstack(a5),a0
+		lea	8(a0),a0
+		movem.l	d1,-(a7)
+		moveq	#0,d1
+		move.w	(a0)+,d1		*  ディレクトリ・スタックの要素数よりも
+		cmp.l	d1,d0			*  数値が大きいならば
+		movem.l	(a7)+,d1
+		bhi	get_dstack_d0_return	*  エラー．
+
+		subq.l	#1,d0
+		bsr	strforn
+		addq.l	#1,d0
+		cmp.w	d0,d0
+get_dstack_d0_return:
+		rts
+****************************************************************
+* get_dstack_arg
 *
 * CALL
 *      D0.L/D1.L   "+n" を atou した戻り値
@@ -684,24 +674,18 @@ print_stack_level_done:
 *      D1.L   n-1
 *      CCR    TST.L D0
 *****************************************************************
-get_dstack_element:
+get_dstack_arg:
 		tst.l	d0
 		bmi	bad_arg			*  エラー．
 		bne	dstack_not_deep
 
-		tst.l	d1			*  数値が 0 ならば
+		move.l	d1,d0			*  数値が 0 ならば
 		beq	bad_arg			*  エラー．
 
-		subq.l	#1,d1
-		movea.l	dstack(a5),a0
-		lea	8(a0),a0
-		moveq	#0,d0
-		move.w	(a0)+,d0		*  ディレクトリ・スタックの要素数よりも
-		cmp.l	d0,d1			*  数値が大きいならば
-		bhs	dstack_not_deep		*  エラー．
+		bsr	get_dstack_d0
+		bhi	dstack_not_deep
 
-		move.w	d1,d0
-		bsr	strforn
+		subq.l	#1,d1
 		bra	return_0
 ****************************************************************
 * pushd_exchange_sub - ディレクトリ・スタック上のディレクトリに
@@ -804,13 +788,6 @@ return_0:
 		moveq	#0,d0
 		rts
 ****************************************************************
-dstack_not_deep:
-		bsr	perror_command_name
-		lea	msg_directory_stack,a0
-		bsr	eputs
-		lea	msg_not_deep,a0
-		bra	enputs1
-****************************************************************
 dstack_empty:
 		bsr	perror_command_name
 		lea	msg_directory_stack,a0
@@ -819,8 +796,11 @@ dstack_empty:
 		bra	enputs1
 ****************************************************************
 stack_full:
+		bsr	perror_command_name
 		lea	msg_directory_stack,a0
-		bra	no_space_for
+		bsr	eputs
+		lea	msg_full,a0
+		bra	enputs1
 ****************************************************************
 .data
 
@@ -832,8 +812,8 @@ msg_pwd_usage:		dc.b	'[ -l ]',0
 msg_dirs_usage:		dc.b	'[ -lv ]',0
 msg_directory_stack:	dc.b	'ディレクトリ・スタック',0
 msg_dstack_empty:	dc.b	'は空です',0
-msg_not_deep:		dc.b	'はそんなに深くありません',0
 msg_too_deep:		dc.b	'の要素数が制限一杯です',0
+msg_full:		dc.b	'が満杯です',0
 msg_no_home:		dc.b	'シェル変数 home が未定義か空です',0
 
 .end

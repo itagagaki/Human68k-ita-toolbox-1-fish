@@ -1,0 +1,8 @@
+#! a:/usr/local/bin/fish
+onintr label
+repeat 1000 echo foo
+exit
+
+label:
+echo jumped
+

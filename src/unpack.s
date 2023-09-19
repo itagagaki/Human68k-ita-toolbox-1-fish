@@ -6,6 +6,7 @@
 .include ../src/fish.h
 
 .xref iscsym
+.xref atou
 .xref qstrchr
 .xref strfor1
 .xref memmovi
@@ -13,8 +14,11 @@
 .xref open_passwd
 .xref fgetpwnam
 .xref close_tmpfd
+.xref getcwd
+.xref get_dstack_d0
 .xref word_home
 .xref find_shellvar
+.xref get_var_value
 .xref copyhead
 .xref strlen
 .xref pre_perror
@@ -22,6 +26,7 @@
 .xref too_long_word
 .xref too_long_line
 .xref too_many_words
+.xref dstack_not_deep
 
 .xref tmpline
 
@@ -239,10 +244,26 @@ unpack_word_return:
 		tst.l	d0
 		rts
 ****************************************************************
-* expand_tilde - ~ を展開する
+check_slash:
+		move.b	(a0),d0
+		beq	check_slash_return
+
+		cmp.b	#'\',d0
+		bne	check_slash_1
+
+		move.b	1(a0),d0
+check_slash_1:
+		cmp.b	#'/',d0
+		beq	check_slash_return
+
+		cmp.b	#'\',d0
+check_slash_return:
+		rts
+****************************************************************
+* expand_tilde - ~ と = を展開する
 *
 * CALL
-*      A0     ~ で始まっている単語の先頭アドレス
+*      A0     ~ または = で始まっている（かもしれない）単語の先頭アドレス
 *      A1     展開するバッファのアドレス
 *      D1.W   バッファの容量
 *      D2.B   0 ならば、エラーコード -4 のエラー・メッセージ出力を抑止する
@@ -255,7 +276,7 @@ unpack_word_return:
 *              0  OK
 *             -2  バッファの容量を超えた
 *             -3  単語の長さが規定を超えた
-*             -4  指定のユーザ名は知らない（メッセージが表示される）
+*             -4  その他のエラー（メッセージが表示される）
 *
 *      D1.L   下位ワードは残りバッファ容量
 *             上位ワードは破壊
@@ -265,16 +286,50 @@ unpack_word_return:
 .xdef expand_tilde
 
 pwd_buf = -(((PW_SIZE+1)+1)>>1<<1)
+cwd_buf = pwd_buf-(((MAXPATH+1)+1)>>1<<1)
 
 expand_tilde:
-		link	a6,#pwd_buf
+		link	a6,#cwd_buf
 		movem.l	d4-d6/a2-a3,-(a7)
 		move.w	d1,d6
 		move.w	#MAXWORDLEN,d5
 		movea.l	a0,a2
 
-		cmpi.b	#'~',(a0)+
+		move.b	(a0)+,d0
+		cmp.b	#'~',d0
+		beq	maybe_home_directory
+
+		cmp.b	#'=',d0
 		bne	expand_tilde_go
+****************
+****************
+maybe_directory_stack:
+		bsr	atou
+		bmi	expand_tilde_go
+
+		move.l	d0,d4
+		bsr	check_slash
+		bne	expand_tilde_go
+
+		tst.l	d4
+		bne	expand_tilde_dstack_not_deep
+
+		movea.l	a0,a2
+		move.l	d1,d0
+		beq	expand_tilde_cwd
+
+		bsr	get_dstack_d0
+		bhi	expand_tilde_dstack_not_deep
+
+		bra	expand_tilde_copy_dir
+****************
+expand_tilde_cwd:
+		lea	cwd_buf(a6),a0
+		bsr	getcwd
+		bra	expand_tilde_copy_dir
+****************
+****************
+maybe_home_directory:
 skip_username_loop:
 		move.b	(a0)+,d0
 		bsr	iscsym
@@ -283,20 +338,10 @@ skip_username_loop:
 		cmp.b	#'-',d0
 		beq	skip_username_loop
 
-		move.b	-(a0),d0
-		beq	expand_tilde_home
-
-		cmp.b	#'\',d0
-		bne	expand_tilde_1
-
-		move.b	1(a0),d0
-expand_tilde_1:
-		cmp.b	#'/',d0
-		beq	expand_tilde_home
-
-		cmp.b	#'\',d0
+		subq.l	#1,a0
+		bsr	check_slash
 		bne	expand_tilde_go
-expand_tilde_home:
+
 		addq.l	#1,a2				*  A2 は ~ の次を指す
 		move.l	a0,d1
 		sub.l	a2,d1				*  D1.L : username の長さ
@@ -319,20 +364,17 @@ expand_tilde_home:
 
 		lea	pwd_buf(a6),a0
 		lea	PW_DIR(a0),a0
-		bra	expand_tilde_copy_home
+		bra	expand_tilde_copy_dir
 ****************
 expand_tilde_myhome:
 		lea	word_home,a0			*  シェル変数 home が
 		bsr	find_shellvar			*  定義されて
 		beq	expand_tilde_go			*  いなければ、~以降をコピーするのみ
 
-		addq.l	#2,a0
-		move.w	(a0)+,d0			*  $#home が
-		beq	expand_tilde_go			*  0 ならば、~以降をコピーするのみ
-
-		bsr	strfor1				*  変数名をスキップして $home[1]を得る
+		bsr	get_var_value
+		beq	expand_tilde_go			*  $#home が 0 ならば、~以降をコピーするのみ
 ****************
-expand_tilde_copy_home:
+expand_tilde_copy_dir:
 		move.w	d6,d0
 		exg	a0,a1
 		bsr	copyhead			*  ホーム・ディレクトリ名をバッファにコピーする
@@ -400,6 +442,10 @@ expand_tilde_passwd_error_1:
 		movea.l	a2,a0
 		moveq	#-4,d0
 		bra	expand_tilde_return
+
+expand_tilde_dstack_not_deep:
+		bsr	dstack_not_deep
+		bra	expand_tilde_passwd_error_1
 ****************************************************************
 * unpack_wordlist - 引数並びの各語について ~ {} を展開する
 *
@@ -443,10 +489,13 @@ unpack_wordlist_continue:
 		move.w	#MAXWORDLISTSIZE,d1	* D1 : 最大文字数
 		move.w	d3,d4			* D4 : 引数カウンタ
 		moveq	#1,d2			* D2 = 1 : Unknown user メッセージを抑止しない
+		bra	expand_tilde_wordlist_continue
+
 expand_tilde_wordlist_loop:
 		bsr	expand_tilde
 		bmi	unpack_wordlist_error
 
+expand_tilde_wordlist_continue:
 		dbra	d4,expand_tilde_wordlist_loop
 ****************
 		moveq	#0,d0

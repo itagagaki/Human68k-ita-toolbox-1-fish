@@ -1,0 +1,7 @@
+#$
+bdif -W80 -M30 -L100 -S c:/fish/doc/CHANGES A:/home/fish/doc/CHANGES CHANGES
+bdif -W160 -M30 -L4 -S c:/fish/doc/FISH.DOC A:/home/fish/doc/FISH.DOC FISH_DOC
+bdif -W16 -M50 c:/fish/prg/fish.x A:/home/fish/prg/fish.x FISH_X
+lha a FISH050p *.bfd
+ish FISH050p.Lzh /ss /t50
+

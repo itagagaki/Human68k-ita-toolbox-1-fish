@@ -3,6 +3,8 @@
 *
 * Itagaki Fumihiko 15-Jul-90  Create.
 
+.include ../src/var.h
+
 .xref strfor1
 .xref strforn
 .xref divsl
@@ -14,8 +16,8 @@
 .xref expr_atoi
 .xref expr_itoa
 .xref find_shellvar
-.xref set_svar
-.xref print_var
+.xref set_shellvar
+.xref printvar
 .xref skip_varname
 .xref undefined
 .xref ambiguous
@@ -29,7 +31,7 @@
 
 .xref tmpargs
 
-.xref shellvar
+.xref shellvar_top
 .xref tmpline
 
 OP_ASSIGN	equ	1
@@ -164,8 +166,8 @@ set_ambiguous:
 		bra	ambiguous
 ********************************
 set_disp:
-		movea.l	shellvar(a5),a0
-		bsr	print_var
+		movea.l	shellvar_top(a5),a0
+		bsr	printvar
 set_success_return:
 		moveq	#0,d0
 cmd_set_return:
@@ -269,15 +271,15 @@ set_expression_do_expression:
 ********************************
 set_expression_postcalc:
 		movea.l	a0,a4				* A4 : 次の引数
+		move.l	d1,d5				* D5.L : 右辺値
 		*
 		*  A4   : 引数ポインタ
 		*  D7.W : 引数カウンタ
 		*  A2   : 左辺変数名
 		*  D2.L : 左辺変数の添字の値（[index]形式で無ければ-1）
-		*  D1.L : 右辺値
 		*  D4.B : 演算子コード
+		*  D5.L : 右辺値
 		*
-		move.l	d1,-(a7)
 		subq.b	#OP_ASSIGN,d4
 		beq	set_expression_lvalue_ok
 
@@ -286,20 +288,20 @@ set_expression_postcalc:
 		bsr	find_shellvar			*  A0 = var ptr
 		beq	set_expression_lvalue_ok
 
-		addq.l	#4,a0
-		bsr	strfor1
+		movea.l	d0,a0
 		move.l	d2,d0
-		bmi	set_expression_get_lvalue	*  indexなし
 		beq	set_expression_lvalue_ok
+		bpl	set_expression_check_nwords
 
+		moveq	#1,d0
+set_expression_check_nwords:
 		moveq	#0,d3
-		move.w	2(a0),d3			*  この変数の要素数
-		cmp.l	d3,d2
+		move.w	var_nwords(a0),d3		*  D3.L : この変数の要素数
+		cmp.l	d3,d0
 		bgt	set_expression_lvalue_ok
 
-		subq.l	#1,d0
+		lea	var_body(a0),a0
 		bsr	strforn
-set_expression_get_lvalue:
 		tst.b	(a0)
 		beq	set_expression_lvalue_ok
 
@@ -307,7 +309,7 @@ set_expression_get_lvalue:
 		bsr	expr_atoi
 		bne	cmd_set_expression_return
 set_expression_lvalue_ok:
-		move.l	(a7)+,d0
+		move.l	d5,d0
 		*
 		*  A4   : 引数ポインタ
 		*  D7.W : 引数カウンタ
@@ -318,10 +320,10 @@ set_expression_lvalue_ok:
 		*  D1.L : 左辺値
 		*
 		lea	postcalc_jump_table,a0
-		moveq	#0,d5
-		move.b	d4,d5
-		lsl.l	#2,d5
-		move.l	(a0,d5.l),a0
+		moveq	#0,d3
+		move.b	d4,d3
+		lsl.l	#2,d3
+		move.l	(a0,d3.l),a0
 		jmp	(a0)
 
 postcalc_or:
@@ -557,27 +559,24 @@ scan_assign_operator_return:
 *      CCR    TST.L D0
 ****************************************************************
 set_a_element:
-		movea.l	a2,a0				* A0 = A2 (name)
-		bsr	find_shellvar			* A0 = var ptr
-		exg	a0,a2				* A0 : name   A2 : var ptr
+		movea.l	a2,a0				*  A0 : name
+		bsr	find_shellvar
 		beq	undefined
 
 		tst.l	d2
-		bmi	set_a_element_ok
 		beq	subscript_out_of_range
 
-		exg	a0,a2
+		movea.l	d0,a0				*  A0 : 変数のヘッダのアドレス
 		moveq	#0,d3
-		move.w	2(a0),d3			* D3.L : この変数の要素数
+		move.w	var_nwords(a0),d3		*  D3.L : この変数の要素数
 		cmp.l	d3,d2
-		bgt	subscript_out_of_range
+		bhi	subscript_out_of_range
 
-		addq.l	#4,a0
+		lea	var_body(a0),a0
 		bsr	strfor1
-set_a_element_ok:
-		movea.l	a0,a3
+		movea.l	a0,a3				*  A3 : 変数の値の単語並びの先頭アドレス
 		lea	tmpline(a5),a0
-		moveq	#0,d1				* D1.W : 要素番号カウンタ
+		moveq	#0,d1				*  D1.W : 要素番号カウンタ
 		bra	set_a_element_dup_continue
 
 set_a_element_dup_loop:
@@ -615,7 +614,7 @@ set_a_element_dup_continue:
 do_set:
 		movea.l	a2,a0
 		st	d1				*  export する
-		bra	set_svar
+		bra	set_shellvar
 ****************************************************************
 .data
 

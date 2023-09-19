@@ -8,11 +8,12 @@
 .xref strforn
 .xref skip_paren
 .xref is_word_separator
-.xref find_var
+.xref findvar
+.xref get_var_value
 .xref subst_history
 .xref too_long_line
 
-.xref alias
+.xref alias_top
 
 .text
 
@@ -142,8 +143,8 @@ subst_alias_1:
 
 		move.l	a1,-(a7)			*  バッファ・ポインタを退避
 		movea.l	a0,a1				*  A1 : コマンドの先頭
-		movea.l	alias(a5),a0
-		bsr	find_var			*  別名かどうかを調べる
+		movea.l	alias_top(a5),a0
+		bsr	findvar				*  別名かどうかを調べる
 		movea.l	a1,a0				*  A0 : コマンドの先頭
 		movea.l	(a7)+,a1			*  A1 : バッファ・ポインタ
 		beq	dup_args			*  別名ではない .. 置換しない
@@ -151,10 +152,8 @@ subst_alias_1:
 	*  別名を展開する
 	*
 		movea.l	a0,a2				*  A2 : コマンドの先頭
-		movea.l	d0,a0
-		addq.l	#2,a0				*  このエントリのバイト数：とばす
-		move.w	(a0)+,d4			*  D4.W : このエントリの単語数
-		bsr	strfor1				*  エントリ名をとばす
+		bsr	get_var_value			*  A0 : 実コマンド単語並び
+		move.w	d0,d4				*  D4.W : このエントリの単語数
 		*
 		*  ここで
 		*      A0     実コマンド単語並び

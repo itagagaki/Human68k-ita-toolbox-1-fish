@@ -4,7 +4,6 @@
 * This contains pathname controll routines.
 
 .include limits.h
-.include ../src/var.h
 
 .xref strbot
 .xref strlen
@@ -12,6 +11,7 @@
 .xref headtail
 .xref cat_pathname
 .xref fish_getenv
+.xref get_var_value
 
 .text
 
@@ -117,9 +117,7 @@ make_sys_pathname:
 		lea	str_nul,a1
 		beq	make_sys_pathname_1
 
-		movea.l	d0,a0
-		lea	var_body(a0),a0
-		bsr	strfor1
+		bsr	get_var_value
 		movea.l	a0,a1
 make_sys_pathname_1:
 		movea.l	a3,a0

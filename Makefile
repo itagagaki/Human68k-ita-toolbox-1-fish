@@ -7,7 +7,8 @@ RM        = -\usr\local\bin\rm -f
 
 TOP       = A:\home\fish
 DESTDIR   = A:\bin
-BACKUPDIR = B:\fish
+BACKUPDIR1 = B:\fish
+BACKUPDIR2 = C:\fish
 
 ARCHIVE_NAME  = FISH040.Lzh
 
@@ -52,18 +53,24 @@ clobber::
 	cd $(TOP)\prg || $(MAKE) clobber
 
 backup::
-	@$(BACKUP) $(TOP)\Mail.LZH $(BACKUPDIR)
-	@$(BACKUP) $(TOP)\Makefile $(BACKUPDIR)
-	@$(BACKUP) $(TOP)\src\*.* $(BACKUPDIR)\src
-	@$(BACKUP) $(TOP)\prg\Makefile $(BACKUPDIR)\prg
-	@$(BACKUP) $(TOP)\prg\fish.x $(BACKUPDIR)\prg
-	@$(BACKUP) $(TOP)\prg\fishg.x $(BACKUPDIR)\prg
-	@$(BACKUP) $(TOP)\lib\Makefile $(BACKUPDIR)\lib
-	@$(BACKUP) $(TOP)\lib\*.s $(BACKUPDIR)\lib
-	@$(BACKUP) $(TOP)\extlib\*.Lzh $(BACKUPDIR)\extlib
-	@$(BACKUP) $(TOP)\include\*.* $(BACKUPDIR)\include
-	@$(BACKUP) $(TOP)\doc\*.* $(BACKUPDIR)\doc
-	@$(BACKUP) $(TOP)\memo\*.* $(BACKUPDIR)\memo
+	@$(BACKUP) $(TOP)\Makefile $(BACKUPDIR1)
+	@$(BACKUP) $(TOP)\__main\*.* $(BACKUPDIR1)\__main
+	@$(BACKUP) $(TOP)\src\*.* $(BACKUPDIR1)\src
+	@$(BACKUP) $(TOP)\test\*.* $(BACKUPDIR1)\test
+	@$(BACKUP) $(TOP)\prg\Makefile $(BACKUPDIR1)\prg
+	@$(BACKUP) $(TOP)\prg\fish.x $(BACKUPDIR1)\prg
+	@$(BACKUP) $(TOP)\prg\fishg.x $(BACKUPDIR1)\prg
+	@$(BACKUP) $(TOP)\lib\Makefile $(BACKUPDIR1)\lib
+	@$(BACKUP) $(TOP)\lib\*.s $(BACKUPDIR1)\lib
+	@$(BACKUP) $(TOP)\extlib\*.Lzh $(BACKUPDIR1)\extlib
+	@$(BACKUP) $(TOP)\include\*.* $(BACKUPDIR1)\include
+	@$(BACKUP) $(TOP)\doc\*.* $(BACKUPDIR1)\doc
+
+backup_misc::
+	@$(BACKUP) $(TOP)\FISH_MailList $(BACKUPDIR2)
+	@$(BACKUP) $(TOP)\Mail.LZH $(BACKUPDIR2)
+	@$(BACKUP) $(TOP)\NewsLetter.Lzh $(BACKUPDIR2)
+	@$(BACKUP) $(TOP)\memo\*.* $(BACKUPDIR2)\memo
 
 ###
 
@@ -79,7 +86,7 @@ clobber::
 	$(RM) $(ARCHIVE_NAME)
 
 #backup::
-#	@$(BACKUP) $(TOP)\$(ARCHIVE_NAME) $(BACKUPDIR)
+#	@$(BACKUP) $(TOP)\$(ARCHIVE_NAME) $(BACKUPDIR1)
 
 ###
 

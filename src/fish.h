@@ -3,12 +3,6 @@ REQUIRED_OSVER	equ	$200			*  2.00以降
 EXTMALLOC	equ	1			*  0 = DOS MALLOC,  1 = Ext版 MALLOC
 
 STACKSIZE	equ	4096			*  スタックの大きさ
-MINENVSIZE	equ	256			*  最小環境サイズ
-
-DSTACKSIZE	equ	512			*  ディレクトリ・スタックの大きさ
-ALIASSIZE	equ	2048			*  別名空間の大きさ
-SHELLVARSIZE	equ	2048			*  シェル変数空間の大きさ
-KMACROSIZE	equ	1024			*  キー・マクロ空間の大きさ
 
 MAXWORDLISTSIZE	equ	4096			*  MAXWORDLEN+1以上 (32767-14)/2=16376以下  UNIXは10240
 MAXLINELEN	equ	MAXWORDLISTSIZE		*  こうすると行と引数並びとの一時領域を共用できるわけ
@@ -22,6 +16,8 @@ MAXLOOPLEVEL	equ	31			*  while/foreach のネストの最大回数  0以上65535以下  cshは
 MAXSWITCHLEVEL	equ	65535			*  switch のネストの最深  0以上65535以下  cshは無制限？
 MAXLABELLEN	equ	31			*  goto/onintrラベルの有効先頭文字数
 MAXFUNCNAMELEN	equ	31			*  関数名の最大長
+
+DSTACKSIZE	equ	256			*  ディレクトリ・スタックの大きさ
 
 RND_POOLSIZE	equ	61			*  乱数プールサイズ
 

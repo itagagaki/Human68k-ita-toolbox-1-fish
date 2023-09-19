@@ -9,12 +9,13 @@
 .xref strfor1
 .xref sltobsl
 .xref rehash
-.xref set_var
+.xref setvar
 .xref find_shellvar
+.xref get_var_value
 .xref fish_setenv
 .xref flagvarptr
 .xref is_builtin_dir
-.xref no_space_for
+.xref insufficient_memory
 .xref str_nul
 .xref str_current_dir
 .xref word_path
@@ -30,14 +31,14 @@
 
 .xref tmpargs
 
-.xref shellvar
+.xref shellvar_top
 .xref histchar1
 .xref histchar2
 
 .text
 
 ****************************************************************
-* set_svar - シェル変数を定義する
+* set_shellvar - シェル変数を定義する
 *
 * CALL
 *      A0     変数名の先頭アドレス
@@ -49,26 +50,25 @@
 *      D0.L   0:成功  1:失敗
 *      CCR    TST.L D0
 ****************************************************************
-.xdef set_svar
-.xdef set_svar_nul
+.xdef set_shellvar
+.xdef set_shellvar_nul
 
-set_svar_nul:
+set_shellvar_nul:
 		lea	str_nul,a1
 		moveq	#1,d0
-set_svar:
+set_shellvar:
 		movem.l	d1-d4/a0-a4,-(a7)
 		movea.l	a1,a2				*  A2 : value
 		movea.l	a0,a1				*  A1 : name
 		move.w	d0,d2				*  D2.W : number of words
-		movea.l	shellvar(a5),a0
-		bsr	set_var
+		lea	shellvar_top(a5),a0
+		bsr	setvar
 		beq	no_space_in_shellvar
 
 		movea.l	d0,a3				*  A3 : セットした変数の先頭アドレス
 ****************
-		exg	a0,a1
+		movea.l	a1,a0
 		bsr	flagvarptr
-		exg	a0,a1
 		beq	not_flagvar
 
 		movea.l	d0,a0
@@ -110,8 +110,8 @@ compare_export_loop:
 		bsr	strcmp
 		bne	compare_export_loop
 
-		lea	4(a3),a0
-		bsr	strfor1				*  A0   : シェル変数の値
+		move.l	a3,d0
+		bsr	get_var_value			*  A0   : シェル変数の値
 		movea.l	(a2)+,a3			*  A3   : 環境変数名
 		move.w	(a2),d3				*  D3.B : フラグ
 		lea	tmpargs,a2			*  A2   : バッファ
@@ -132,9 +132,6 @@ export_path:
 		bsr	find_shellvar
 		movea.l	(a7)+,a0
 		movea.l	d0,a4
-		beq	export_build_path_continue
-
-		addq.l	#2,a4
 		bra	export_build_path_continue
 ****************
 export_build_path_loop:
@@ -148,17 +145,20 @@ export_build_path_loop:
 		cmpa.l	#0,a4
 		beq	not_notexportpath
 
-		movea.l	a4,a1
-		move.w	(a1)+,d4
+		exg	a0,a1
+		bsr	get_var_value
+		exg	a0,a1				*  A1 : $notexportpath
+		move.w	d0,d4				*  D4 : $#notexportpath
 		bra	check_notexportpath_continue
 
 check_notexportpath_loop:
-		exg	a0,a1
-		bsr	strfor1
-		exg	a0,a1
 		moveq	#0,d0
 		bsr	strpcmp
 		beq	export_build_path_ignore_this
+
+		exg	a0,a1
+		bsr	strfor1
+		exg	a0,a1
 check_notexportpath_continue:
 		dbra	d4,check_notexportpath_loop
 not_notexportpath:
@@ -195,8 +195,7 @@ set_svar_return:
 		rts
 ****************
 no_space_in_shellvar:
-		lea	msg_shellvar_space,a0
-		bsr	no_space_for
+		bsr	insufficient_memory
 set_svar_return1:
 		moveq	#1,d0
 		bra	set_svar_return
@@ -216,7 +215,7 @@ get_histchar:
 get_histchar_return:
 		rts
 ****************************************************************
-* set_svar_num - シェル変数に数値を定義する
+* set_shellvar_num - シェル変数に数値を定義する
 *
 * CALL
 *      A0     変数名の先頭アドレス
@@ -227,9 +226,9 @@ get_histchar_return:
 *      D0.L   0:成功  1:失敗
 *      CCR    TST.L D0
 ****************************************************************
-.xdef set_svar_num
+.xdef set_shellvar_num
 
-set_svar_num:
+set_shellvar_num:
 		link	a6,#-12
 		movem.l	d0/a1,-(a7)
 
@@ -241,7 +240,7 @@ set_svar_num:
 		movem.l	(a7)+,d1/a0
 
 		moveq	#1,d0
-		bsr	set_svar
+		bsr	set_shellvar
 
 		movem.l	(a7)+,d0/a1
 		unlk	a6
@@ -281,7 +280,6 @@ export_table:
 
 word_histchars:		dc.b	'histchars',0
 word_notexportpath:	dc.b	'notexportpath',0
-msg_shellvar_space:	dc.b	'シェル変数ブロック',0
 
 .end
 

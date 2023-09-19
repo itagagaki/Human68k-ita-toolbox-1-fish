@@ -50,7 +50,7 @@ build_line_loop:
 		movea.l	a2,a0
 		sf	d0
 		bsr	do_line_substhist		*!! Ä‹A !!*
-		bsr	free_current_argbuf
+		jsr	free_current_argbuf
 return_0:
 		moveq	#0,d0
 		rts

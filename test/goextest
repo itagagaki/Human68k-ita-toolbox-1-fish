@@ -1,0 +1,4 @@
+#! /home/fish/prg/fish_main
+XXXX:
+echo "2-1";exit;echo "2-2";goto XXXX;echo "2-3"
+

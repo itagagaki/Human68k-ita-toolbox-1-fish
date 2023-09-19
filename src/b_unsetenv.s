@@ -3,15 +3,15 @@
 *
 * Itagaki Fumihiko 16-Jul-90  Create.
 
+.include ../src/var.h
+
 .xref strfor1
 .xref free
-.xref unlink_list
 .xref strip_quotes
 .xref fish_getenv
 .xref too_few_args
 
-.xref envtop
-.xref envbot
+.xref env_top
 
 .text
 
@@ -22,7 +22,7 @@
 *  Synopsis
 *       unsetenv name ...
 ****************************************************************
-.xdef	cmd_unsetenv
+.xdef cmd_unsetenv
 
 cmd_unsetenv:
 		subq.w	#1,d0
@@ -52,9 +52,17 @@ fish_unsetenv:
 		bsr	fish_getenv		* ŠÂ‹«•Ï” name ‚ğ’T‚·
 		beq	unsetenv_done		* –³‚¯‚ê‚Î‰½‚à‚µ‚È‚¢
 
-		lea	envtop(a5),a0
-		lea	envbot(a5),a1
-		bsr	unlink_list
+		movea.l	d0,a1
+		movea.l	var_next(a1),a1
+		cmpa.l	#0,a0
+		beq	fish_unsetenv_top
+
+		move.l	a1,var_next(a0)
+		bra	fish_unsetenv_free
+
+fish_unsetenv_top:
+		move.l	a1,env_top(a5)
+fish_unsetenv_free:
 		bsr	free
 unsetenv_done:
 		movem.l	(a7)+,d0/a0-a1

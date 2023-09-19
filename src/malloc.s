@@ -155,7 +155,8 @@ free_all_tmp:
 		bsr	MFREEALL
 		bra	swap_lake
 	.else
-		rts					*  Shucks!!
+		*  ‘ã—p•i‚Í–³‚¢ (^^;
+		rts
 	.endif
 *****************************************************************
 * xmallocp - ƒƒ‚ƒŠ‚ğŠm•Û‚·‚é

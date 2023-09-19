@@ -7,6 +7,7 @@
 .include stat.h
 
 .xref find_shellvar
+.xref get_var_value
 .xref strfor1
 .xref cat_pathname
 .xref drvchkp
@@ -39,11 +40,9 @@ tmpname:
 		bsr	find_shellvar
 		beq	notemp
 
-		addq.l	#2,a0
-		tst.w	(a0)+
+		bsr	get_var_value
 		beq	notemp
 
-		bsr	strfor1
 		tst.b	(a0)
 		beq	notemp
 ****************

@@ -8,27 +8,25 @@
 .xref iscntrl
 .xref toupper
 .xref strcmp
-.xref strcpy
-.xref strlen
+.xref strdup
 .xref memcmp
 .xref memset
-.xref memmovi
 .xref strfor1
+.xref xfree
 .xref putc
 .xref cputc
-.xref cputs
-.xref put_newline
-.xref put_space
-.xref put_tab
 .xref puts
-.xref nputs
+.xref cputs
 .xref eputs
 .xref enputs
 .xref enputs1
+.xref put_newline
+.xref put_space
+.xref put_tab
 .xref expand_wordlist
 .xref strip_quotes
 .xref pre_perror
-.xref no_space_for
+.xref insufficient_memory
 .xref too_many_args
 .xref bad_arg
 .xref perror_command_name
@@ -36,7 +34,6 @@
 .xref msg_too_few_args
 .xref msg_too_many_args
 
-.xref keymacro
 .xref keymap
 .xref keymacromap
 .xref tmpargs
@@ -153,8 +150,8 @@ do_bind_return:
 .xdef init_key_bind
 
 init_key_bind:
-		movem.l	d0-d3/a0-a1,-(a7)
-		*
+		movem.l	d0-d3/a0,-(a7)
+
 		lea	keymap(a5),a0
 		moveq	#X_SELF_INSERT,d0
 		move.l	#128,d1
@@ -163,24 +160,24 @@ init_key_bind:
 		moveq	#X_ERROR,d0
 		add.l	d1,d1
 		bsr	memset
-		*
+
 		lea	keymacromap(a5),a0
 		moveq	#0,d0
 		move.l	#4*128*3,d1
 		bsr	memset
-		*
-		lea	initial_bindings,a1
+
+		lea	initial_bindings,a0
 init_key_loop:
-		move.b	(a1)+,d1
+		move.b	(a0)+,d1
 		bmi	init_key_done
 
-		move.b	(a1)+,d2
-		move.b	(a1)+,d3
+		move.b	(a0)+,d2
+		move.b	(a0)+,d3
 		bsr	do_bind
 		bra	init_key_loop
 
 init_key_done:
-		movem.l	(a7)+,d0-d3/a0-a1
+		movem.l	(a7)+,d0-d3/a0
 		rts
 ****************************************************************
 * print_bind - キーにバインドされている機能を表示する
@@ -267,52 +264,6 @@ print_all_bind_continue:
 		moveq	#0,d0
 		rts
 ****************************************************************
-* delete_macro - マクロ文字列を削除する
-*
-* CALL
-*      A2     マクロ文字列格納領域のヘッダのアドレス
-*      A3     keymacromap ポインタ
-*
-* RETURN
-*      none
-****************************************************************
-delete_macro:
-		tst.l	(a3)
-		beq	delete_macro_done
-
-		movem.l	d0-d2/a0-a1,-(a7)
-		movea.l	(a3),a0
-		bsr	strlen
-		addq.l	#1,d0
-		move.l	d0,d1			*  D1.L : 削除するバイト数
-		lea	(a0,d1.l),a1
-		move.l	a2,d0
-		add.l	4(a2),d0
-		sub.l	a1,d0
-		bsr	memmovi			*  文字列を削除
-		sub.l	d1,4(a2)		*  マクロ文字列格納領域の使用量を修正する
-
-		move.l	(a3),d2
-		lea	keymacromap(a5),a0
-		move.w	#128*3,d0
-delete_macro_loop:
-		movea.l	(a0)+,a1
-		cmpa.l	d2,a1
-		blo	delete_macro_continue
-		beq	delete_macro_0
-
-		sub.l	d1,-4(a0)		*  続く文字列たちを指していたポインタを修正する
-		bra	delete_macro_continue
-
-delete_macro_0:
-		clr.l	-4(a0)			*  削除した文字列を指しているものは NULL に
-delete_macro_continue:
-		dbra	d0,delete_macro_loop
-
-		movem.l	(a7)+,d0-d2/a0-a1
-delete_macro_done:
-		rts
-****************************************************************
 *  Name
 *       bind - キー・バインドの表示と設定
 *
@@ -332,8 +283,8 @@ delete_macro_done:
 .xdef cmd_bind
 
 cmd_bind:
-		move.w	d0,d4			*  D4.W : 引数の数
-		beq	print_all_bind		*  引数が無いなら現在のすべてのバインドを表示
+		move.w	d0,d4				*  D4.W : 引数の数
+		beq	print_all_bind			*  引数が無いなら現在のすべてのバインドを表示
 
 		lea	str_option_a,a1
 		bsr	strcmp
@@ -349,7 +300,7 @@ cmd_bind_1:
 		*
 		*  マップ番号を決定する
 		*
-		moveq	#0,d1			*  D1.L : マップ番号
+		moveq	#0,d1				*  D1.L : マップ番号
 
 		lea	name_prefix_1,a1
 		moveq	#6,d0
@@ -407,7 +358,7 @@ keycode_ok:
 		tst.b	(a0)+
 		bne	bind_bad_arg
 
-		move.b	d0,d2			*  D2.B : キー・コード
+		move.b	d0,d2				*  D2.B : キー・コード
 		*
 		*  引数がもう無いなら、そのキーのバインドを表示
 		*
@@ -421,13 +372,13 @@ keycode_ok:
 		bsr	expand_wordlist
 		bmi	cmd_bind_return
 
-		move.w	d0,d4			*  置換・展開後の引数の数が
-		subq.w	#1,d4			*  1つ
-		bcs	bind_bad_arg		*  も無いならば、エラー
+		move.w	d0,d4				*  置換・展開後の引数の数が
+		subq.w	#1,d4				*  1つ
+		bcs	bind_bad_arg			*  も無いならば、エラー
 		*
 		*  ファンクション番号を得る
 		*
-		moveq	#-1,d3			*  D3.B にファンクション番号を求める
+		moveq	#-1,d3				*  D3.B にファンクション番号を求める
 		lea	key_function_name_table,a2
 bind_find_func:
 		tst.l	(a2)
@@ -439,11 +390,10 @@ bind_find_func:
 		bne	bind_find_func
 		*
 		*
-		movea.l	keymacro(a5),a2		*  A2 : マクロ文字列格納領域のヘッダのアドレス
 		bsr	keymap_index
 		lsl.l	#2,d0
-		lea	keymacromap(a5),a3
-		adda.l	d0,a3			*  A3 : keymacromapポインタ
+		lea	keymacromap(a5),a2
+		adda.l	d0,a2				*  A2 : keymacromapポインタ
 		cmp.b	#X_MACRO,d3
 		bne	bind_normal_func
 		*
@@ -452,47 +402,28 @@ bind_find_func:
 		blo	missing_macro_string
 		bhi	too_many_macro_string
 		*
-		bsr	strfor1			*  A0 : マクロ文字列の先頭アドレス
-		bsr	strlen
-		addq.l	#1,d0
-		move.l	d0,d4			*  D4.L : マクロ文字列の長さ+1
-		*
-		move.l	(a3),d0
-		beq	bind_macro_1
+		bsr	strfor1				*  A0 : マクロ文字列の先頭アドレス
+		bsr	strdup
+		beq	insufficient_memory
 
-		exg	a0,a3
-		bsr	strlen
-		exg	a0,a3
-bind_macro_1:
-		add.l	(a2),d0
-		sub.l	4(a2),d0		*  D0.L : キー・マクロ領域の空き容量
-		cmp.l	d4,d0
-		blo	bind_macro_no_space
-
-		bsr	delete_macro
-		move.l	4(a2),d0
-		lea	(a2,d0.l),a1
-		exg	a0,a1
-		bsr	strcpy
-		add.l	d4,4(a2)
-		move.l	a0,(a3)
+		movea.l	d0,a0
+		move.l	(a2),d0
+		bsr	xfree
+		move.l	a0,(a2)
 		bra	cmd_bind_do_bind
 
 bind_normal_func:
 		tst.w	d4
 		bne	bind_too_many_args
 
-		bsr	delete_macro
+		move.l	(a2),d0
+		bsr	xfree
 cmd_bind_do_bind:
 		bsr	do_bind
 		moveq	#0,d0
 cmd_bind_return:
 		rts
 
-
-bind_macro_no_space:
-		lea	msg_key_macro_space,a0
-		bra	no_space_for
 
 missing_macro_string:
 		lea	msg_too_few_args,a1
@@ -635,8 +566,6 @@ initial_bindings:
 
 msg_follows_macro:	dc.b	'macro に続く',0
 msg_bad_funcname:	dc.b	'このような名前の機能はありません',0
-
-msg_key_macro_space:	dc.b	'キー・マクロ・ブロック',0
 
 msg_usage_of_bind:
 		dc.b	'     bind [ -a ]',CR,LF

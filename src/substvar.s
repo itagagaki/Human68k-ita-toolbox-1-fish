@@ -3,7 +3,6 @@
 
 .include limits.h
 .include ../src/fish.h
-.include ../src/var.h
 .include ../src/source.h
 .include ../src/modify.h
 
@@ -21,6 +20,7 @@
 .xref skip_varname
 .xref fish_getenv
 .xref find_shellvar
+.xref get_var_value
 .xref modify
 .xref getline_file
 .xref xmallocp
@@ -40,13 +40,12 @@
 .xref msg_subscript_out_of_range
 .xref dummy
 
-.xref tmpgetlinebufp
-
 .xref tmpline
 .xref pid
 .xref irandom_struct
 .xref not_execute
 .xref current_source
+.xref tmpgetlinebufp
 
 .text
 
@@ -416,7 +415,7 @@ not_random:
 		cmpi.b	#'<',special(a6)
 		bne	not_gets
 		* {
-			lea	tmpgetlinebufp,a0
+			lea	tmpgetlinebufp(a5),a0
 			move.l	#MAXLINELEN+1,d0
 			bsr	xmallocp
 			beq	cannot_getline
@@ -431,7 +430,7 @@ not_random:
 			bmi	expand_var_null
 			bne	expand_var_buffer_over
 
-			movea.l	tmpgetlinebufp,a0
+			movea.l	tmpgetlinebufp(a5),a0
 			move.b	#1,quote_word(a6)
 			bra	expand_var_1word
 		* }
@@ -669,7 +668,7 @@ expand_var_return:
 		movem.l	d0/a0,-(a7)
 		move.l	allocated_by_modify(a6),d0
 		bsr	xfree
-		lea	tmpgetlinebufp,a0
+		lea	tmpgetlinebufp(a5),a0
 		bsr	xfreep
 		movem.l	(a7)+,d0/a0
 		movem.l	(a7)+,d6-d7/a2-a4
@@ -713,35 +712,26 @@ expand_var_misc_error_return:
 		bra	expand_var_return
 ****************************************************************
 eval_sub:
+		movea.l	a2,a0
 		move.b	(a3),d7
 		clr.b	(a3)
 		cmpi.b	#'%',eval_option(a6)
 		beq	try_env
 
-		movea.l	a2,a0
+		move.l	a0,-(a7)
 		bsr	find_shellvar
-		beq	shellvar_undefined
+		movea.l	(a7)+,a0
+		bne	eval_sub_var_found
 
-		movea.l	d0,a0
-		addq.l	#2,a0
-		moveq	#0,d0
-		move.w	(a0)+,d0
-		bra	eval_var_found
-
-shellvar_undefined:
 		cmpi.b	#'@',eval_option(a6)
 		beq	eval_var_undefined
 try_env:
-		movea.l	a2,a0
+		move.l	a0,-(a7)
 		bsr	fish_getenv
+		movea.l	(a7)+,a0
 		beq	eval_var_undefined
-
-		movea.l	d0,a0
-		moveq	#0,d0
-		move.w	var_nwords(a0),d0
-		lea	var_body(a0),a0
-eval_var_found:
-		bsr	strfor1
+eval_sub_var_found:
+		bsr	get_var_value
 		bra	eval_var_done
 
 eval_var_undefined:

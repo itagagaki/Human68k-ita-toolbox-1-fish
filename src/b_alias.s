@@ -11,17 +11,18 @@
 .xref strip_quotes
 .xref expand_wordlist
 .xref strcmp
-.xref set_var
-.xref find_var
-.xref print_var
+.xref setvar
+.xref findvar
+.xref printvar
+.xref get_var_value
 .xref pre_perror
-.xref no_space_for
+.xref insufficient_memory
 .xref word_alias
 .xref word_unalias
 
 .xref tmpargs
 
-.xref alias
+.xref alias_top
 
 .text
 
@@ -30,9 +31,7 @@
 
 print_alias_value:
 		movem.l	d0/a0-a1,-(a7)
-		addq.l	#2,a0
-		move.w	(a0)+,d0
-		bsr	strfor1
+		bsr	get_var_value
 		lea	cputs(pc),a1
 		bsr	echo
 		movem.l	(a7)+,d0/a0-a1
@@ -81,15 +80,15 @@ cmd_alias:
 
 		movea.l	a2,a1			* A1 : name
 		movea.l	a0,a2			* A2 : tmpargs
-		movea.l	alias(a5),a0
-		bsr	set_var
-		beq	no_space
+		lea	alias_top(a5),a0
+		bsr	setvar
+		beq	insufficient_memory
 		bra	return_0
 ****************
 print_one_alias:
 		movea.l	a0,a1
-		movea.l	alias(a5),a0
-		bsr	find_var
+		movea.l	alias_top(a5),a0
+		bsr	findvar
 		beq	return_0
 
 		bsr	print_alias_value
@@ -97,8 +96,8 @@ print_one_alias:
 		bra	return_0
 ****************
 print_all_alias:
-		movea.l	alias(a5),a0
-		bsr	print_var
+		movea.l	alias_top(a5),a0
+		bsr	printvar
 return_0:
 		moveq	#0,d0
 return:
@@ -109,14 +108,9 @@ danger:
 		bsr	pre_perror
 		lea	msg_danger,a0
 		bra	enputs1
-****************
-no_space:
-		lea	msg_alias_space,a0
-		bra	no_space_for
 ****************************************************************
 .data
 
-msg_alias_space:	dc.b	'別名ブロック',0
 msg_danger:		dc.b	'この名前を別名とするのは危険です',0
 
 .end

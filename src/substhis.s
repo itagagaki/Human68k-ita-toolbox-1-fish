@@ -35,14 +35,15 @@
 .xref msg_too_large_number
 .xref str_nul
 
-.xref tmpgetlinebufp
-
 .xref history_top
 .xref history_bot
 .xref current_eventno
 .xref prev_search
 .xref histchar1
 .xref histchar2
+.xref tmpgetlinebufp
+
+.text
 
 ****************************************************************
 * find_history - 履歴リストからイベントをイベント番号で検索する
@@ -847,7 +848,7 @@ get_hist_search_str:
 current_event:
 		addq.l	#1,a2				*  # をスキップ
 
-		lea	tmpgetlinebufp,a0
+		lea	tmpgetlinebufp(a5),a0
 		move.l	#MAXWORDLISTSIZE,d0
 		bsr	xmallocp
 		beq	cannot_expand_current_event
@@ -1016,7 +1017,7 @@ subst_history_fatal_error:
 subst_hist_done:
 		subq.l	#1,a1
 subst_history_return:
-		lea	tmpgetlinebufp,a0
+		lea	tmpgetlinebufp(a5),a0
 		bsr	xfreep
 		movea.l	a2,a0
 		move.w	d7,d1

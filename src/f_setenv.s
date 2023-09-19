@@ -4,15 +4,13 @@
 .include ../src/var.h
 
 .xref strlen
-.xref strmove
-.xref link_list
 .xref xmalloc
-.xref free
+.xref allocvar
+.xref entervar
 .xref fish_getenv
 .xref insufficient_memory
 
-.xref envtop
-.xref envbot
+.xref env_top
 
 .text
 
@@ -27,49 +25,29 @@
 *      D0.L   セットした変数の先頭アドレス．
 *             ただしメモリが足りないためセットできなかったならば 0．
 *      CCR    TST.L D0
+*
+* NOTE
+*      セットする値の語並びのアドレスが変数の現在の値の
+*      一部位であるときにも、正しく動作する。
 *****************************************************************
 .xdef fish_setenv
 
 fish_setenv:
-		movem.l	d1/a0-a4,-(a7)
-		movea.l	envbot(a5),a2
-		suba.l	a3,a3
-		bsr	fish_getenv
-		beq	insert
-
-		movea.l	d0,a3
-		movea.l	var_prev(a3),a2
-		movea.l	var_next(a3),a3
-		bsr	free
-insert:
-		bsr	strlen
-		move.l	d0,d1
-		exg	a0,a1
-		bsr	strlen
-		add.l	d1,d0
-		addq.l	#2,d0
-		add.l	#VAR_HEADER_SIZE,d0
-		bsr	xmalloc
+		movem.l	d1-d2/a0-a4,-(a7)
+		moveq	#1,d1				*  D1.W : 単語数 = 1
+		movea.l	a1,a2				*  A2 : 値
+		movea.l	a0,a1				*  A1 : 変数名
+		bsr	allocvar			*  A3 : 新変数のアドレス
 		beq	fish_setenv_no_space
 
-		movea.l	d0,a4
-		move.l	a2,var_prev(a4)
-		move.l	a3,var_next(a4)
-		movem.l	a0-a1,-(a7)
-		lea	envtop(a5),a0
-		lea	envbot(a5),a1
-		bsr	link_list
-		movem.l	(a7)+,a0-a1
-		move.w	#1,var_nwords(a4)
-		move.l	a0,-(a7)
-		lea	var_body(a4),a0
-		bsr	strmove
-		movea.l	(a7)+,a1
-		bsr	strmove
-		move.l	a4,d0
+		movea.l	a1,a0
+		bsr	fish_getenv
+		lea	env_top(a5),a4
+		bsr	entervar
 return:
-		movem.l	(a7)+,d1/a0-a4
+		movem.l	(a7)+,d1-d2/a0-a4
 		rts
+
 
 fish_setenv_no_space:
 		bsr	insufficient_memory

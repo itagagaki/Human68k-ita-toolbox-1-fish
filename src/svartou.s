@@ -5,6 +5,7 @@
 .xref atou
 .xref strfor1
 .xref find_shellvar
+.xref get_var_value
 
 .text
 
@@ -16,12 +17,10 @@ sub1:
 		beq	sub1_done			*  •Ï”‚ª–³‚¢ ; return 0
 
 		moveq	#1,d2
-		addq.l	#2,a0
-		tst.w	(a0)+
+		bsr	get_var_value
 		beq	sub1_done			*  ’PŒê‚ª–³‚¢ ; return 1
 
 		moveq	#2,d2				*  ’PŒê‚ª‹ó   ; return 2
-		bsr	strfor1
 		tst.b	(a0)
 sub1_done:
 		rts

@@ -22,7 +22,7 @@
 
 .xref tmpargs
 
-.xref envtop
+.xref env_top
 
 .text
 
@@ -80,7 +80,7 @@ cmd_setenv_set:
 		bra	cmd_setenv_success_return
 ****************
 printenv:
-		movea.l	envtop(a5),a1
+		movea.l	env_top(a5),a1
 printenv_loop:
 		cmpa.l	#0,a1
 		beq	cmd_setenv_success_return

@@ -134,6 +134,12 @@ too_large_number:
 		lea	msg_too_large_number,a0
 		bra	command_error
 ****************************************************************
+.xdef dstack_not_deep
+
+dstack_not_deep:
+		lea	msg_dstack_not_deep,a0
+		bra	command_error
+****************************************************************
 .xdef no_close_brace
 
 no_close_brace:
@@ -166,17 +172,6 @@ no_match:
 insufficient_memory:
 		lea	msg_insufficient_memory,a0
 		bra	enputs1
-****************************************************************
-.xdef no_space_for
-
-no_space_for:
-		bsr	perror_command_name
-		bsr	eputs
-		move.l	a0,-(a7)
-		lea	msg_no_space_for,a0
-		bsr	enputs1
-		movea.l	(a7)+,a0
-		rts
 ****************************************************************
 .xdef cannot_because_no_memory
 
@@ -316,9 +311,9 @@ msg_too_many_args:		dc.b	'引数が多過ぎます',0
 msg_too_few_args:		dc.b	'引数が足りません',0
 msg_no_close_brace:		dc.b	'} がありません',0
 msg_no_match:			dc.b	'マッチするファイルやディレクトリがありません',0
+msg_dstack_not_deep:		dc.b	'ディレクトリ・スタックはそんなに深くありません',0
 msg_bacause_of_no_memory:	dc.b	'メモリが足りないため',0
 msg_insufficient_memory:	dc.b	'メモリが足りません',0
-msg_no_space_for:		dc.b	'の容量が足りません',0
 msg_err:			dc.b	'error',0
 msg_nofile:			dc.b	'このようなファイルはありません',0
 msg_nodir:			dc.b	'このようなディレクトリはありません',0

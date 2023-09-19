@@ -15,14 +15,14 @@
 .xref put_space
 .xref put_newline
 .xref search_command
-.xref find_var
+.xref findvar
 .xref find_function
 .xref list_1_function
 .xref print_alias_value
 .xref usage
 .xref too_few_args
 
-.xref alias
+.xref alias_top
 .xref function_root
 .xref flag_noalias
 
@@ -94,13 +94,12 @@ loop:
 		btst	#0,d2
 		bne	not_alias
 
-		movea.l	alias(a5),a0
-		bsr	find_var
+		movea.l	alias_top(a5),a0
+		bsr	findvar
 		beq	not_alias
 
-		exg	a0,a1
+		movea.l	a1,a0
 		bsr	print_name_is
-		exg	a0,a1
 		bsr	put_space
 		bsr	print_alias_value
 		lea	msg_is_aliased,a0

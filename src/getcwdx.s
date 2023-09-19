@@ -9,6 +9,7 @@
 .xref isfullpath
 .xref getcwd
 .xref find_shellvar
+.xref get_var_value
 .xref word_home
 
 .text
@@ -93,11 +94,9 @@ is_under_home:
 		bsr	find_shellvar		*  は
 		beq	is_under_home_return	*  は無い
 
-		addq.l	#2,a0
-		tst.w	(a0)+			*  シェル変数 home の単語数
-		beq	is_under_home_return	*  は 0 である
+		bsr	get_var_value
+		beq	is_under_home_return	*  $#home は 0 である
 
-		bsr	strfor1			*  A0 : $home[1]
 		bsr	isfullpath		*  $home[1] は絶対パス名
 		bne	is_under_home_return	*  ではない
 

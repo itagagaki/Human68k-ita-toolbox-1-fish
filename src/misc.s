@@ -1,11 +1,12 @@
 .include doscall.h
 .include chrcode.h
-.include ../src/var.h
 
 .xref iscntrl
 .xref isodigit
 .xref issjis
 .xref strlen
+.xref strcpy
+.xref xmalloc
 .xref scan_octal
 .xref str_newline
 
@@ -377,54 +378,31 @@ eputse:
 		movea.l	(a7)+,a1
 		rts
 *****************************************************************
-.xdef link_list
-
-link_list:
-		movem.l	a0-a2,-(a7)
-		movea.l	d0,a2
-		*
-		tst.l	var_prev(a2)
-		beq	link_list_1
-
-		movea.l	var_prev(a2),a0
-		lea	var_next(a0),a0
-link_list_1:
-		move.l	a2,(a0)
-		*
-		tst.l	var_next(a2)
-		beq	link_list_2
-
-		movea.l	var_next(a2),a1
-		lea	var_prev(a1),a1
-link_list_2:
-		move.l	a2,(a1)
-		*
-		movem.l	(a7)+,a0-a2
-		rts
+* strdup - メモリを確保して文字列を複製する
+*
+* CALL
+*      A0     文字列の先頭アドレス
+*
+* RETURN
+*      D0     複製した文字列の先頭アドレス
+*             メモリを確保できなかったならば 0
+*      CCR    TST.L D0
 *****************************************************************
-.xdef unlink_list
+.xdef strdup
 
-unlink_list:
-		movem.l	a0-a2,-(a7)
-		movea.l	d0,a2
-		*
-		tst.l	var_prev(a2)
-		beq	unlink_list_1
+strdup:
+		bsr	strlen
+		addq.l	#1,d0
+		bsr	xmalloc
+		beq	strdup_return
 
-		movea.l	var_prev(a2),a0
-		lea	var_next(a0),a0
-unlink_list_1:
-		move.l	var_next(a2),(a0)
-		*
-		tst.l	var_next(a2)
-		beq	unlink_list_2
-
-		movea.l	var_next(a2),a1
-		lea	var_prev(a1),a1
-unlink_list_2:
-		move.l	var_prev(a2),(a1)
-		*
-		movem.l	(a7)+,a0-a2
+		movem.l	a0-a1,-(a7)
+		movea.l	a0,a1
+		movea.l	d0,a0
+		bsr	strcpy
+		move.l	a0,d0
+		movem.l	(a7)+,a0-a1
+strdup_return:
 		rts
 *****************************************************************
 

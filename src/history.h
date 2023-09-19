@@ -1,8 +1,9 @@
-HIST_PREV	equ	0		*  dc.l 1
-HIST_NEXT	equ	HIST_PREV+4	*  dc.l 1
-HIST_TIME	equ	HIST_NEXT+4	*  dc.l 1
-HIST_EVENTNO	equ	HIST_TIME+4	*  dc.l 1
-HIST_REFNO	equ	HIST_EVENTNO+4	*  dc.l 1
-HIST_NWORDS	equ	HIST_REFNO+4	*  dc.w 1
-HIST_BODY	equ	HIST_NWORDS+2
+.offset 0
+HIST_PREV:		ds.l	1
+HIST_NEXT:		ds.l	1
+HIST_TIME:		ds.l	1
+HIST_EVENTNO:		ds.l	1
+HIST_REFNO:		ds.l	1
+HIST_NWORDS:		ds.w	1
+HIST_BODY:
 

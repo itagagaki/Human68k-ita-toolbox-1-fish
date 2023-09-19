@@ -18,6 +18,7 @@
 .xref divul
 .xref word_path
 .xref find_shellvar
+.xref get_var_value
 .xref is_builtin_dir
 .xref isfullpath
 .xref dos_allfile
@@ -109,11 +110,10 @@ rehash_clear_loop:
 		bsr	find_shellvar
 		beq	rehash_done
 
-		addq.l	#2,a0
-		move.w	(a0)+,d1			* D1.W : $#path
-		bsr	strfor1
-		movea.l	a0,a1				* A1 : $path ポインタ
-		moveq	#0,d2				* D2.B : インデックス
+		bsr	get_var_value
+		move.w	d0,d1				*  D1.W : $#path
+		movea.l	a0,a1				*  A1 : $path ポインタ
+		moveq	#0,d2				*  D2.B : インデックス
 		bra	rehash_start
 
 rehash_loop:
