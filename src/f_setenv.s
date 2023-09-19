@@ -35,7 +35,6 @@ fish_setenv_return:
 		rts
 ****************************************************************
 .data
-.xdef msg_environment
 
 msg_environment:	dc.b	'ŠÂ‹«',0
 

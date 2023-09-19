@@ -3,7 +3,7 @@
 *
 * Itagaki Fumihiko 27-Aug-90  Create.
 
-.xref expression2
+.xref expression
 .xref just_set_status
 .xref too_many_args
 
@@ -26,7 +26,7 @@ cmd_exit:
 		tst.w	d7
 		beq	success_return
 
-		bsr	expression2
+		bsr	expression
 		bne	cmd_exit_return		* D0 != 0
 
 		tst.w	d7

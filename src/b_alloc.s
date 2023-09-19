@@ -3,29 +3,17 @@
 *
 * Itagaki Fumihiko 06-May-91  Create.
 
+.include ../src/extmalloc.h
+
 .xref utoa
 .xref putc
 .xref nputs
-.xref printfs
 .xref printfi
 .xref mulul
 .xref divul
-.xref strazbot
 .xref too_many_args
-.xref msg_environment
-.xref msg_directory_stack
-.xref msg_key_macro_space
-.xref msg_shellvar_space
-.xref msg_alias_space
 
-.xref envwork
-.xref dstack
-.xref keymacro
-.xref shellvar
-.xref alias
-.if 0
-.xref history
-.endif
+.xref lake_top
 
 .text
 
@@ -45,95 +33,78 @@ cmd_alloc:
 
 		lea	msg_header,a0
 		bsr	nputs
-		*
-		*  環境
-		*
-		movea.l	envwork(a5),a1
-		lea	4(a1),a0
-		bsr	strazbot
-		addq.l	#1,a0
-		move.l	a0,d6
-		sub.l	a1,d6			*  D6: 使用量
-		lea	msg_environment,a0
-		bsr	report_1
-		*
-		*  シェル変数
-		*
-		movea.l	shellvar(a5),a1
-		lea	msg_shellvar_space,a0
-		bsr	report_3
-		*
-		*  別名
-		*
-		movea.l	alias(a5),a1
-		lea	msg_alias_space,a0
-		bsr	report_3
-		*
-		*  キー・マクロ
-		*
-		movea.l	keymacro(a5),a1
-		lea	msg_key_macro_space,a0
-		bsr	report_2
-		*
-		*  ディレクトリ・スタック
-		*
-		movea.l	dstack(a5),a1
-		lea	msg_directory_stack,a0
-		bsr	report_2
-		*
-		*  履歴
-		*
-.if 0
-		movea.l	history(a5),a1
-		lea	msg_history,a0
-		bsr	report_3
-.endif
+
+		move.l	lake_top(a5),d0
+		bra	lake_entry
+
+lake_loop:
+		move.l	next_lake_ptr(a4),d0
+lake_entry:
+		beq	done
+
+		move.l	d0,a4
+		move.l	lake_size(a4),d7		*  D7 : この lake のサイズ
+		move.l	d7,d6
+		tst.w	head_pool+next_pool_offset(a4)
+		beq	pool_end
+
+		moveq	#0,d6
+		lea	head_pool(a4),a1
+		move.l	a1,a0
+pool_loop:
+		cmp.l	a1,a0
+		bne	free_skip
+
+		move.w	next_free_offset(a0),d0
+		lea	(a0,d0.w),a0
+free_skip:
+		move.w	next_pool_offset(a1),d0
+		lea	(a1,d0.w),a1
 		moveq	#0,d0
-		rts
+		move.w	next_pool_offset(a1),d0
+		beq	pool_end
 
+		cmpa.l	a1,a0
+		beq	pool_loop			*  free pool
 
-report_3:
-		move.l	4(a1),d6
-		addq.l	#2,d6
-		bra	report_1
+		add.l	d0,d6
+		bra	pool_loop
 
-report_2:
-		move.l	4(a1),d6
-report_1:
-		move.l	(a1),d7
-		lea	putc(pc),a1
-		moveq	#24,d1
-		moveq	#1,d2
-		bsr	printfs
-		lea	utoa(pc),a0
-		moveq	#0,d2
-		moveq	#' ',d3
+pool_end:
+		lea	utoa(pc),a0			*  符号なし10進変換で
+		lea	putc(pc),a1			*  標準出力に
+		suba.l	a2,a2				*  prefixなしで
+		moveq	#0,d1				*  右詰めで
+		moveq	#' ',d2				*  padはスペースで
+		moveq	#10,d3				*  少なくとも10文字の幅に
+		moveq	#1,d4				*  少なくとも1桁の数字を
 		move.l	d7,d0
-		moveq	#10,d1
 		bsr	printfi
 		move.l	d6,d0
 		bsr	printfi
 		move.l	d7,d0
 		sub.l	d6,d0
-		moveq	#10,d1
 		bsr	printfi
 		move.l	d6,d0
 		moveq	#100,d1
 		bsr	mulul
 		move.l	d7,d1
 		bsr	divul
-		moveq	#5,d1
+		moveq	#0,d1				*  右詰めで
+		moveq	#5,d3				*  少なくとも 5文字の幅に
 		bsr	printfi
 		lea	msg_percent,a0
-		bra	nputs
+		bsr	nputs
+		bra	lake_loop
+
+done:
+		moveq	#0,d0
+		rts
 ****************************************************************
 .data
 
-msg_header:	dc.b	'ブロック                    確保量    使用量      空量 使用率',0
+msg_header:	dc.b	'    確保量    使用量      空量 使用率',0
 msg_percent:	dc.b	'%',0
-.if 0
-msg_history:	dc.b	'履歴リスト',0
-.endif
 
 .end
 

@@ -260,7 +260,8 @@ chdirx_done1:
 *
 *  Synopsis
 *       cd                go to home directory
-*       cd +n             go to n'th of directory stack
+*       cd +n             rotate to n'th be top
+*	cd +n.            extract n'th directory and go to it
 *	cd name           go to name
 ****************************************************************
 .xdef cmd_cd
@@ -274,11 +275,25 @@ cmd_cd:
 		cmpi.b	#'+',(a0)		*  引数が + で始まらないならば
 		bne	cd_name			*  処理 cd_name へ
 
+		addq.l	#1,a0			*  + に続く
+		bsr	atou			*  数値をスキャンする．
+		cmpi.b	#'.',(a0)
+		seq	d2			*  D2.B : dextract flag
+		bne	cmd_cd_n
+
+		addq.l	#1,a0
+cmd_cd_n:
+		tst.b	(a0)			*  NULでなければ
+		bne	cd_bad_arg		*  エラー．
+
 		bsr	get_dstack_element	*  D1.L : 数値-1  A0 : 要素のアドレス
 		bne	cd_return		*  エラならおしまい．
 
 		bsr	popd_sub		*  そこに移動してその要素を削除する．
 		bne	cd_return		*  エラーならおしまい．
+
+		tst.b	d2			*  +n. ならば
+		bne	cd_dirs_done		*  おしまい
 
 		tst.l	d1
 		beq	cd_dirs_done		*  循環送りの必要なし．
@@ -321,7 +336,7 @@ reset_cwd:
 		movea.l	a0,a1
 		lea	word_cwd,a0
 		moveq	#1,d0
-		moveq	#0,d1
+		sf	d1
 		bsr	set_svar
 		movea.l	a1,a0
 		bsr	sltobsl
@@ -330,6 +345,10 @@ reset_cwd:
 		movem.l	(a7)+,d0-d1/a0-a1
 		unlk	a6
 		rts
+****************
+cd_bad_arg:
+		bsr	bad_arg
+		bra	cd_return
 ****************
 cd_fail:
 		bsr	perror1
@@ -341,6 +360,7 @@ cd_fail:
 *  Synopsis
 *       pushd             exchange current and top
 *       pushd +n          rotate to let n'th be top
+*       pushd +n.         extract n'th and push it to top
 *	pushd directory   push current and chdir to directory
 ****************************************************************
 .xdef cmd_pushd
@@ -365,12 +385,25 @@ cmd_pushd:
 		cmpi.b	#'+',(a1)		*  引数が + で始まらないならば
 		bne	push_new		*  処理 push_new へ．
 
-		movea.l	a1,a0
+		lea	1(a1),a0		*  + に続く
+		bsr	atou			*  数値をスキャンする．
+		cmpi.b	#'.',(a0)
+		seq	d2			*  D2.B : dextract flag
+		bne	cmd_pushd_n
+
+		addq.l	#1,a0
+cmd_pushd_n:
+		tst.b	(a0)			*  NULでなければ
+		bne	pushd_bad_arg		*  エラー．
+
 		bsr	get_dstack_element	*  D1.L : 数値-1  A0 : 要素のアドレス
 		bne	cmd_pushd_return	*  エラーならおしまい．
 
 		bsr	pushd_exchange_sub	*  A0が示す要素にポップし，カレントをプッシュする．
 		bne	cmd_pushd_return	*  エラーならおしまい．
+
+		tst.b	d2			*  +n. ならば
+		bne	cmd_pushd_done		*  おしまい
 
 		*  スタックの要素を巡回する
 		movea.l	a0,a1
@@ -419,6 +452,10 @@ cmd_pushd_return:
 		unlk	a6
 		rts				*  終了．
 ****************
+pushd_bad_arg:
+		bsr	bad_arg
+		bra	cmd_pushd_return
+****************
 pushd_too_many_args:
 		bsr	too_many_args
 		bra	cmd_pushd_return
@@ -457,10 +494,13 @@ cmd_popd:
 		bhi	too_many_args		*  エラー．
 		blo	pop			*  引数が無いならポップ．
 
-		cmpi.b	#'+',(a0)		*  引数が + で始まらないならば
+		cmpi.b	#'+',(a0)+		*  引数が + で始まらないならば
 		bne	bad_arg			*  エラー．
 
-		movea.l	a0,a1
+		bsr	atou			*  + に続く数値をスキャンする．
+		tst.b	(a0)			*  NULでなければ
+		bne	bad_arg			*  エラー．
+
 		bsr	get_dstack_element	*  A0 : 数値が示す要素のアドレス
 		bne	popd_return		*  エラーならばおしまい．
 
@@ -617,14 +657,17 @@ print_stacklevel:
 		tst.b	d1
 		beq	print_stack_level_done
 
-		movem.l	d0-d2/a0-a1,-(a7)
+		movem.l	d0-d4/a0-a2,-(a7)
 		move.l	d2,d0					*  番号を
 		lea	utoa(pc),a0				*  unsigned -> decimal で
 		lea	putc(pc),a1				*  標準出力に
-		moveq	#1,d2					*  左詰めで
-		moveq	#1,d1					*  少なくとも 1桁
+		suba.l	a2,a2					*  prefixなしで
+		moveq	#1,d1					*  左詰めで
+		moveq	#' ',d2					*  padはスペースで
+		moveq	#1,d3					*  少なくとも 1文字の幅に
+		moveq	#1,d4					*  少なくとも 1桁の数字を
 		bsr	printfi					*  表示する
-		movem.l	(a7)+,d0-d2/a0-a1
+		movem.l	(a7)+,d0-d4/a0-a2
 		bsr	put_tab
 		addq.l	#1,d2
 print_stack_level_done:
@@ -633,7 +676,7 @@ print_stack_level_done:
 * get_dstack_element
 *
 * CALL
-*      A0     "+n" の '+' を指している
+*      D0.L/D1.L   "+n" を atou した戻り値
 *
 * RETURN
 *      A0     ディレクトリ・スタックの n 番目の要素（dstackの n-1 番目の単語）のアドレス
@@ -642,11 +685,6 @@ print_stack_level_done:
 *      CCR    TST.L D0
 *****************************************************************
 get_dstack_element:
-		addq.l	#1,a0			*  + に続く
-		bsr	atou			*  数値をスキャンする．
-		tst.b	(a0)			*  NULでなければ
-		bne	bad_arg			*  エラー．
-
 		tst.l	d0
 		bmi	bad_arg			*  エラー．
 		bne	dstack_not_deep
@@ -787,7 +825,6 @@ stack_full:
 .data
 
 .xdef word_cwd
-.xdef msg_directory_stack
 
 word_upper_pwd:		dc.b	'PWD',0
 word_cwd:		dc.b	'cwd',0

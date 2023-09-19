@@ -10,6 +10,7 @@
 .xref strlen
 .xref strcpy
 .xref puts
+.xref nputs
 .xref cputs
 .xref put_space
 .xref put_newline
@@ -17,6 +18,8 @@
 .xref headtail
 .xref find_var
 .xref find_shellvar
+.xref find_function
+.xref list_1_function
 .xref print_alias_value
 .xref print_var_value
 .xref usage
@@ -25,6 +28,7 @@
 .xref msg_too_long
 
 .xref alias
+.xref function_root
 
 .text
 
@@ -60,11 +64,11 @@ cmd_which:
 		tst.b	2(a0)
 		bne	no_option
 
-		moveq	#3,d2
+		moveq	#%111,d2			*  no { function, alias, builtin }
 		cmp.b	#'O',d0
 		beq	start0
 
-		moveq	#1,d2
+		moveq	#%110,d2			*  no { function, alias }
 		cmp.b	#'o',d0
 		beq	start0
 no_option:
@@ -80,41 +84,67 @@ start:
 
 		link	a6,#command_name
 loop:
-		btst	#0,d2
+		movea.l	a0,a1
+	*
+	*  関数
+	*
+		btst	#2,d2
+		bne	not_function
+
+		lea	function_root(a5),a2
+		bsr	find_function
+		beq	not_function
+
+		move.l	d0,-(a7)
+		bsr	print_name_is
+		lea	msg_is_function,a0
+		bsr	nputs
+		movea.l	(a7)+,a0
+		bsr	list_1_function
+		bra	continue
+
+not_function:
+	*
+	*  別名
+	*
+		btst	#1,d2
 		bne	not_alias
 
-		movea.l	a0,a1
 		movea.l	alias(a5),a0
 		bsr	find_var
-		exg	a0,a1
 		beq	not_alias
 
+		exg	a0,a1
 		bsr	print_name_is
 		bsr	put_space
 		exg	a0,a1
 		bsr	print_alias_value
-		lea	msg_aliased,a0
-		bra	continue
+		lea	msg_is_aliased,a0
+		bra	puts_and_continue
 
 not_alias:
-		movea.l	a0,a1
+	*
+	*  path 検索
+	*
+		movea.l	a1,a0
 		bsr	strlen
 		cmp.w	#MAXPATH,d0
 		bhi	too_long_command_name
 
 		lea	command_name(a6),a0
 		bsr	strcpy
-		move.b	d2,d0
-		and.b	#2,d0
+		btst	#0,d2
+		sne	d0
 		bsr	search_command
-		bmi	not_found
+		cmp.l	#-1,d0
+		beq	not_found
 
-		cmp.l	#6,d0
-		bls	continue
+		btst	#31,d0
+		beq	puts_and_continue
 
 		bsr	print_name_is
-		lea	msg_builtin,a0
-		bra	continue
+		lea	msg_is_builtin,a0
+		bra	puts_and_continue
 
 not_found:
 		bsr	print_name_is
@@ -123,7 +153,7 @@ not_found:
 		cmpa.l	a0,a1
 		movea.l	(a7)+,a1
 		lea	msg_not_found,a0
-		bne	continue
+		bne	puts_and_continue
 
 		bsr	put_space
 		lea	word_path,a0
@@ -136,14 +166,15 @@ not_found:
 put_pathlist:
 		bsr	print_var_value
 		lea	msg_not_found_in,a0
-		bra	continue
+		bra	puts_and_continue
 
 too_long_command_name:
 		bsr	print_name_is
 		lea	msg_too_long,a0
-continue:
+puts_and_continue:
 		bsr	cputs
 		bsr	put_newline
+continue:
 		movea.l	a1,a0
 		bsr	strfor1
 		dbra	d1,loop
@@ -163,8 +194,9 @@ msg_usage:		dc.b	'[ -o | -O ] <コマンド名> ...',CR,LF
 			dc.b	'    -o   別名を除外する',CR,LF
 			dc.b	'    -O   別名と組み込みコマンドを除外する',0
 msg_is:			dc.b	' は',0
-msg_aliased:		dc.b	' の別名です',0
-msg_builtin:		dc.b	' FISH の組み込みコマンドです',0
+msg_is_function:	dc.b	'関数です',0
+msg_is_aliased:		dc.b	' の別名です',0
+msg_is_builtin:		dc.b	' FISH の組み込みコマンドです',0
 msg_not_found_in:	dc.b	' の中に'
 msg_not_found:		dc.b	'ありません',0
 

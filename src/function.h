@@ -1,0 +1,6 @@
+FUNC_SIZE		equ	0				*  ds.l 1
+FUNC_PREV		equ	FUNC_SIZE+4			*  ds.l 1
+FUNC_NEXT		equ	FUNC_PREV+4			*  ds.l 1
+FUNC_NAME		equ	FUNC_NEXT+4			*  ds.b MAXFUNCNAMELEN+1
+FUNC_HEADER_SIZE	equ	FUNC_NAME+(((MAXFUNCNAMELEN+1)+1)>>1<<1)
+

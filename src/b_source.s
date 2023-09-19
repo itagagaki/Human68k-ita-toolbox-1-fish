@@ -7,7 +7,7 @@
 
 .xref OpenLoadRun_source
 .xref tfopen
-.xref fclose
+.xref close_tmpfd
 .xref getline
 .xref getline_file
 .xref make_wordlist
@@ -21,6 +21,7 @@
 
 .xref tmpargs
 .xref line
+.xref tmpfd
 
 .xref exitflag
 
@@ -88,6 +89,7 @@ just_read_source_file:
 		bsr	tfopen
 		bmi	perror1
 read_source:
+		move.l	d0,tmpfd(a5)
 		move.w	d0,d7
 read_source_loop:
 		lea	line(a5),a0
@@ -112,10 +114,7 @@ read_source_continue:
 		bra	read_source_loop
 
 read_source_done:
-		move.w	d7,d0
-		beq	cmd_source_success
-
-		bsr	fclose
+		bsr	close_tmpfd
 cmd_source_success:
 		moveq	#0,d0
 		rts

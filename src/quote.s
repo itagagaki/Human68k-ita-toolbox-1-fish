@@ -1,10 +1,7 @@
 * quote.s
 * Itagaki Fumihiko 22-Jul-90  Create.
 
-.include ../src/fish.h
-
 .xref issjis
-.xref strcpy
 
 .text
 
@@ -83,29 +80,18 @@ hide_escape_dup1:
 * strip_quotes_sub - 文字列のクオートを外す
 *
 * CALL
-*      A0     buffer（string と重なっていても良い）
-*      A1     string（長さはMAXWORDLEN以内であること）
+*      A0     buffer（少なくとも string 以上の容量が必要。string と重なっていても良い）
+*      A1     string
 *
 * RETURN
 *      A0     buffer に格納した NUL の次を指す
 *      A1     string の NUL の次を指す
 *****************************************************************
-.xdef strip_quotes_sub
-
-wordbuf = -(((MAXWORDLEN+1)+1)>>1<<1)
-
 strip_quotes_sub:
-		link	a6,#wordbuf
-		movem.l	d0-d1/a2,-(a7)
-		exg	a0,a2
-		lea	wordbuf(a6),a0
-		bsr	strcpy
-		adda.l	d0,a1
-		addq.l	#1,a1
-		exg	a0,a2
+		movem.l	d0-d1,-(a7)
 		moveq	#0,d1
 strip_quotes_loop:
-		move.b	(a2)+,d0
+		move.b	(a1)+,d0
 		bsr	issjis
 		beq	strip_quotes_dup2
 
@@ -128,18 +114,17 @@ strip_quotes_check_quotation:
 		cmp.b	#'\',d0
 		bne	strip_quotes_dup
 
-		move.b	(a2)+,d0
+		move.b	(a1)+,d0
 		bsr	issjis
 		bne	strip_quotes_dup
 strip_quotes_dup2:
 		move.b	d0,(a0)+
-		move.b	(a2)+,d0
+		move.b	(a1)+,d0
 strip_quotes_dup:
 		move.b	d0,(a0)+
 		bne	strip_quotes_loop
 
-		movem.l	(a7)+,d0-d1/a2
-		unlk	a6
+		movem.l	(a7)+,d0-d1
 		rts
 ****************************************************************
 * strip_quotes - strip quotes

@@ -10,6 +10,7 @@
 .xref flag_echo
 .xref flag_forceio
 .xref flag_ignoreeof
+.xref flag_noalias
 .xref flag_nobeep
 .xref flag_noclobber
 .xref flag_noglob
@@ -35,29 +36,27 @@
 .xdef flagvarptr
 
 flagvarptr:
-		move.l	a1,-(a7)
-		lea	flagvar_table,a1
+		movem.l	d1/a1-a2,-(a7)
+		lea	flagvar_table,a2
+		moveq	#0,d1
 flagvar_findloop:
-		tst.b	(a1)
+		move.l	(a2)+,d0
 		beq	flagvar_nomatch
 
+		move.w	(a2)+,d1
+		movea.l	d0,a1
 		bsr	strcmp
-		beq	flagvar_matched
 		blo	flagvar_nomatch
+		bhi	flagvar_findloop
 
-		lea	12(a1),a1
-		bra	flagvar_findloop
-
-flagvar_matched:
-		moveq	#0,d0
-		move.w	10(a1),d0
-		add.l	a5,d0
+		add.l	a5,d1
+		move.l	d1,d0
 		bra	flagvarptr_return
 
 flagvar_nomatch:
 		moveq	#0,d0
 flagvarptr_return:
-		movea.l	(a7)+,a1
+		movem.l	(a7)+,d1/a1-a2
 		rts
 ****************************************************************
 * clear_flagvars  フラグ変数で制御されるフラグをすべてクリアする
@@ -74,10 +73,10 @@ clear_flagvars:
 		move.l	a0,-(a7)
 		lea	flagvar_table,a0
 clear_flagvars_loop:
-		tst.b	(a0)
+		tst.l	(a0)
 		beq	clear_flagvars_done
 
-		lea	10(a0),a0
+		addq.l	#4,a0
 		move.w	(a0)+,d0
 		clr.b	(a5,d0.w)
 		bra	clear_flagvars_loop
@@ -88,6 +87,7 @@ clear_flagvars_done:
 ****************************************************************
 .data
 
+.xdef word_glob
 .xdef word_echo
 .xdef word_nomatch
 .xdef word_exact
@@ -95,51 +95,71 @@ clear_flagvars_done:
 
 .even
 flagvar_table:
-		dc.b	'ampm',0,0,0,0,0,0
+		dc.l	word_ampm
 		dc.w	flag_ampm
 
-		dc.b	'autolist',0,0
+		dc.l	word_autolist
 		dc.w	flag_autolist
 
-		dc.b	'ciglob',0,0,0,0
+		dc.l	word_ciglob
 		dc.w	flag_ciglob
 
-		dc.b	'cifilec',0,0,0
+		dc.l	word_cifilec
 		dc.w	flag_cifilec
 
-word_echo:	dc.b	'echo',0,0,0,0,0,0
+		dc.l	word_echo
 		dc.w	flag_echo
 
-		dc.b	'forceio',0,0,0
+		dc.l	word_forceio
 		dc.w	flag_forceio
 
-		dc.b	'ignoreeof',0
+		dc.l	word_ignoreeof
 		dc.w	flag_ignoreeof
 
-		dc.b	'nobeep',0,0,0,0
+		dc.l	word_noalias
+		dc.w	flag_noalias
+
+		dc.l	word_nobeep
 		dc.w	flag_nobeep
 
-		dc.b	'noclobber',0
+		dc.l	word_noclobber
 		dc.w	flag_noclobber
 
-		dc.b	'noglob',0,0,0,0
+		dc.l	word_noglob
 		dc.w	flag_noglob
 
-		dc.b	'no'
-word_nomatch:	dc.b	'nomatch',0
+		dc.l	word_nonomatch
 		dc.w	flag_nonomatch
 
-		dc.b	'rec'
-word_exact:	dc.b	'exact',0,0
+		dc.l	word_recexact
 		dc.w	flag_recexact
 
-		dc.b	'usegets',0,0,0
+		dc.l	word_usegets
 		dc.w	flag_usegets
 
-word_verbose:	dc.b	'verbose',0,0,0
+		dc.l	word_verbose
 		dc.w	flag_verbose
 
-		dc.b	0
+		dc.l	0
+
+word_ampm:		dc.b	'ampm',0
+word_autolist:		dc.b	'autolist',0
+word_ciglob:		dc.b	'ciglob',0
+word_cifilec:		dc.b	'cifilec',0
+word_echo:		dc.b	'echo',0
+word_forceio:		dc.b	'forceio',0
+word_ignoreeof:		dc.b	'ignoreeof',0
+word_noalias:		dc.b	'noalias',0
+word_nobeep:		dc.b	'nobeep',0
+word_noclobber:		dc.b	'noclobber',0
+word_noglob:		dc.b	'no'
+word_glob:		dc.b	'glob',0
+word_nonomatch:		dc.b	'no'
+word_nomatch:		dc.b	'nomatch',0
+word_recexact:		dc.b	'rec'
+word_exact:		dc.b	'exact',0
+word_usegets:		dc.b	'usegets',0
+word_verbose:		dc.b	'verbose',0
 ****************************************************************
 
 .end

@@ -15,9 +15,12 @@ set path=(~~ . A:/usr/local/bin ~/newbin A:/usr/pds A:/bin A:/usr/bin A:/usr/bin
 set savehist=30
 set ignoreeof
 
-KEY 25 ''
-KEY 26 ''
-KEY 27 ''
-KEY 28 ''
+KEY 24 `echo -e "\177"`		# DEL  : ^?
+KEY 25 `echo -e "\020"`		#  Å™  : ^P
+KEY 26 `echo -e "\002"`		#  Å©  : ^B
+KEY 27 `echo -e "\006"`		#  Å®  : ^F
+KEY 28 `echo -e "\016"`		#  Å´  : ^N
+KEY 31 `echo -e "\001"`		# HOME : ^A
+KEY 32 `echo -e "\031"`		# UNDO : ^Y
 
 TODAY

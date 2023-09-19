@@ -25,6 +25,7 @@
 .xref current_source
 .xref exitflag
 .xref loop_status
+.xref keep_loop
 
 .text
 
@@ -52,7 +53,7 @@ cmd_goto:
 check_goto:
 		move.l	d0,SOURCE_POINTER(a0)
 		tst.b	loop_status(a5)
-		beq	goto_success
+		beq	clear_keep_loop
 
 		bsr	loop_stack_p
 		cmp.l	LOOPINFO_TOPPTR(a1),d0
@@ -62,6 +63,8 @@ check_goto:
 		blo	goto_success
 goto_abort_loops:
 		bsr	abort_loops
+clear_keep_loop:
+		sf	keep_loop(a5)
 goto_success:
 		sf	exitflag(a5)
 success:
@@ -131,10 +134,9 @@ search_label:
 		move.l	d0,d2
 search_label_1:
 		movea.l	a0,a1
-		movea.l	current_source(a5),a0
-		movea.l	a0,a3
-		adda.l	SOURCE_SIZE(a0),a3
-		lea	SOURCE_HEADER_SIZE(a0),a0
+		movea.l	current_source(a5),a3
+		movea.l	SOURCE_TOP(a3),a0
+		movea.l	SOURCE_BOT(a3),a3
 		moveq	#0,d1				*  D1 : çsî‘çÜ
 search_label_loop:
 search_label_skip_space:

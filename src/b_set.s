@@ -3,8 +3,6 @@
 *
 * Itagaki Fumihiko 15-Jul-90  Create.
 
-.include ../src/fish.h
-
 .xref strfor1
 .xref strforn
 .xref divsl
@@ -12,7 +10,7 @@
 .xref atou
 .xref find_close_paren
 .xref expand_wordlist
-.xref expression1
+.xref expression
 .xref expr_atoi
 .xref expr_itoa
 .xref find_shellvar
@@ -206,10 +204,6 @@ cmd_set_return:
 cmd_set_expression:
 		move.w	d0,d7			* 引数が無いなら
 		beq	set_disp		* シェル変数のリストを表示
-
-tmpword = -(((MAXWORDLEN+1)+1)>>1<<1)
-
-		link	a6,#tmpword
 set_expression_loop:
 		tst.w	d7
 		beq	cmd_set_expression_success_return
@@ -227,44 +221,42 @@ set_expression_loop:
 		bne	set_expression_op_ok
 
 		tst.b	(a0)+
-		bne	cmd_set_expression_syntax_error
+		bne	syntax_error
 
 		subq.w	#1,d7
-		beq	cmd_set_expression_syntax_error
+		beq	syntax_error
 
 		bsr	scan_assign_operator
 		move.b	d0,d4
-		beq	cmd_set_expression_syntax_error
+		beq	syntax_error
 set_expression_op_ok:
 		clr.b	(a0)
 		movea.l	a3,a0
-		lea	tmpword(a6),a1
 		*
 		*  A0   : 引数ポインタ
 		*  D7.W : 引数カウンタ
 		*  A2   : 左辺変数名
 		*  D2.L : 左辺変数の添字の値（[index]形式で無ければ-1）
 		*  D4.B : 演算子コード
-		*  A1   : 値を表す文字列を格納するバッファのアドレス
 		*
 		cmp.b	#OP_INCREMENT,d4
 		blo	set_expression_expression
 
 		tst.b	(a0)+
-		bne	cmd_set_expression_syntax_error
+		bne	syntax_error
 
 		subq.w	#1,d7
 		moveq	#1,d1
 		cmp.b	#OP_DECREMENT,d4
 		beq	set_expression_decrement
-
+**  var ++
 		moveq	#OP_ADDASSIGN,d4
 		bra	set_expression_postcalc
-
+**  var --
 set_expression_decrement:
 		moveq	#OP_SUBASSIGN,d4
 		bra	set_expression_postcalc
-
+**  var op= expr
 set_expression_expression:
 		tst.b	(a0)
 		bne	set_expression_do_expression
@@ -272,8 +264,9 @@ set_expression_expression:
 		addq.l	#1,a0
 		subq.w	#1,d7
 set_expression_do_expression:
-		bsr	expression1
+		bsr	expression
 		bne	cmd_set_expression_return
+********************************
 set_expression_postcalc:
 		movea.l	a0,a4				* A4 : 次の引数
 		*
@@ -283,25 +276,24 @@ set_expression_postcalc:
 		*  D2.L : 左辺変数の添字の値（[index]形式で無ければ-1）
 		*  D1.L : 右辺値
 		*  D4.B : 演算子コード
-		*  A1   : 値を表す文字列を格納するバッファのアドレス
 		*
 		move.l	d1,-(a7)
 		subq.b	#OP_ASSIGN,d4
 		beq	set_expression_lvalue_ok
 
 		moveq	#0,d1
-		movea.l	a2,a0				* A0 = A2 (name)
-		bsr	find_shellvar			* A0 = var ptr
+		movea.l	a2,a0				*  A0 = A2 (name)
+		bsr	find_shellvar			*  A0 = var ptr
 		beq	set_expression_lvalue_ok
 
 		addq.l	#4,a0
 		bsr	strfor1
 		move.l	d2,d0
-		bmi	set_expression_get_lvalue
+		bmi	set_expression_get_lvalue	*  indexなし
 		beq	set_expression_lvalue_ok
 
 		moveq	#0,d3
-		move.w	2(a0),d3			* この変数の要素数
+		move.w	2(a0),d3			*  この変数の要素数
 		cmp.l	d3,d2
 		bgt	set_expression_lvalue_ok
 
@@ -311,11 +303,9 @@ set_expression_get_lvalue:
 		tst.b	(a0)
 		beq	set_expression_lvalue_ok
 
-		exg	a0,a1
+		movea.l	a0,a1
 		bsr	expr_atoi
 		bne	cmd_set_expression_return
-
-		exg	a0,a1
 set_expression_lvalue_ok:
 		move.l	(a7)+,d0
 		*
@@ -326,7 +316,6 @@ set_expression_lvalue_ok:
 		*  D0.L : 右辺値
 		*  D4.B : 演算子コード
 		*  D1.L : 左辺値
-		*  A1   : 値を表す文字列のアドレス
 		*
 		lea	postcalc_jump_table,a0
 		moveq	#0,d5
@@ -366,7 +355,7 @@ postcalc_add:
 postcalc_mod:
 		exg	d0,d1
 		tst.l	d1
-		beq	cmd_set_expression_mod_by_0
+		beq	mod_by_0
 
 		bsr	divsl
 		bra	postcalc_itoa
@@ -374,7 +363,7 @@ postcalc_mod:
 postcalc_div:
 		exg	d0,d1
 		tst.l	d1
-		beq	cmd_set_expression_divide_by_0
+		beq	divide_by_0
 
 		bsr	divsl
 		bra	postcalc_itoa_0
@@ -384,8 +373,9 @@ postcalc_mul:
 postcalc_itoa_0:
 		move.l	d0,d1
 postcalc_itoa:
+		link	a6,#-12
+		lea	-12(a6),a1
 		bsr	expr_itoa
-set_expression_calc_done:
 		*
 		*  A4   : 引数ポインタ
 		*  D7.W : 引数カウンタ
@@ -393,8 +383,8 @@ set_expression_calc_done:
 		*  D2.L : 左辺変数の添字の値（[index]形式で無ければ-1）
 		*  A1   : 値を表す文字列が格納されているバッファのアドレス
 		*
-		tst.l	d2				* [index]形式でなければ
-		bmi	do_set_expression		* name に A1 を設定する
+		tst.l	d2				*  [index]形式でなければ
+		bmi	do_set_expression		*  name に A1 を設定する
 
 		bsr	set_a_element
 		bra	set_expression_next
@@ -403,30 +393,16 @@ do_set_expression:
 		moveq	#1,d0
 		bsr	do_set
 set_expression_next:
+		unlk	a6
 		bne	cmd_set_expression_return
 
 		movea.l	a4,a0
 		bra	set_expression_loop
 
-
 cmd_set_expression_success_return:
 		moveq	#0,d0
 cmd_set_expression_return:
-		unlk	a6
 		rts
-
-
-cmd_set_expression_syntax_error:
-		unlk	a6
-		bra	syntax_error
-
-cmd_set_expression_mod_by_0:
-		unlk	a6
-		bra	mod_by_0
-
-cmd_set_expression_divide_by_0:
-		unlk	a6
-		bra	divide_by_0
 ****************************************************************
 * CALL
 *      A0     単語
@@ -638,7 +614,7 @@ set_a_element_dup_continue:
 ****************************************************************
 do_set:
 		movea.l	a2,a0
-		moveq	#1,d1				* export する
+		st	d1				*  export する
 		bra	set_svar
 ****************************************************************
 .data

@@ -72,10 +72,6 @@ cmd_alias:
 		bsr	strcmp
 		beq	danger
 
-		lea	word_dot,a1
-		bsr	strcmp
-		beq	danger
-
 		movea.l	a2,a1			* A1 : wordlist
 		movea.l	a0,a2			* A2 : name
 		lea	tmpargs,a0
@@ -120,10 +116,7 @@ no_space:
 ****************************************************************
 .data
 
-.xdef msg_alias_space
-
 msg_alias_space:	dc.b	'別名ブロック',0
-word_dot:		dc.b	'.',0
 msg_danger:		dc.b	'この名前を別名とするのは危険です',0
 
 .end

@@ -11,10 +11,10 @@ set forceio noclobber
 alias a alias
 alias h history
 alias ps   PROCESS
-alias ed   'MuED -N'
+alias ed   'echo -e "\033\060\c";MuED -N \!*;echo -e "\033\061\c"'
 alias lhv  'lhv -s'
 alias ls   'ls -F'
-alias calc '(@ reg=(\!*) && echo - $reg)'
+alias calc 'printf "%d\n" \!*'
 alias copy '(set noglob a=(\!*);COMMAND /C COPY $a:s./.\\.g)'	#  cp ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
 alias del  '(set noglob a=(\!*);COMMAND /C DEL  $a:s./.\\.g)'	#  rm ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
 alias dir  '(set noglob a=(\!*);COMMAND /C DIR  $a:s./.\\.g)'	#  ls ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
@@ -46,6 +46,7 @@ bind ^Z eof
 bind ^[ prefix-1
 bind ^^ upcase-char
 bind ^_ downcase-char
+bind ^? delete-forward-char
 
 bind -1 ^H  kill-backward-word
 bind -1 ^L  clear-and-redraw
@@ -65,6 +66,9 @@ bind -1 u   upcase-word
 bind -1 U   upcase-word
 bind -1 w   copy-region
 bind -1 W   copy-region
+bind -1 ^I  complete
+bind -1 ^[  complete
+bind -1 ^?  kill-forward-word
 
 bind -2 ^L downcase-region
 bind -2 ^U upcase-region

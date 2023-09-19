@@ -4,7 +4,7 @@
 .include ../src/fish.h
 
 .xref issjis
-.xref toupper
+.xref tolower
 .xref skip_space
 .xref jstrchr
 .xref strlen
@@ -460,25 +460,25 @@ wordlistlen_start:
 
 common_spell:
 		movem.l	d1-d6/a0-a1,-(a7)
-		moveq	#0,d4
-		move.w	d0,d5
+		moveq	#0,d4				*  共通部分の長さカウンタ
+		move.w	d0,d5				*  D5.W : 単語数
 		beq	common_spell_done
 
 		subq.w	#1,d5
 		lea	(a0,d1.l),a1
 common_spell_loop1:
-		move.w	d5,d3
+		move.w	d5,d3				*  D3.W : 単語数カウンタ
 		movea.l	a1,a0
 		move.b	(a1)+,d0
-		beq	common_spell_done
+		beq	common_spell_done		*  もう文字は無い…これまで
 
 		bsr	issjis
 		beq	common_spell_sjis
 ****************
-		tst.b	d2
-		beq	common_spell_ank_1
+		tst.b	d2				*  大文字と小文字を区別
+		beq	common_spell_ank_1		*  しないなら
 
-		bsr	toupper
+		bsr	tolower				*  tolower しておく
 common_spell_ank_1:
 		move.b	d0,d6
 		bra	common_spell_ank_continue
@@ -487,15 +487,17 @@ common_spell_ank_loop:
 		bsr	strfor1
 		add.l	d1,a0
 		move.b	(a0),d0
-		tst.b	d2
-		beq	common_spell_ank_2
+		tst.b	d2				*  （大文字と小文字を区別
+		beq	common_spell_ank_2		*    しないなら
 
-		bsr	toupper
+		bsr	tolower				*    tolower してから）
 common_spell_ank_2:
-		cmp.b	d6,d0
-		bne	common_spell_done
+		cmp.b	d6,d0				*  比較する．
+		bne	common_spell_done		*  一致しない単語がある…ここまで
 common_spell_ank_continue:
 		dbra	d3,common_spell_ank_loop
+
+		*  1バイト伸ばしてさらに比較する
 
 		addq.l	#1,d1
 		addq.l	#1,d4
@@ -504,7 +506,7 @@ common_spell_ank_continue:
 common_spell_sjis:
 		lsl.w	#8,d0
 		move.b	(a1)+,d0
-		beq	common_spell_done
+		beq	common_spell_done		*  この単語にはもう文字は無い…これまで
 
 		bra	common_spell_sjis_continue
 
@@ -515,9 +517,11 @@ common_spell_sjis_loop:
 		lsl.l	#8,d6
 		move.b	1(a0),d6
 		cmp.w	d0,d6
-		bne	common_spell_done
+		bne	common_spell_done		*  一致しない単語がある…これまで
 common_spell_sjis_continue:
 		dbra	d3,common_spell_sjis_loop
+
+		*  2バイト伸ばしてさらに比較する
 
 		addq.l	#2,d1
 		addq.l	#2,d4

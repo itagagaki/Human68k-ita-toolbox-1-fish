@@ -33,12 +33,12 @@ cmd_shift:
 
 		lea	word_argv,a0
 shift_var:
-		movea.l	a0,a2				* A2 : •Ï”–¼
+		movea.l	a0,a2				*  A2 : •Ï”–¼
 		bsr	find_shellvar
-		exg	a0,a2				* A0 : •Ï”–¼   A2 : var ptr
+		exg	a0,a2				*  A0 : •Ï”–¼   A2 : var ptr
 		beq	undefined
 
-		move.w	2(a2),d0			* D0.W : ‚±‚Ì•Ï”‚Ì—v‘f”
+		move.w	2(a2),d0			*  D0.W : ‚±‚Ì•Ï”‚Ì—v‘f”
 		beq	no_more_words
 
 		exg	a0,a2
@@ -48,7 +48,7 @@ shift_var:
 		subq.w	#1,d0
 		movea.l	a0,a1
 		movea.l	a2,a0
-		moveq	#1,d1				* export ‚·‚é
+		st	d1				*  export ‚·‚é
 		bra	set_svar
 
 no_more_words:

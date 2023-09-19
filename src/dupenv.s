@@ -2,7 +2,7 @@
 * Itagaki Fumihiko 8-Aug-91  Create.
 
 .xref strazcpy
-.xref JustFitMalloc
+.xref xmalloc
 
 ****************************************************************
 * dupenv - duplicate environment
@@ -18,7 +18,7 @@
 
 dupenv:
 		move.l	(a0),d0
-		bsr	JustFitMalloc
+		bsr	xmalloc
 		beq	dupenv_return
 
 		movem.l	a0-a1,-(a7)

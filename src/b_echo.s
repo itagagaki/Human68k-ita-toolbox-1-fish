@@ -19,12 +19,12 @@
 *       echo - echo arguments
 *
 *  Synopsis
-*       echo [ -2 ] [ -n ] [ -e ] [ - ] [ word ... ]
+*       echo [ -2cnre ] [ - ] [ word ... ]
 ****************************************************************
 .xdef cmd_echo
 
 cmd_echo:
-		sf	d1				*  D1.B : -n
+		moveq	#0,d1				*  D1.B : -c-n
 		moveq	#0,d2
 decode_opt_loop1:
 		movea.l	a0,a1
@@ -40,13 +40,27 @@ decode_opt_loop2:
 		cmp.b	#'2',d7
 		beq	opt_2
 
+		cmp.b	#'r',d7
+		beq	opt_r
+
 		cmp.b	#'e',d7
 		beq	opt_e
 
 		cmp.b	#'n',d7
-		bne	decode_opt_done
+		beq	opt_n
 
-		st	d1
+		cmp.b	#'c',d7
+		bne	decode_opt_done
+opt_c:
+		bset	#1,d1
+		bra	decode_opt_nextch
+
+opt_n:
+		bset	#0,d1
+		bra	decode_opt_nextch
+
+opt_r:
+		bclr	#3,d2
 		bra	decode_opt_nextch
 
 opt_e:
@@ -68,18 +82,31 @@ decode_opt_done0:
 		lea	funcs,a2
 		movea.l	(a2,d2.l),a1
 		bsr	echo			*  単語並びをechoする
-		tst.b	d1			*  -n
-		bne	echo_done
 
-		btst	#3,d2			*  -e
-		bne	echo_e
+		btst	#0,d1			*  -n が指定されているならば
+		bne	echo_done		*  決して改行しない
 
-		tst.w	d3			*  単語数
-		seq	d0
-echo_e:
-		tst.b	d0
+		tst.w	d3			*  単語数は 0 か？
+		bne	echo_newline_1
+	*
+	*  単語数は 0 である
+	*  -c が指定されているならば改行しない
+	*
+		btst	#1,d1			*  -c ?
+		bra	echo_newline_2
+
+echo_newline_1:
+	*
+	*  単語数は 0 ではない
+	*  -e が指定され、かつ、\c があったならば改行しない
+	*
+		btst	#3,d2			*  -e ?
+		beq	do_echo_newline
+
+		tst.b	d0			*  \c ?
+echo_newline_2:
 		bne	echo_done
-echo_newline:
+do_echo_newline:
 		bclr	#3,d2
 		movea.l	16(a2,d2.l),a1
 		jsr	(a1)

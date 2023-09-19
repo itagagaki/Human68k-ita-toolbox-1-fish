@@ -3,6 +3,7 @@
 
 .include doscall.h
 .include limits.h
+.include stat.h
 
 .xref drvchkp
 .xref contains_dos_wildcard
@@ -32,24 +33,24 @@ searchnamebuf = -(((MAXPATH+1)+1)>>1<<1)
 stat:
 		link	a6,#searchnamebuf
 		movem.l	a0-a3,-(a7)
-		movea.l	a1,a3			*  A3 : statbuf
+		movea.l	a1,a3				*  A3 : statbuf
 		bsr	drvchkp
 		bmi	stat_fail
 
-		bsr	contains_dos_wildcard	*  Human68k のワイルドカードを含んで
-		bne	stat_fail		*  いるならば無効
+		bsr	contains_dos_wildcard		*  Human68k のワイルドカードを含んで
+		bne	stat_fail			*  いるならば無効
 
 		bsr	headtail
 		cmp.l	#MAXHEAD,d0
 		bhi	stat_fail
 
-		movea.l	a1,a2			*  A2 : tail part of search pathname
-		movea.l	a0,a1			*  A1 : top of search pathname
+		movea.l	a1,a2				*  A2 : tail part of search pathname
+		movea.l	a0,a1				*  A1 : top of search pathname
 		lea	searchnamebuf(a6),a0
 		bsr	memmovi
-		lea	allfile,a1		*  "*.*" で検索する（さもなくば検索されないエントリがある）
+		lea	allfile,a1			*  "*.*" で検索する（さもなくば検索されないエントリがある）
 		bsr	strcpy
-		move.w	#$3f,-(a7)		*  すべてのエントリを検索する
+		move.w	#MODEVAL_ALL,-(a7)		*  すべてのエントリを検索する
 		pea	searchnamebuf(a6)
 		move.l	a3,-(a7)
 		DOS	_FILES

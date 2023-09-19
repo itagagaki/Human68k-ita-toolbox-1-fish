@@ -3,10 +3,12 @@
 * Itagaki Fumihiko 16-Aug-91  'complete' で、'.' で始まるエントリ
 *                             （"." と ".." を除く）を補完するようにした．
 * Itagaki Fumihiko 29-Aug-91  addsuffix, autolist, recexact
+* Itagaki Fumihiko  6-Sep-91  prompt %?
 
 .include doscall.h
 .include chrcode.h
 .include limits.h
+.include stat.h
 .include pwd.h
 .include ../src/fish.h
 .include ../src/source.h
@@ -20,6 +22,7 @@
 .xref toupper
 .xref atou
 .xref utoa
+.xref itoa
 .xref strbot
 .xref jstrchr
 .xref strcpy
@@ -34,7 +37,6 @@
 .xref rotate
 .xref skip_space
 .xref sort_wordlist
-.xref close_source
 .xref putc
 .xref cputc
 .xref puts
@@ -45,35 +47,45 @@
 .xref isttyin
 .xref fgetc
 .xref fgets
-.xref fclose
+.xref close_tmpfd
 .xref open_passwd
 .xref fgetpwent
 .xref expand_tilde
 .xref contains_dos_wildcard
 .xref headtail
 .xref find_shellvar
+.xref svartol
 .xref common_spell
 .xref getcwdx
 .xref search_up_history
 .xref search_down_history
 .xref is_histchar_canceller
+.xref minmaxul
 .xref divul
 .xref drvchkp
+.xref find_function
+.xref source_function
 .xref manage_interrupt_signal
 .xref too_long_line
-.xref command_table
+.xref builtin_table
 .xref word_nomatch
 .xref word_exact
 .xref word_prompt
 .xref word_prompt2
+.xref word_status
 .xref dos_allfile
+
 .xref congetbuf
 .xref tmpargs
+.xref tmpword1
+.xref tmpword2
 
 .xref history_top
 .xref history_bot
 .xref current_eventno
 .xref current_source
+.xref function_root
+.xref funcdef_status
 .xref switch_status
 .xref if_status
 .xref loop_status
@@ -87,9 +99,7 @@
 .xref keymap
 .xref keymacromap
 .xref linecutbuf
-
-auto_word = (((MAXWORDLEN+1)+1)>>1<<1)
-auto_dirbuf = (((53)+1)>>1<<1)
+.xref tmpfd
 
 .text
 
@@ -313,56 +323,65 @@ getline_phigical_return:
 ****************
 getline_phigical_script:
 		DOS	_KEYSNS				*  To allow interrupt
-		movem.l	d2/a1-a2,-(a7)
-		movea.l	current_source(a5),a1
-		movea.l	a1,a2
-		adda.l	SOURCE_SIZE(a1),a2
-		movea.l	SOURCE_POINTER(a1),a1
-		moveq	#0,d2
-getline_phigical_script_loop:
-		cmpa.l	a2,a1
-		bhs	getline_phigical_script_eof
+		movem.l	a1-a2,-(a7)
+		movea.l	current_source(a5),a2
+		movea.l	SOURCE_POINTER(a2),a1
+		movea.l	SOURCE_BOT(a2),a2
+		bsr	getline_script_sub
+		bmi	getline_phigical_script_return
 
-		move.b	(a1)+,d0
-		cmp.b	#LF,d0
-		beq	getline_phigical_script_lf
-
-		cmp.b	#CR,d0
-		bne	getline_phigical_script_dup1
-
-		cmpa.l	a2,a1
-		bhs	getline_phigical_script_eof
-
-		cmpi.b	#LF,(a1)
-		beq	getline_phigical_script_crlf
-getline_phigical_script_dup1:
-		subq.w	#1,d1
-		bcs	getline_phigical_script_over
-
-		move.b	d0,(a0)+
-		bra	getline_phigical_script_loop
-
-getline_phigical_script_over:
-		addq.w	#1,d1
-		moveq	#1,d2
-		bra	getline_phigical_script_loop
-
-getline_phigical_script_crlf:
-		addq.l	#1,a1
-getline_phigical_script_lf:
-		clr.b	(a0)
 		movea.l	current_source(a5),a2
 		move.l	a1,SOURCE_POINTER(a2)
 		addq.l	#1,SOURCE_LINENO(a2)
 getline_phigical_script_return:
+		movem.l	(a7)+,a1-a2
+		tst.l	d0
+		rts
+*****************************************************************
+getline_script_sub:
+		move.l	d2,-(a7)
+		moveq	#0,d2
+getline_script_sub_loop:
+		cmpa.l	a2,a1
+		bhs	getline_script_sub_eof
+
+		move.b	(a1)+,d0
+		cmp.b	#LF,d0
+		beq	getline_script_sub_lf
+
+		cmp.b	#CR,d0
+		bne	getline_script_sub_dup1
+
+		cmpa.l	a2,a1
+		bhs	getline_script_sub_eof
+
+		cmpi.b	#LF,(a1)
+		beq	getline_script_sub_crlf
+getline_script_sub_dup1:
+		subq.w	#1,d1
+		bcs	getline_script_sub_over
+
+		move.b	d0,(a0)+
+		bra	getline_script_sub_loop
+
+getline_script_sub_over:
+		addq.w	#1,d1
+		moveq	#1,d2
+		bra	getline_script_sub_loop
+
+getline_script_sub_crlf:
+		addq.l	#1,a1
+getline_script_sub_lf:
+		clr.b	(a0)
+getline_script_sub_return:
 		move.l	d2,d0
-		movem.l	(a7)+,d2/a1-a2
+		move.l	(a7)+,d2
+		tst.l	d0
 		rts
 
-getline_phigical_script_eof:
-		bsr	close_source
+getline_script_sub_eof:
 		moveq	#-1,d2
-		bra	getline_phigical_script_return
+		bra	getline_script_sub_return
 *****************************************************************
 .xdef getline_file
 
@@ -431,8 +450,7 @@ getline_console_eof:
 		bra	getline_console_return
 *****************************************************************
 
-search_word = -32
-put_prompt_ptr = search_word-4
+put_prompt_ptr = -4
 macro_ptr = put_prompt_ptr-4
 line_top = macro_ptr-4
 x_histptr = line_top-4
@@ -1202,21 +1220,20 @@ x_list:
 x_complete:
 		sf	d7
 
-filec_dir_buf = -auto_dirbuf
-filec_pattern = filec_dir_buf-auto_word
-filec_pattern2 = filec_pattern-auto_word
-filec_fignore = filec_pattern2-4
-filec_buffer_free = filec_fignore-2
+filec_statbuf = -STATBUFSIZE
+filec_fignore = filec_statbuf-4
+filec_buffer_ptr = filec_fignore-4
+filec_buffer_free = filec_buffer_ptr-2
 filec_patlen = filec_buffer_free-2
 filec_maxlen = filec_patlen-2
 filec_minlen = filec_maxlen-2
-filec_comlen = filec_minlen-2
-filec_numentry = filec_comlen-2
-filec_listflag = filec_numentry-1
-filec_condition = filec_listflag-1
-filec_suffix = filec_condition-1
+filec_minlen_precious = filec_minlen-2
+filec_numentry = filec_minlen_precious-2
+filec_numprecious = filec_numentry-2
+filec_listflag = filec_numprecious-1
+filec_suffix = filec_listflag-1
 filec_exact_suffix = filec_suffix-1
-filec_pad = filec_exact_suffix-0
+filec_pad = filec_exact_suffix-1
 
 x_filec_or_list:
 		link	a4,#filec_pad
@@ -1260,16 +1277,23 @@ filec_find_word_done:
 		cmp.l	#MAXWORDLEN,d0
 		bhi	filec_error
 
-		lea	filec_pattern(a4),a0
+		lea	tmpword1,a0
 		bsr	memmovi
 		clr.b	(a0)
 
 		clr.w	filec_numentry(a4)
+		clr.w	filec_numprecious(a4)
+		clr.w	filec_maxlen(a4)
+		move.w	#$ffff,filec_minlen(a4)
+		move.w	#$ffff,filec_minlen_precious(a4)
+		lea	tmpargs,a0
+		move.l	a0,filec_buffer_ptr(a4)
+		move.w	#MAXWORDLISTSIZE,filec_buffer_free(a4)
+		clr.b	filec_exact_suffix(a4)
 		moveq	#0,d0
 		tst.b	filec_listflag(a4)
 		bne	filec_no_fignore
 
-		sf	filec_condition(a4)
 		lea	word_fignore,a0
 		bsr	find_shellvar
 filec_no_fignore:
@@ -1277,7 +1301,7 @@ filec_no_fignore:
 		*
 		*  ユーザ名か？ ファイル名か？
 		*
-		lea	filec_pattern(a4),a0
+		lea	tmpword1,a0
 		bsr	builtin_dir_match
 		beq	filec_not_builtin
 
@@ -1294,24 +1318,23 @@ filec_no_fignore:
 		movea.l	a1,a0
 		bsr	strlen
 		move.w	d0,filec_patlen(a4)
-		lea	command_table,a0
-		bsr	filec_reset
+		lea	builtin_table,a2
 		move.b	#' ',filec_suffix(a4)
 filec_builtin_loop:
-		tst.b	(a0)
+		move.l	(a2),d0
 		beq	filec_find_done
 
+		movea.l	d0,a0
 		moveq	#0,d0
 		move.w	filec_patlen(a4),d0
 		bsr	memcmp
 		bne	filec_builtin_next
 
+		moveq	#' ',d0
 		bsr	filec_enter
-		bcs	filec_error
-
-		bsr	test_exactmatch
+		bne	filec_error
 filec_builtin_next:
-		lea	14(a0),a0
+		lea	10(a2),a2
 		bra	filec_builtin_loop
 ****************
 filec_not_builtin:
@@ -1329,8 +1352,8 @@ filec_file:
 		*
 		*       ~を展開…
 		*
-		lea	filec_pattern(a4),a0
-		lea	filec_pattern2(a4),a1
+		lea	tmpword1,a0
+		lea	tmpword2,a1
 		moveq	#0,d2
 		move.l	d1,-(a7)
 		move.w	#MAXWORDLEN+1,d1
@@ -1341,7 +1364,7 @@ filec_file:
 		*
 		*       ファイル名を検索する
 		*
-		lea	filec_pattern2(a4),a0
+		lea	tmpword2,a0
 		bsr	contains_dos_wildcard		*  Human68k のワイルドカードを含んで
 		bne	filec_find_done			*  いるならば無効
 
@@ -1349,14 +1372,14 @@ filec_file:
 		bsr	jstrchr				*  含んで
 		bne	filec_find_done			*  いるならば無効
 
-		lea	filec_pattern2(a4),a0
+		lea	tmpword2,a0
 		bsr	test_directory
 		bne	filec_find_done
 
 		bsr	headtail
 		movea.l	a1,a2
 		movea.l	a0,a1
-		lea	filec_pattern(a4),a0
+		lea	tmpword1,a0
 		bsr	memmovi
 		cmp.l	#MAXWORDLEN-3,d0
 		bhi	filec_find_done
@@ -1368,18 +1391,16 @@ filec_file:
 		bsr	strlen
 		move.w	d0,filec_patlen(a4)
 
-		bsr	filec_reset
-
-		move.w	#$37,-(a7)			*  ボリューム・ラベル以外の全てを検索
-		pea	filec_pattern(a4)
-		pea	filec_dir_buf(a4)
+		move.w	#MODEVAL_FILEDIR,-(a7)		*  ボリューム・ラベル以外の全てを検索
+		pea	tmpword1
+		pea	filec_statbuf(a4)
 		DOS	_FILES
 		lea	10(a7),a7
 filec_file_loop:
 		tst.l	d0
 		bmi	filec_find_done
 
-		lea	filec_dir_buf+30(a4),a0
+		lea	filec_statbuf+ST_NAME(a4),a0
 		cmpi.b	#'.',(a0)
 		bne	filec_file_ok
 
@@ -1400,26 +1421,17 @@ filec_file_ok:
 		movem.l	(a7)+,d1
 		bne	filec_file_next
 
-		bsr	filec_enter
-		bcs	filec_error
-
-		move.b	#' ',filec_suffix(a4)
-		btst.b	#4,filec_dir_buf+21(a4)		*  directory?
+		moveq	#' ',d0
+		btst.b	#MODEBIT_DIR,filec_statbuf+ST_MODE(a4)	*  directory?
 		beq	filec_file_matched
 
-		move.b	#'/',filec_suffix(a4)
-		tst.b	filec_listflag(a4)
-		beq	filec_file_matched
-
-		subq.w	#1,filec_buffer_free(a4)
-		bcs	filec_error
-
-		move.b	#'/',-1(a3)
-		clr.b	(a3)+
+		moveq	#'/',d0
 filec_file_matched:
-		bsr	test_exactmatch
+		move.b	d0,filec_suffix(a4)
+		bsr	filec_enter
+		bne	filec_error
 filec_file_next:
-		pea	filec_dir_buf(a4)
+		pea	filec_statbuf(a4)
 		DOS	_NFILES
 		addq.l	#4,a7
 		bra	filec_file_loop
@@ -1433,12 +1445,12 @@ filec_username:
 		bsr	open_passwd
 		bmi	filec_find_done
 
+		move.l	d0,tmpfd(a5)
 		move.w	d0,d2				*  D2.W : passwd ファイル・ハンドル
 
-		lea	filec_pattern+1(a4),a0
+		lea	tmpword1+1,a0
 		bsr	strlen
 		move.w	d0,filec_patlen(a4)
-		bsr	filec_reset
 		move.b	#'/',filec_suffix(a4)
 
 pwd_buf = -(((PW_SIZE+1)+1)>>1<<1)
@@ -1451,30 +1463,24 @@ filec_username_loop:
 		bne	filec_username_done0
 
 		lea	PW_NAME(a0),a0
-		lea	filec_pattern+1(a4),a1
+		lea	tmpword1+1,a1
 		moveq	#0,d0
 		move.w	filec_patlen(a4),d0
 		bsr	memcmp
 		bne	filec_username_loop
 
+		moveq	#' ',d0
 		bsr	filec_enter
-		bcs	filec_username_over
+		bne	filec_username_done		*  D0.L == 1 .. error
 
-		bsr	test_exactmatch
 		bra	filec_username_loop
 
 filec_username_done0:
 		moveq	#-1,d0
-		bra	filec_username_done
-
-filec_username_over:
-		moveq	#0,d0
 filec_username_done:
 		unlk	a6
-		move.l	d0,-(a7)
-		move.w	d2,d0
-		bsr	fclose
-		move.l	(a7)+,d0
+		bsr	close_tmpfd
+		tst.l	d0
 		bpl	filec_error
 ****************
 filec_find_done:
@@ -1483,17 +1489,29 @@ filec_find_done:
 
 		tst.w	filec_numentry(a4)
 		beq	filec_nomatch
+
+		tst.w	filec_numprecious(a4)
+		bne	filec_numprecious_ok
+
+		move.w	filec_numentry(a4),d0
+		move.w	d0,filec_numprecious(a4)
+		move.w	filec_minlen(a4),d0
+		move.w	d0,filec_minlen_precious(a4)
+filec_numprecious_ok:
 		*
 		*  最初の曖昧でない部分を確定する
 		*
-		lea	tmpargs,a0
-		move.w	filec_numentry(a4),d0
-		move.b	flag_cifilec(a5),d2
 		move.l	d1,-(a7)
+		lea	tmpargs,a0
+		move.w	filec_numprecious(a4),d0
 		moveq	#0,d1
 		move.w	filec_patlen(a4),d1
+		move.b	flag_cifilec(a5),d2
 		bsr	common_spell
-		move.w	d0,filec_comlen(a4)
+		moveq	#0,d1
+		move.w	filec_minlen_precious(a4),d1
+		sub.w	filec_patlen(a4),d1
+		bsr	minmaxul			*  D0.L : 共通部分の長さ
 		move.l	(a7)+,d1
 		*
 		*  完成部分を挿入する
@@ -1509,7 +1527,7 @@ filec_find_done:
 		bsr	memmovi
 		movea.l	(a7)+,a0
 		bsr	post_insert_job
-		cmp.w	#1,filec_numentry(a4)
+		cmp.w	#1,filec_numprecious(a4)
 		beq	filec_match
 
 		tst.b	filec_exact_suffix(a4)
@@ -1670,14 +1688,15 @@ filec_list_loop1:
 		exg	a0,a1				*  A0:この行の先頭項目  A1:次行の先頭項目
 		move.w	d2,d5
 filec_list_loop2:
-		movem.l	d1-d3/a1,-(a7)
-		moveq	#0,d1
-		move.w	filec_maxlen(a4),d1
-		moveq	#1,d2
-		moveq	#' ',d3
+		movem.l	d1-d4/a1,-(a7)
+		moveq	#1,d1				*  左詰め
+		moveq	#' ',d2				*  空白でpad
+		moveq	#0,d3
+		move.w	filec_maxlen(a4),d3		*  最小フィールド幅
+		moveq	#-1,d4				*  最大出力文字数：$FFFFFFFF
 		lea	putc(pc),a1
 		bsr	printfs
-		movem.l	(a7)+,d1-d3/a1
+		movem.l	(a7)+,d1-d4/a1
 
 		subq.w	#1,d6
 		beq	filec_list_done
@@ -1704,30 +1723,41 @@ filec_list_done:
 		bsr	put_newline
 		bra	x_redraw_1
 ****************
-filec_reset:
-		clr.w	filec_numentry(a4)
-		clr.w	filec_maxlen(a4)
-		move.w	#$ffff,filec_minlen(a4)
-		lea	tmpargs,a3
-		move.w	#MAXWORDLISTSIZE,filec_buffer_free(a4)
-		clr.b	filec_exact_suffix(a4)
-		rts
-****************
 filec_enter:
-		movem.l	d1-d4/a0-a2,-(a7)
+		movem.l	d1-d5/a0-a2,-(a7)
+		addq.w	#1,filec_numentry(a4)
+		bcs	filec_enter_error
+
+		move.b	d0,d5				*  D5.B : リスト表示に加えるサフィックス
 		bsr	strlen
 		cmp.l	#MAXWORDLEN,d0
 		bhi	filec_enter_error
 
-		move.l	d0,d2				*  D2 : 単語の長さ
+		sub.w	d0,filec_buffer_free(a4)
+		bcs	filec_enter_error
+
+		subq.w	#2,filec_buffer_free(a4)
+		bcs	filec_enter_error
+
 		movea.l	a0,a2				*  A2 : 単語の先頭アドレス
+		move.l	d0,d2				*  D2 : 単語の長さ
+		cmp.w	filec_maxlen(a4),d2
+		bls	filec_entry_1
+
+		move.w	d2,filec_maxlen(a4)
+filec_entry_1:
+		cmp.w	filec_minlen(a4),d2
+		bhs	filec_entry_2
+
+		move.w	d2,filec_minlen(a4)
+filec_entry_2:
 		*
 		*  fignore に含まれているかどうかを調べる
 		*
-		tst.l	filec_fignore(a4)
-		beq	filec_add_entry
+		move.l	filec_fignore(a4),d0
+		beq	filec_enter_ignored
 
-		movea.l	filec_fignore(a4),a0
+		movea.l	d0,a0
 		addq.l	#2,a0
 		move.w	(a0)+,d4			*  D4.W : fignore の要素数
 		bra	check_fignore_continue
@@ -1743,71 +1773,60 @@ check_fignore_loop:
 		move.l	d3,d0
 		move.b	flag_cifilec(a5),d1
 		bsr	memxcmp				*  ケツが一致するか？
-		beq	ignore_or_keep
+		beq	filec_enter_ignored
 check_fignore_continue:
 		bsr	strfor1
 		dbra	d4,check_fignore_loop
 not_ignore:
-		tst.b	filec_condition(a4)
-		bne	filec_add_entry
+		addq.w	#1,filec_numprecious(a4)
+		cmp.w	filec_minlen_precious(a4),d2
+		bhs	filec_entry_3
 
-		bsr	filec_reset
-		st	filec_condition(a4)
+		move.w	d2,filec_minlen_precious(a4)
+filec_entry_3:
+		move.l	filec_buffer_ptr(a4),a1
+		lea	tmpargs,a0
+		move.l	a1,d0
+		sub.l	a0,d0
+		movea.l	a1,a0
+		adda.l	d2,a0
+		addq.l	#2,a0
+		bsr	memmovd
+		lea	tmpargs,a0
 		bra	filec_add_entry
 
-ignore_or_keep:
-		tst.b	filec_condition(a4)
-		bne	filec_entry_return		*  C=0
+filec_enter_ignored:
+		movea.l	filec_buffer_ptr(a4),a0
 filec_add_entry:
 		*
 		*  登録する
 		*
-		cmp.w	filec_maxlen(a4),d2
-		bls	filec_entry_1
-
-		move.w	d2,filec_maxlen(a4)
-filec_entry_1:
-		cmp.w	filec_minlen(a4),d2
-		bhs	filec_entry_2
-
-		move.w	d2,filec_minlen(a4)
-filec_entry_2:
-		addq.w	#1,filec_numentry(a4)
-		bcs	filec_entry_return
-
-		sub.w	d2,filec_buffer_free(a4)
-		bcs	filec_entry_return
-
-		movea.l	a2,a1
-		movea.l	a3,a0
 		move.l	d2,d0
+		movea.l	a2,a1
 		bsr	memmovi
-		movea.l	a0,a3
-		subq.w	#1,filec_buffer_free(a4)
-		bcs	filec_entry_return
+		move.b	d5,(a0)+
+		clr.b	(a0)
+		add.l	d2,filec_buffer_ptr(a4)
+		addq.l	#2,filec_buffer_ptr(a4)
 
-		clr.b	(a3)+
-filec_entry_return:
-		movem.l	(a7)+,d1-d4/a0-a2
-		rts
-
-filec_enter_error:
-		moveq	#0,d0
-		subq.w	#1,d0
-		bra	filec_entry_return
-****************
-test_exactmatch:
 		tst.b	flag_recexact(a5)
-		beq	test_exactmatch_return
+		beq	filec_enter_success
 
 		move.w	filec_patlen(a4),d0
-		tst.b	(a0,d0.w)
-		bne	test_exactmatch_return
+		tst.b	(a2,d0.w)
+		bne	filec_enter_success
 
 		move.b	filec_suffix(a4),d0
 		move.b	d0,filec_exact_suffix(a4)
-test_exactmatch_return:
+filec_enter_success:
+		moveq	#0,d0
+filec_enter_return:
+		movem.l	(a7)+,d1-d5/a0-a2
 		rts
+
+filec_enter_error:
+		moveq	#1,d0
+		bra	filec_enter_return
 ****************
 find_matchbeep:
 		lea	word_matchbeep,a0
@@ -2551,6 +2570,7 @@ put_prompt_done:
 *****************************************************************
 *  $prompt の制御文字
 *
+*	%?	シェル変数 status の値
 *	%!	履歴番号
 *	%p	カレント・ディレクトリ（~略記）
 *	%l	カレント・ディレクトリ（フル・パス）
@@ -2569,8 +2589,11 @@ put_prompt_done:
 .xdef put_prompt_1
 
 put_prompt_1:
-		movem.l	d0-d3/a0-a1,-(a7)
+		movem.l	d0-d4/a0-a2,-(a7)
 		lea	word_prompt2,a0
+		tst.b	funcdef_status(a5)
+		bne	put_prompt_2
+
 		tst.b	switch_status(a5)
 		bne	put_prompt_2
 
@@ -2582,6 +2605,19 @@ put_prompt_1:
 
 		lea	word_prompt,a0
 put_prompt_2:
+.if 0
+		movem.l	d0-d7/a0-a4,-(a7)
+		lea	word_prompt,a0
+		lea	function_root(a5),a2
+		bsr	find_function
+		beq	no_prompt_function
+
+		movea.l	d0,a1				*  A1 : 関数のヘッダの先頭アドレス
+		moveq	#0,d0
+		bsr	source_function			*  関数を実行する
+no_prompt_function:
+		movem.l	(a7)+,d0-d7/a0-a4
+.endif
 		bsr	find_shellvar
 		beq	prompt_done
 
@@ -2601,36 +2637,42 @@ prompt_loop:
 		tst.b	(a1)
 		beq	prompt_normal_char
 
-		moveq	#1,d1				*  D1.L : format - 少くとも 1文字を出力
-		moveq	#0,d2				*  D2.L : flags - 右詰め，上限無し
-		moveq	#' ',d3				*  D3.B : pad character - ' '
+		moveq	#0,d1				*  D1.L : flags - 右詰め
+		moveq	#' ',d2				*  D2.B : pad character - ' '
+		moveq	#0,d3				*  D3.L : minimum field width - 少くとも 0文字を出力
 
 		move.b	(a1)+,d0
 		cmp.b	#'-',d0
 		bne	prompt_no_minus
 
-		bset	#0,d2				*  左詰め
+		bset	#0,d1				*  左詰め
 		move.b	(a1)+,d0
 		beq	prompt_done
 prompt_no_minus:
 		cmp.b	#'0',d0
 		bne	prompt_no_0
 
-		move.b	d0,d3
+		move.b	d0,d2
 		move.b	(a1)+,d0
 		beq	prompt_done
 prompt_no_0:
 		bsr	isdigit
 		bne	prompt_no_format
 
+		exg	d1,d3
 		lea	-1(a1),a0
 		bsr	atou				*  ［オーバーフローは面倒だから無視！］
 		movea.l	a0,a1
 		move.b	(a1)+,d0
 		beq	prompt_done
+
+		exg	d1,d3
 prompt_no_format:
 		cmp.b	#'%',d0
 		beq	prompt_normal_char
+
+		cmp.b	#'?',d0
+		beq	prompt_status
 
 		cmp.b	#'!',d0
 		beq	prompt_eventno
@@ -2686,8 +2728,29 @@ prompt_normal_char:
 		bra	prompt_loop
 
 prompt_done:
-		movem.l	(a7)+,d0-d3/a0-a1
+		movem.l	(a7)+,d0-d4/a0-a2
 		rts
+****************
+*  %? : current status
+****************
+prompt_status:
+		lea	word_status,a0
+		movem.l	d1,-(a7)
+		bsr	svartol
+		exg	d0,d1
+		cmp.l	#5,d1
+		movem.l	(a7)+,d1
+		lea	msg_no_status,a0
+		bne	prompt_string
+
+		move.l	a1,-(a7)
+		lea	itoa(pc),a0
+		lea	putc(pc),a1
+		suba.l	a2,a2
+		moveq	#1,d4
+		bsr	printfi
+		movea.l	(a7)+,a1
+		bra	prompt_loop
 ****************
 *  %! : current event number of history
 ****************
@@ -2697,6 +2760,8 @@ prompt_digit:
 		move.l	a1,-(a7)
 		lea	utoa(pc),a0
 		lea	putc(pc),a1
+		suba.l	a2,a2
+		moveq	#1,d4
 		bsr	printfi
 		movea.l	(a7)+,a1
 		bra	prompt_loop
@@ -2719,6 +2784,7 @@ cwdbuf = -(((MAXPATH+1)+1)>>1<<1)
 prompt_string:
 		move.l	a1,-(a7)
 		lea	putc(pc),a1
+		moveq	#-1,d4
 		bsr	printfs
 		movea.l	(a7)+,a1
 		rts
@@ -2737,7 +2803,7 @@ prompt_year:
 		lsr.l	#1,d0
 		and.l	#%1111111,d0
 		add.l	#1980,d0
-		cmp.l	#4,d1
+		cmp.l	#4,d3
 		bhs	prompt_digit
 
 		move.l	d1,-(a7)
@@ -2834,12 +2900,11 @@ prompt_newline:
 *      / のみが許され、\ は許さない
 *      flag_cifilec(B) が効く
 ****************************************************************
-filebuf = -54
-searchnamebuf = filebuf-(MAXPATH+1)
-pad = searchnamebuf-(searchnamebuf.MOD.2)
+statbuf = -STATBUFSIZE
+searchnamebuf = statbuf-(((MAXPATH+1)+1)>>1<<1)
 
 test_directory:
-		link	a6,#pad
+		link	a6,#searchnamebuf
 		movem.l	d1-d2/a0-a3,-(a7)
 		lea	searchnamebuf(a6),a2
 		moveq	#0,d2
@@ -2889,9 +2954,9 @@ test_directory_loop:
 
 		move.l	a0,d2
 		sub.l	a3,d2				*  D2.L : エレメントの長さ
-		move.w	#%010000,-(a7)			*  ディレクトリのみを検索
+		move.w	#MODEVAL_DIR,-(a7)		*  ディレクトリのみを検索
 		pea	searchnamebuf(a6)
-		pea	filebuf(a6)
+		pea	statbuf(a6)
 		movea.l	a2,a0
 		lea	dos_allfile,a1
 		bsr	strcpy
@@ -2901,14 +2966,14 @@ test_directory_find_loop:
 		tst.l	d0
 		bmi	test_directory_return		*  エントリが無い .. false
 
-		lea	filebuf+30(a6),a0
+		lea	statbuf+ST_NAME(a6),a0
 		movea.l	a3,a1
 		move.l	d2,d0
 		move.b	flag_cifilec(a5),d1
 		bsr	memxcmp
 		beq	test_directory_found
 
-		pea	filebuf(a6)
+		pea	statbuf(a6)
 		DOS	_NFILES
 		addq.l	#4,a7
 		bra	test_directory_find_loop
@@ -3037,6 +3102,8 @@ msg_reverse_i_search:	dc.b	'reverse-'
 msg_i_search:		dc.b	'i-search: ',0
 msg_i_search_colon:	dc.b	' : ',0
 .endif
+
+msg_no_status:	dc.b	'(status?)',0
 
 .end
 

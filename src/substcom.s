@@ -37,6 +37,15 @@
 .text
 
 ****************************************************************
+unmatched:
+		moveq	#'`',d0
+		bsr	eputc
+		bsr	eputc
+		lea	msg_unmatched,a0
+		bsr	enputs
+		moveq	#-4,d0
+		rts
+****************************************************************
 * subst_command - コマンド置換をする
 *
 * CALL
@@ -119,9 +128,20 @@ subst_command_check_accent:
 		movea.l	a0,a2
 subst_command_search_bottom:
 		move.b	(a0)+,d0
-		cmp.b	quote_char(a6),d0		* Nice kludge!
-		beq	unmatched
+		beq	subst_command_unmatched
 
+		cmp.b	quote_char(a6),d0
+		beq	subst_command_unmatched
+
+		bsr	issjis
+		bne	subst_command_search_bottom_not_sjis
+
+		tst.b	(a0)+
+		beq	subst_command_unmatched
+
+		bra	subst_command_search_bottom
+
+subst_command_search_bottom_not_sjis:
 		cmp.b	#'`',d0
 		bne	subst_command_search_bottom
 
@@ -300,14 +320,10 @@ subst_command_return1:
 		unlk	a6
 		tst.l	d0
 		rts
-********************************
-unmatched:
-		bsr	eputc
-		bsr	eputc
-		lea	msg_unmatched,a0
-		bsr	enputs
-subst_command_error:
-		moveq	#-4,d0
+
+
+subst_command_unmatched:
+		bsr	unmatched
 		bra	subst_command_return
 ****************************************************************
 * subst_command_2 - コマンド置換をする
@@ -361,7 +377,7 @@ subst_command_2_loop:
 		movea.l	a0,a2
 		moveq	#'`',d0
 		bsr	jstrchr
-		beq	unmatched_2
+		beq	subst_command_2_unmatched
 
 		move.l	a0,d0
 		sub.l	a2,d0
@@ -461,13 +477,10 @@ subst_command_2_return1:
 		unlk	a6
 		tst.l	d0
 		rts
-********************************
-unmatched_2:
-		bsr	eputc
-		bsr	eputc
-		lea	msg_unmatched,a0
-		bsr	enputs
-		moveq	#-4,d0
+
+
+subst_command_2_unmatched:
+		bsr	unmatched
 		bra	subst_command_2_return
 ****************************************************************
 subst_command_redirect:
@@ -482,7 +495,7 @@ subst_command_redirect:
 		bmi	subst_command_redirect_error
 
 		move.l	d0,d2				*  D2.L : ファイル・ハンドル
-		move.w	d0,d1
+		move.l	d0,d1
 		moveq	#1,d0				*  標準出力を
 		bsr	redirect			*  リダイレクト
 		bmi	subst_command_redirect_perror
@@ -497,7 +510,7 @@ subst_command_redirect_1:
 		tst.b	not_execute(a5)
 		bne	subst_command_redirect_2
 
-		move.w	d0,d1
+		move.l	d0,d1
 		moveq	#1,d0
 		bsr	unredirect
 subst_command_redirect_2:

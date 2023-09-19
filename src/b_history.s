@@ -11,10 +11,12 @@
 .xref strfor1
 .xref strcmp
 .xref putc
+.xref puts
 .xref cputs
 .xref enputs1
 .xref printfi
 .xref put_space
+.xref put_tab
 .xref put_newline
 .xref svartol
 .xref badly_formed_number
@@ -78,7 +80,7 @@ parse_range_done:
 		or.l	d3,d0
 		bne	b_bad_arg
 
-		st	d4				*  イベント番号や時刻は表示しない
+		st	d4				*  イベント番号や時刻は出力しない
 		movea.l	history_top(a5),a0
 output_region_loop:
 		cmpa.l	#0,a0
@@ -205,45 +207,52 @@ prhist_1line:
 		cmpa.l	#0,a0
 		beq	prhist_1line_return
 
-		movem.l	d0-d4/a0-a2,-(a7)
+		movem.l	d0-d5/a0-a3,-(a7)
 		move.l	current_eventno(a5),HIST_REFNO(a0)	*  参照ポインタをセットする
-		tst.b	d4					*  イベント番号・時刻を表示しないならば
-		bne	prhist_1line_1				*    表示ルーチンをスキップ
+		tst.b	d4					*  イベント番号・時刻を出力しないならば
+		bne	prhist_1line_1				*    出力ルーチンをスキップ
 		*
-		movea.l	a0,a2
+		movea.l	a0,a3
+		lea	space4,a0
+		bsr	puts
+		*
 		lea	utoa(pc),a0				*  unsigned -> decimal で
 		lea	putc(pc),a1				*  標準出力に
-		moveq	#0,d2					*  右詰めで
+		suba.l	a2,a2					*  prefixなしで
+		moveq	#0,d1					*  右詰めで
+		moveq	#' ',d2					*  pad はスペースで
 		*
-		moveq	#'0',d3					*  pad は '0' で
-		moveq	#2,d1					*  少なくとも 2桁
-		move.l	HIST_TIME(a2),d4
-		move.l	d4,d0
+		moveq	#1,d3					*  少なくとも 1文字
+		moveq	#2,d4					*  少なくとも 2桁
+		move.l	HIST_TIME(a3),d5
+		move.l	d5,d0
 		lsr.l	#8,d0
 		lsr.l	#8,d0
 		and.l	#%11111,d0				*  ［時］を
-		bsr	printfi					*  表示する
+		bsr	printfi					*  出力する
 		moveq	#':',d0					*  ':' を
-		jsr	(a1)					*  表示する
-		move.l	d4,d0
+		jsr	(a1)					*  出力する
+		move.l	d5,d0
 		lsr.l	#8,d0
 		and.l	#%111111,d0				*  ［分］を
-		bsr	printfi					*  表示する
+		bsr	printfi					*  出力する
 		moveq	#':',d0					*  ':' を
-		jsr	(a1)					*  表示する
-		move.l	d4,d0
+		jsr	(a1)					*  出力する
+		move.l	d5,d0
 		and.l	#%111111,d0				*  ［秒］を
-		bsr	printfi					*  表示する
-		bsr	put_space				*  ' 'を表示する
-		bsr	put_space				*  ' 'を表示する
+		bsr	printfi					*  出力する
+		move.l	a0,-(a7)
+		lea	space2,a0				*  スペースを 2つ
+		bsr	puts					*  出力する
+		movea.l	(a7)+,a0
+		bsr	put_tab					*  タブを出力する
 		*
-		moveq	#' ',d3					*  pad は空白で
-		moveq	#6,d1					*  少なくとも 6桁
-		move.l	HIST_EVENTNO(a2),d0			*  イベント番号を
-		bsr	printfi					*  表示する
-		bsr	put_space				*  ' 'を表示する
-		bsr	put_space				*  ' 'を表示する
-		movea.l	a2,a0
+		moveq	#6,d3					*  少なくとも 6文字
+		moveq	#1,d4					*  少なくとも 1桁
+		move.l	HIST_EVENTNO(a3),d0			*  イベント番号を
+		bsr	printfi					*  出力する
+		bsr	put_tab					*  タブを出力する
+		movea.l	a3,a0
 prhist_1line_1:
 		move.w	HIST_NWORDS(a0),d1			*  D1.W := このイベントの語数
 		subq.w	#1,d1
@@ -253,14 +262,14 @@ prhist_1line_1:
 		bra	prhist_1line_start
 
 prhist_1line_loop:
-		bsr	put_space				*  空白を表示する
+		bsr	put_space				*  空白を出力する
 		bsr	strfor1					*  次の語
 prhist_1line_start:
-		bsr	cputs					*  語を表示する
+		bsr	cputs					*  語を出力する
 		dbra	d1,prhist_1line_loop
 prhist_1line_done:
 		bsr	put_newline				*  改行する
-		movem.l	(a7)+,d0-d4/a0-a2
+		movem.l	(a7)+,d0-d5/a0-a3
 		cmpa.l	#0,a0
 prhist_1line_return:
 		rts
@@ -318,6 +327,8 @@ hour_ok:
 option_x:	dc.b	'-x',0
 msg_usage:	dc.b	'[ -hr ] [ <イベント数> ]',0
 msg_usage2:	dc.b	'        history -x <開始番号>[-<終了番号>]',0
+space4:		dc.b	'  '
+space2:		dc.b	'  ',0
 ****************************************************************
 .end
 

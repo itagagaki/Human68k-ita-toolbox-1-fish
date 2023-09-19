@@ -1,7 +1,9 @@
 * substvar.s
 * Itagaki Fumihiko 10-Oct-90  Create.
 
+.include limits.h
 .include ../src/fish.h
+.include ../src/source.h
 .include ../src/modify.h
 
 .xref isdigit
@@ -12,6 +14,7 @@
 .xref strfor1
 .xref strforn
 .xref skip_space
+.xref copy_wordlist
 .xref atou
 .xref utoa
 .xref skip_varname
@@ -24,7 +27,7 @@
 .xref xfreep
 .xref eputs
 .xref enputs
-.xref copy_wordlist
+.xref irandom
 .xref too_many_words
 .xref too_long_word
 .xref too_long_line
@@ -41,8 +44,8 @@
 .xref envwork
 .xref tmpline
 .xref pid
-.xref argv0p
 .xref not_execute
+.xref current_source
 
 .text
 
@@ -241,6 +244,9 @@ expand_var_no_brace:
 		cmp.b	#'$',d0					*   $$
 		beq	expand_var_special
 
+		cmp.b	#',',d0					*   $,
+		beq	expand_var_special
+
 		cmp.b	#'0',d0					*   $0
 		beq	expand_var_special
 
@@ -383,10 +389,11 @@ expand_var_check_modifier:
 		cmpi.b	#'0',special(a6)
 		bne	not_argv0
 		* {
-			move.l	argv0p(a5),d0
+			move.l	current_source(a5),d0
 			beq	no_file_for_doller0
 
 			movea.l	d0,a0
+			lea	SOURCE_HEADER_SIZE(a0),a0
 			bra	expand_var_1word
 		* }
 not_argv0:
@@ -397,6 +404,13 @@ not_argv0:
 			bra	expand_var_utoa
 		* }
 not_pid:
+		cmpi.b	#',',special(a6)
+		bne	not_random
+		* {
+			bsr	irandom
+			bra	expand_var_utoa
+		* }
+not_random:
 		cmpi.b	#'<',special(a6)
 		bne	not_gets
 		* {
@@ -433,7 +447,7 @@ not_gets:
 			cmpi.b	#'0',(a2)
 			bne	do_expand_defined_1
 
-			tst.l	argv0p(a5)
+			tst.l	current_source(a5)
 			bne	expand_var_1word
 			bra	do_expand_defined_2
 
@@ -1065,7 +1079,7 @@ subst_wordlist_error:
 
 msg_subst:			dc.b	'変数置換の',0
 msg_subscript_too_long:		dc.b	'添字が長過ぎます',0
-msg_no_file_for_doller0:	dc.b	'$0に該当するファイルはありません',0
+msg_no_file_for_doller0:	dc.b	'$0に対する名前はありません',0
 msg_cannot_getline:		dc.b	'$<を処理できません',0
 
 characters_to_be_escaped_1:	dc.b	'~{*?['

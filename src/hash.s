@@ -2,12 +2,14 @@
 * Itagaki Fumihiko 19-Nov-90  Create.
 
 .include doscall.h
-.include ../src/fish.h
+.include limits.h
+.include stat.h
 
 .xref toupper
 .xref utoa
-.xref memmovi
+.xref strlen
 .xref strfor1
+.xref memmovi
 .xref putc
 .xref puts
 .xref nputs
@@ -21,7 +23,7 @@
 .xref dos_allfile
 .xref cat_pathname
 .xref drvchkp
-.xref command_table
+.xref builtin_table
 .xref too_many_args
 
 .xref hash_hits
@@ -86,8 +88,8 @@ hash_done:
 ****************************************************************
 .xdef rehash
 
-searchnamebuf = -(((MAXWORDLEN+4+1)+1)>>1<<1)
-files_buf = searchnamebuf-(((53)+1)>>1<<1)
+searchnamebuf = -(((MAXHEAD+4+1)+1)>>1<<1)		*  +4 : "/*.*"
+files_buf = searchnamebuf-STATBUFSIZE
 
 rehash:
 		link	a6,#files_buf
@@ -125,6 +127,11 @@ rehash_loop:
 		bsr	isfullpath
 		bne	rehash_next
 ****************
+		movea.l	a1,a0
+		bsr	strlen
+		cmp.l	#MAXHEAD,d0
+		bhi	rehash_continue
+
 		lea	searchnamebuf(a6),a0
 		lea	dos_allfile,a2
 		bsr	cat_pathname
@@ -135,7 +142,7 @@ rehash_loop:
 
 		movea.l	a1,a3
 
-		move.w	#$37,-(a7)		* ボリューム・ラベル以外
+		move.w	#MODEVAL_FILE,-(a7)	* ボリューム・ラベルとディレクトリ以外
 		move.l	a0,-(a7)
 		pea	files_buf(a6)
 		DOS	_FILES
@@ -144,7 +151,7 @@ rehash_real_directory_loop:
 		tst.l	d0
 		bmi	rehash_real_directory_done
 
-		lea	files_buf+30(a6),a0
+		lea	files_buf+ST_NAME(a6),a0
 		bsr	hash
 		bset.b	d2,(a4,d0.l)
 		pea	files_buf(a6)
@@ -157,14 +164,15 @@ rehash_real_directory_done:
 		bra	rehash_continue
 ****************
 rehash_builtin:
-		lea	command_table,a0
+		lea	builtin_table,a2
 rehash_builtin_loop:
-		tst.b	(a0)
+		move.l	(a2),d0
 		beq	rehash_next
 
+		movea.l	d0,a0
 		bsr	hash
 		bset.b	d2,(a4,d0.l)
-		lea	14(a0),a0
+		lea	10(a2),a2
 		bra	rehash_builtin_loop
 ****************
 rehash_next:
@@ -207,10 +215,12 @@ cmd_hashstat:
 		tst.w	d0
 		bne	too_many_args
 
-		moveq	#1,d1
-		moveq	#0,d2
-		moveq	#' ',d3
-		lea	putc(pc),a1
+		moveq	#0,d1				*  右詰めで
+		moveq	#' ',d2				*  padは空白で
+		moveq	#1,d3				*  少なくとも 1文字の幅に
+		moveq	#1,d4				*  少なくとも 1桁の数字を
+		lea	putc(pc),a1			*  標準出力に
+		suba.l	a2,a2				*  prefixなしで
 		lea	msg_status,a0
 		bsr	puts
 		lea	msg_on,a0
@@ -241,8 +251,8 @@ put_status:
 		move.l	hash_hits(a5),d1
 		add.l	hash_misses(a5),d1
 		bsr	divul
-		moveq	#1,d1
 cmd_hashstat_2:
+		moveq	#0,d1				*  右詰めで
 		lea	utoa(pc),a0
 		bsr	printfi
 		lea	msg_percent,a0

@@ -3,6 +3,7 @@
 
 .include doscall.h
 .include limits.h
+.include stat.h
 .include ../src/fish.h
 
 .xref issjis
@@ -25,7 +26,7 @@
 .xref too_many_words
 .xref too_long_line
 .xref dos_allfile
-.xref command_table
+.xref builtin_table
 .xref tmpword1
 .xref tmpword2
 .xref pathname_buf
@@ -198,15 +199,15 @@ get_subdir_done:
 ****************************************************************
 curdot  = -4
 dirbot  = curdot-4
-filebuf = dirbot-54
+statbuf = dirbot-STATBUFSIZE
 
 globsub:
-		link	a6,#filebuf
+		link	a6,#statbuf
 		move.l	a2,curdot(a6)
 		lea	pathname_buf,a0
-		move.w	#$37,-(a7)		* ボリューム・ラベル以外の全てを検索
+		move.w	#MODEVAL_FILEDIR,-(a7)		* ボリューム・ラベル以外の全てを検索
 		move.l	a0,-(a7)
-		pea	filebuf(a6)
+		pea	statbuf(a6)
 		bsr	strbot
 		move.l	a0,dirbot(a6)
 		lea	dos_allfile,a1
@@ -222,7 +223,7 @@ globsub_loop:
 		lea	tmpword2,a1
 		bsr	get_subdir
 		movea.l	a0,a2
-		lea	filebuf+30(a6),a0
+		lea	statbuf+ST_NAME(a6),a0
 
 		* 検索されたエントリが . で始まっていなければ、よし。
 		cmpi.b	#'.',(a0)
@@ -247,11 +248,11 @@ globsub_compare:
 		tst.b	(a2)
 		beq	globsub_terminal
 
-		btst.b	#4,filebuf+21(a6)
+		btst.b	#MODEBIT_DIR,statbuf+ST_MODE(a6)
 		beq	globsub_next
 
 		movea.l	dirbot(a6),a0
-		lea	filebuf+30(a6),a1
+		lea	statbuf+ST_NAME(a6),a1
 		bsr	stpcpy
 		move.b	(a2)+,d0
 		cmp.b	#'\',d0
@@ -292,7 +293,7 @@ globsub_terminal:
 		movea.l	a3,a0
 		bsr	stpcpy
 		movea.l	a0,a3
-		lea	filebuf+30(a6),a0
+		lea	statbuf+ST_NAME(a6),a0
 		bsr	strlen
 		addq.w	#1,d0		* D0.LはMAXTAILを超えない筈．MAXTAILは22の筈
 		sub.w	d0,d4
@@ -303,7 +304,7 @@ globsub_terminal:
 		bsr	strmove
 		movea.l	a0,a3
 globsub_next:
-		pea	filebuf(a6)
+		pea	statbuf(a6)
 		DOS	_NFILES
 		addq.l	#4,a7
 		bra	globsub_loop
@@ -378,16 +379,16 @@ glob_1:
 		bne	glob_real
 ****************
 glob_builtin:
-		move.l	a0,-(a7)
-		movea.l	a1,a2			* A2 : 仮想ディレクトリ部
-		lea	1(a2,d0.l),a1		* A1 : 比較パターン
-		lea	command_table,a0
+		movem.l	a0/a4,-(a7)
+		movea.l	a1,a2				*  A2 : 仮想ディレクトリ部
+		lea	1(a2,d0.l),a1			*  A1 : 比較パターン
+		lea	builtin_table,a4
 glob_builtin_loop:
-		moveq	#-1,d0
-		tst.b	(a0)
+		move.l	(a4),d0
 		beq	glob_builtin_nomore
 
-		moveq	#0,d0			* case dependent
+		movea.l	d0,a0
+		moveq	#0,d0				*  case dependent
 		bsr	strpcmp
 		tst.l	d0
 		bmi	glob_builtin_error4
@@ -396,7 +397,7 @@ glob_builtin_loop:
 		moveq	#1,d0
 		addq.w	#1,d1
 		cmp.w	d3,d1
-		bhi	glob_builtin_nomore
+		bhi	glob_builtin_done
 
 		bsr	strlen
 		add.l	d2,d0
@@ -414,17 +415,21 @@ glob_builtin_loop:
 		movea.l	(a7)+,a1	*              A1:pat(com)
 		exg	a0,a3		* A0:entry                               A3:buf
 glob_builtin_continue:
-		lea	14(a0),a0
+		lea	10(a4),a4
 		bra	glob_builtin_loop
 
 glob_builtin_error4:
 		moveq	#4,d0
-		bra	glob_builtin_nomore
+		bra	glob_builtin_done
 
 glob_builtin_buffer_full:
 		moveq	#2,d0
+		bra	glob_builtin_done
+
 glob_builtin_nomore:
-		movea.l	(a7)+,a0
+		moveq	#-1,d0
+glob_builtin_done:
+		movem.l	(a7)+,a0/a4
 		tst.l	d0
 		beq	glob_nothing
 		bpl	glob_error

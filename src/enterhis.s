@@ -8,7 +8,7 @@
 .xref memmovi
 .xref wordlistlen
 .xref enputs
-.xref JustFitMalloc
+.xref xmalloc
 .xref free
 .xref parse_history_value
 
@@ -18,6 +18,7 @@
 .xref loop_top_eventno
 .xref in_history_ptr
 .xref keep_loop
+.xref loop_fail
 
 .text
 
@@ -43,8 +44,8 @@ enter_history:
 		bsr	wordlistlen
 		move.l	d0,d2				*  D2.L : 単語並びのバイト数
 		add.l	#HIST_BODY,d0			*  このイベントに必要なバイト数を
-		bsr	JustFitMalloc			*  確保する
-		bmi	no_space
+		bsr	xmalloc				*  確保する
+		beq	no_space
 
 		movea.l	d0,a0
 		movea.l	history_bot(a5),a2
@@ -74,6 +75,7 @@ enter_history_return:
 		rts
 
 no_space:
+		sf	loop_fail(a5)
 		lea	msg_cannot_enter_history,a0
 		bsr	enputs
 		bra	enter_history_return

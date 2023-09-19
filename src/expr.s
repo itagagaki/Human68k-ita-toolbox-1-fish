@@ -2,6 +2,7 @@
 * Itagaki Fumihiko 03-Nov-90  Create.
 
 .include doscall.h
+.include stat.h
 .include ../src/fish.h
 
 *  PRIMARY
@@ -14,12 +15,14 @@
 *     -z <name>
 *     -f <name>
 *     -d <name>
-*     -c <name>
-*     -b <name>
 *     -a <name>
 *     -h <name>
 *     -s <name>
 *     -v <name>
+*     -c <name>
+*     -b <name>
+*     -i <name>
+*     -o <name>
 *     -t <handle>
 *     sizeof <filename>
 *     timeof <filename>
@@ -76,16 +79,7 @@ E_SYNTAX	equ	1
 E_BADNUM	equ	2
 E_DIV0		equ	3
 
-FILEMODE_READONLY	equ	%000001
-FILEMODE_HIDDEN		equ	%000010
-FILEMODE_SYSTEM		equ	%000100
-FILEMODE_VOLUME		equ	%001000
-FILEMODE_DIRECTORY	equ	%010000
-FILEMODE_ARCHIVE	equ	%100000
-
-term = -(((MAXWORDLEN+1)+1)>>1<<1)
-term2 = -(((MAXWORDLEN*2+1)+1)>>1<<1)
-itoabuf = -12
+termsize equ MAXWORDLEN*2+1
 
 .xref isdigit
 .xref toupper
@@ -103,44 +97,26 @@ itoabuf = -12
 .xref fclose
 .xref isblkdev
 .xref stat
+.xref xmalloct
+.xref freet
 .xref divsl
 .xref mulsl
 .xref drvchk
 .xref fork
 .xref command_error
 .xref expression_syntax_error
+.xref cannot_because_no_memory
 .xref pre_perror
 .xref too_long_word
 .xref no_close_brace
 .xref msg_ambiguous
 
+.xref tmpstatbuf
+
 .text
 
 ****************************************************************
-* expression1 - 式を評価し，結果の文字列と数値を得る
-*
-* CALL
-*      A0     式の単語並びの先頭アドレス
-*      A1     式の値を格納するバッファのアドレス
-*      D7.W   式の単語数
-*
-* RETURN
-*      A0     残った単語並びの先頭アドレス
-*      D0.L   エラーが無ければ 0．さもなくば 1
-*      D1.L   式の値
-*      D7.W   残った単語の数
-*      CCR    TST.L D0
-****************************************************************
-.xdef expression1
-
-expression1:
-		movem.l	d2-d6/a2-a3,-(a7)
-		st	d6
-		bsr	expression0
-		movem.l	(a7)+,d2-d6/a2-a3
-		rts
-****************************************************************
-* expression2 - 式を評価し，結果の数値を得る
+* expression - 式を評価し，結果の数値を得る
 *
 * CALL
 *      A0     式の単語並びの先頭アドレス
@@ -153,64 +129,15 @@ expression1:
 *      D7.W   残った単語の数
 *      CCR    TST.L D0
 ****************************************************************
-.xdef expression2
+.xdef expression
 
-expression2:
-		link	a6,#term
+expression:
 		movem.l	d2-d6/a1-a3,-(a7)
-		lea	term(a6),a1
 		st	d6
-		bsr	expression0
-		movem.l	(a7)+,d2-d6/a1-a3
-		unlk	a6
-		rts
-****************************************************************
-* check_expression - 式をチェックする．コマンドの実行やコマンド置換は行わない
-*
-* CALL
-*      A0     式の単語並びの先頭アドレス
-*      D7.W   式の単語数
-*
-* RETURN
-*      A0     残った単語並びの先頭アドレス
-*      D0.L   エラーが無ければ 0．さもなくば 1
-*      D7.W   残った単語の数
-*      CCR    TST.L D0
-****************************************************************
-.xdef check_expression
+		bsr	alloc_term
+		bne	expression_return
 
-check_expression:
-		link	a6,#term
-		movem.l	d2-d6/a1-a3,-(a7)
-		lea	term(a6),a1
-		sf	d6
-		bsr	expression0
-		movem.l	(a7)+,d2-d6/a1-a3
-		unlk	a6
-		rts
-****************************************************************
-* expression0 - 式を評価し，結果の文字列と数値を得る
-*
-* CALL
-*      A0     式の単語並びの先頭アドレス
-*      A1     式の値を格納するバッファのアドレス
-*      D6.B   コンディション
-*      D7.W   式の単語数
-*
-* RETURN
-*      A0     残った単語並びの先頭アドレス
-*      D0.L   エラーが無ければ 0．さもなくば 1
-*      D1.L   式の値
-*      D7.W   残った単語の数
-*      CCR    TST.L D0
-*      D2-D6/A2-A3  破壊
-****************************************************************
-filebuf = -54
-dfbuf = filebuf
-
-expression0:
-		link	a6,#dfbuf
-		bsr	sub_expression
+		bsr	subexpression
 		bne	expression_done
 
 		bsr	expr_atoi
@@ -218,10 +145,12 @@ expression0:
 
 		bsr	expr_itoa
 expression_done:
-		unlk	a6
+		bsr	free_term
+expression_return:
+		movem.l	(a7)+,d2-d6/a1-a3
 		rts
 ****************************************************************
-* sub_expression - 式を評価する
+* subexpression - 式を評価する
 *
 * CALL
 *      A0     式の単語並びの先頭アドレス
@@ -236,7 +165,7 @@ expression_done:
 *      CCR    TST.L D0
 *      D2-D6/A2-A3  破壊
 ****************************************************************
-sub_expression:
+subexpression:
 		moveq	#0,d5
 ****************************************************************
 comma:
@@ -246,15 +175,11 @@ comma_loop:
 		cmp.b	#OP_COMMA,d5
 		bne	success
 
-		lea	triterm(pc),a2
-		bsr	dual_term
+		bsr	next_token			*  演算子をスキップする
+
+		bsr	triterm				*  右項を得る
 		bne	return
 
-		tst.b	d6
-		beq	comma_loop
-
-		move.l	d2,d1
-		bsr	expr_itoa
 		bra	comma_loop
 ****************************************************************
 triterm:
@@ -264,65 +189,50 @@ triterm:
 		cmp.b	#OP_QUESTION,d5
 		bne	success
 
-		bsr	expr_atoi		*  条件項を数値に変換する
+		bsr	next_token			*  演算子 ? をスキップする
+
+		bsr	expr_atoi			*  条件項を数値に変換する
 		bne	return
 
-		bsr	next_token		*  演算子 ? をスキップする
-		tst.b	d6
-		bne	triterm_select
-
-		bsr	triterm_skip_term	*  第一項をスキップする
-		bra	triterm_true_1
-
-triterm_select:
-		tst.l	d1			*  条件項は真か偽か
+		tst.l	d1				*  条件項は真か偽か
 		beq	triterm_false
-triterm_true:
-		bsr	triterm			*  第一項を得る
-		bne	return
 
-		bsr	expr_atoi
-triterm_true_1:
+		bsr	triterm				*  第一項を得る
 		bne	return
 
 		bsr	triterm_skip_colon
 		bne	return
 
-		bra	triterm_skip_term	*  第二項をスキップする
+		bra	triterm_skip_term		*  第二項をスキップする
 
 triterm_false:
-		bsr	triterm_skip_term	*  第一項をスキップする
+		bsr	triterm_skip_term		*  第一項をスキップする
 		bne	return
 
 		bsr	triterm_skip_colon
 		bne	return
 
-		bsr	triterm			*  第二項を得る
-		bne	return
-
-		bra	expr_atoi
+		bra	triterm				*  第二項を得る
 
 
 triterm_skip_colon:
 		cmp.b	#OP_COLON,d5
 		bne	expression_syntax_error
 
-		bsr	next_token		*  演算子 : をスキップする
+		bsr	next_token			*  演算子 : をスキップする
 		bra	success
 
 
 triterm_skip_term:
-		link	a6,#term
 		movem.l	d1/d6/a1,-(a7)
-		lea	term(a6),a1
-		sf	d6
-		bsr	triterm			*  項をスキップする
+		bsr	alloc_term
 		bne	triterm_skip_term_return
 
-		bsr	expr_atoi
+		sf	d6
+		bsr	triterm				*  項をスキップする
+		bsr	free_term
 triterm_skip_term_return:
 		movem.l	(a7)+,d1/d6/a1
-		unlk	a6
 		rts
 ****************************************************************
 bool_or:
@@ -477,23 +387,21 @@ do_compare_string:
 		tst.b	d6
 		beq	do_compare_ignore
 
-		link	a6,#term2
-		lea	term(a6),a3
-		exg	a1,a3
+		movea.l	a1,a3
+		bsr	alloc_term
+		bne	return
+
 		movem.l	d1/a2-a3,-(a7)
 		bsr	compare_less_or_greater
 		movem.l	(a7)+,d1/a2-a3
-		exg	a1,a3
 		bne	compare_string_error1
 
-		exg	a0,a1
-		exg	a1,a3
+		exg	a0,a3
 		moveq	#0,d0
 		jsr	(a2)
-		exg	a1,a3
-		exg	a0,a1
-		unlk	a6
-		tst.l	d0
+		exg	a0,a3
+		bsr	free_term
+		movea.l	a3,a1
 		bmi	expr_error
 		bne	do_compare_string_1
 
@@ -507,7 +415,8 @@ do_compare_ignore:
 		bra	compare_string_loop
 
 compare_string_error1:
-		unlk	a6
+		bsr	free_term
+		movea.l	a3,a1
 		rts
 ****************************************************************
 compare_less_or_greater:
@@ -755,7 +664,7 @@ primary:
 		bne	primary_not_expression
 		*{
 			addq.l	#2,a0
-			bsr	sub_expression
+			bsr	subexpression
 			bne	return
 
 			subq.w	#1,d7
@@ -828,41 +737,47 @@ primary_not_command:
 		cmp.b	#'t',d0
 		beq	primary_isatty
 
+		moveq	#6,d2
+		cmp.b	#'i',d0
+		beq	primary_device_io
+
+		moveq	#7,d2
+		cmp.b	#'o',d0
+		beq	primary_device_io
+
 		sf	d3
 		cmp.b	#'b',d0
 		beq	primary_devicetype
+
+		moveq	#MODEVAL_DIR,d2
+		cmp.b	#'d',d0				*  -d : csh
+		beq	primary_file_mode
+
+		moveq	#MODEVAL_ARC,d2
+		cmp.b	#'a',d0				*  -a : fish
+		beq	primary_file_mode
+
+		moveq	#MODEVAL_HID,d2
+		cmp.b	#'h',d0				*  -h : fish
+		beq	primary_file_mode
+
+		moveq	#MODEVAL_SYS,d2
+		cmp.b	#'s',d0				*  -s : fish
+		beq	primary_file_mode
+
+		moveq	#MODEVAL_VOL,d2
+		cmp.b	#'v',d0				*  -v : fish
+		beq	primary_file_mode
 
 		st	d3
 		cmp.b	#'c',d0
 		beq	primary_devicetype
 
-		sf	d3
-		moveq	#FILEMODE_DIRECTORY,d2
-		cmp.b	#'d',d0				*  -d : csh
-		beq	primary_file_mode
-
-		moveq	#FILEMODE_ARCHIVE,d2
-		cmp.b	#'a',d0				*  -a : fish
-		beq	primary_file_mode
-
-		moveq	#FILEMODE_HIDDEN,d2
-		cmp.b	#'h',d0				*  -h : fish
-		beq	primary_file_mode
-
-		moveq	#FILEMODE_SYSTEM,d2
-		cmp.b	#'s',d0				*  -s : fish
-		beq	primary_file_mode
-
-		moveq	#FILEMODE_VOLUME,d2
-		cmp.b	#'v',d0				*  -v : fish
-		beq	primary_file_mode
-
-		st	d3
-		moveq	#FILEMODE_READONLY,d2
+		moveq	#MODEVAL_RDO,d2
 		cmp.b	#'w',d0				*  -w : csh
 		beq	primary_file_mode
 
-		moveq	#FILEMODE_SYSTEM+FILEMODE_VOLUME+FILEMODE_DIRECTORY,d2
+		moveq	#MODEVAL_VOL+MODEVAL_DIR,d2
 		cmp.b	#'f',d0				*  -f : csh
 		beq	primary_file_mode
 
@@ -875,7 +790,7 @@ primary_file_mode:
 			bpl	return
 
 			moveq	#0,d1
-			move.b	filebuf+21(a6),d1
+			move.b	tmpstatbuf+ST_MODE,d1
 			and.b	d2,d1
 switchable_booltoa:
 			tst.b	d3
@@ -888,8 +803,32 @@ primary_file_zero:
 			bsr	stat_operand
 			bpl	return
 
-			tst.l	filebuf+26(a6)
+			tst.l	tmpstatbuf+ST_SIZE
 			bra	eq1_ne0
+
+primary_device_io:
+			bsr	next_token__expand
+			bne	expr_error
+
+			tst.b	d6
+			beq	store_0
+
+			exg	a0,a1
+			moveq	#2,d0
+			bsr	tfopen
+			exg	a0,a1
+			tst.l	d0
+			bmi	store_0
+
+			exg	d0,d2
+			move.w	d2,-(a7)
+			move.w	d0,-(a7)
+			DOS	_IOCTRL
+			addq.l	#4,a7
+			move.l	d0,d1
+			move.w	d2,d0
+			bsr	fclose
+			bra	booltoa
 
 primary_devicetype:
 			bsr	next_token__expand
@@ -952,7 +891,7 @@ primary_not_file_examination:
 			bsr	stat_operand
 			bpl	return
 
-			move.l	filebuf+26(a6),d1
+			move.l	tmpstatbuf+ST_SIZE,d1
 			bra	expr_itoa
 		*}
 
@@ -969,9 +908,9 @@ primary_not_sizeof:
 			bsr	stat_operand
 			bpl	return
 
-			move.w	filebuf+24(a6),d1
+			move.w	tmpstatbuf+ST_DATE,d1
 			swap	d1
-			move.w	filebuf+22(a6),d1
+			move.w	tmpstatbuf+ST_TIME,d1
 			bra	expr_itoa
 		*}
 
@@ -1014,10 +953,12 @@ primary_freeof_1:
 			move.b	d1,d0
 			bsr	toupper
 			sub.b	#'@',d0
-			pea	dfbuf(a6)
+			link	a6,#-DFBUFSIZE
+			pea	-DFBUFSIZE(a6)
 			move.w	d0,-(a7)
 			DOS	_DSKFRE
 			addq.l	#6,a7
+			unlk	a6
 			move.l	d0,d1
 			bmi	store_0
 
@@ -1099,7 +1040,7 @@ stat_operand:
 
 		movem.l	a0-a1,-(a7)
 		movea.l	a1,a0
-		lea	filebuf(a6),a1
+		lea	tmpstatbuf,a1
 		bsr	stat
 		movem.l	(a7)+,a0-a1
 		bmi	store_0
@@ -1154,24 +1095,26 @@ next_token:
 *      その他は破壊
 ****************************************************************
 dual_term:
-		bsr	expr_atoi		* 左項を数値に変換する
+		bsr	expr_atoi			*  左項を数値に変換する
 		bne	return
 
-		bsr	next_token		* 演算子をスキップする
+		bsr	next_token			*  演算子をスキップする
 
 		movem.l	d1/a1,-(a7)
-		link	a6,#term
-		lea	term(a6),a1
-		jsr	(a2)			* 右項を得る
-		bne	dual_term_2
+		bsr	alloc_term
+		bne	dual_term_return
 
-		bsr	expr_atoi		* 右項を数値に変換する
-		bne	dual_term_2
+		jsr	(a2)				*  右項を得る
+		bne	dual_term_done
+
+		bsr	expr_atoi			*  右項を数値に変換する
+		bne	dual_term_done
 
 		move.l	d1,d2
 		moveq	#0,d0
-dual_term_2:
-		unlk	a6
+dual_term_done:
+		bsr	free_term
+dual_term_return:
 		movem.l	(a7)+,d1/a1
 		rts
 ****************************************************************
@@ -1211,85 +1154,138 @@ expr_atoi_minus:
 		bra	expr_atoi_return
 ****************
 expr_atou:
-		moveq	#0,d0
 		move.b	(a2)+,d0
 		bsr	isdigit
 		bne	expression_syntax_error
 
-		moveq	#0,d1
+		exg	a0,a2
 		cmp.b	#'0',d0
 		bne	expr_atou_decimal
 
-		move.b	(a2)+,d0
+		move.b	(a0)+,d0
 		cmp.b	#'x',d0
 		beq	expr_atou_hexa_decimal
 
 		cmp.b	#'X',d0
 		beq	expr_atou_hexa_decimal
-expr_atou_octal:
-		sub.b	#'0',d0
-		blo	expr_atou_1
 
-		cmp.b	#7,d0
-		bhi	expr_atou_1
-
-		lsl.l	#3,d1
-		add.l	d0,d1
-		move.b	(a2)+,d0
-		bra	expr_atou_octal
+		subq.l	#1,a0
+		moveq	#-1,d0
+		bsr	scan_octal
+		bra	expr_atou_1
 
 expr_atou_decimal:
-		sub.b	#'0',d0
-		blo	expr_atou_1
+		subq.l	#1,a0
+		moveq	#-1,d0
+		bsr	scan_decimal
+		bra	expr_atou_1
 
-		cmp.b	#9,d0
-		bhi	expr_atou_1
+expr_atou_hexa_decimal:
+		moveq	#-1,d0
+		bsr	scan_hexa_decimal
+expr_atou_1:
+		move.l	d0,d1
+		exg	a0,a2
+		tst.b	(a2)
+		bne	expression_syntax_error
 
-		move.l	d1,d2
+		bra	success
+****************************************************************
+.xdef scan_octal
+
+scan_octal:
+		movem.l	d1-d2,-(a7)
+		move.w	d0,d2
+		moveq	#0,d0
+		moveq	#0,d1
+scan_octal_loop:
+		move.b	(a0),d1
+		sub.b	#'0',d1
+		blo	scan_octal_done
+
+		cmp.b	#7,d1
+		bhi	scan_octal_done
+
+		lsl.l	#3,d0
+		add.l	d1,d0
+		addq.l	#1,a0
+		dbra	d2,scan_octal_loop
+scan_octal_done:
+		movem.l	(a7)+,d1-d2
+		rts
+****************************************************************
+.xdef scan_decimal
+
+scan_decimal:
+		movem.l	d1-d3,-(a7)
+		move.w	d0,d3
+		moveq	#0,d0
+		moveq	#0,d1
+scan_decimal_loop:
+		move.b	(a0),d1
+		sub.b	#'0',d1
+		blo	scan_decimal_done
+
+		cmp.b	#9,d1
+		bhi	scan_decimal_done
+
+		move.l	d0,d2
 		swap	d2
 		mulu	#10,d2
 		swap	d2
 		clr.w	d2
-		mulu	#10,d1
-		add.l	d2,d1
-		add.l	d0,d1
-		move.b	(a2)+,d0
-		bra	expr_atou_decimal
+		mulu	#10,d0
+		add.l	d2,d0
+		add.l	d1,d0
+		addq.l	#1,a0
+		dbra	d3,scan_decimal_loop
+scan_decimal_done:
+		movem.l	(a7)+,d1-d3
+		rts
+****************************************************************
+.xdef scan_hexa_decimal
 
-expr_atou_hexa_decimal:
-		move.b	(a2)+,d0
+scan_hexa_decimal:
+		movem.l	d1-d2,-(a7)
+		move.w	d0,d2
+		moveq	#0,d0
+		moveq	#0,d1
+scan_hexa_decimal_loop:
+		move.b	(a0),d0
 		sub.b	#'0',d0
-		blo	expr_atou_1
+		blo	scan_hexa_decimal_done
 
 		cmp.b	#9,d0
-		blo	expr_atou_hexa_decimal_1
+		blo	scan_hexa_decimal_1
 
 		add.b	#'0',d0
 		bsr	toupper
 		cmp.b	#'A',d0
-		blo	expr_atou_1
+		blo	scan_hexa_decimal_done
 
 		cmp.b	#'F',d0
-		bhi	expr_atou_1
+		bhi	scan_hexa_decimal_done
 
 		sub.b	#'A'-10,d0
-expr_atou_hexa_decimal_1:
+scan_hexa_decimal_1:
 		lsl.l	#4,d1
 		add.l	d0,d1
-		bra	expr_atou_hexa_decimal
-
-expr_atou_1:
-		tst.b	-(a2)
-		bne	expression_syntax_error
-
-		bra	success
+		addq.l	#1,a0
+		dbra	d2,scan_hexa_decimal_loop
+scan_hexa_decimal_done:
+		move.l	d1,d0
+		movem.l	(a7)+,d1-d2
+		rts
 ****************************************************************
 .xdef expr_itoa
 
 expr_itoa:
 		move.l	d1,d0
 		exg	a0,a1
+		move.l	d1,-(a7)
+		moveq	#0,d1				*  正数に + やスペースはつけない
 		bsr	itoa
+		move.l	(a7)+,d1
 		exg	a0,a1
 		bra	success
 ****************************************************************
@@ -1336,6 +1332,30 @@ expr_error:
 		moveq	#1,d0
 		rts
 ****************************************************************
+alloc_term:
+		move.l	#termsize,d0
+		bsr	xmalloct
+		beq	could_not_alloc_term
+
+		movea.l	d0,a1
+		moveq	#0,d0
+		rts
+
+could_not_alloc_term:
+		move.l	a0,-(a7)
+		lea	msg_cannot_eval_expression,a0
+		bsr	cannot_because_no_memory
+		movea.l	(a7)+,a0
+		tst.l	d0
+		rts
+****************************************************************
+free_term:
+		move.l	d0,-(a7)
+		move.l	a1,d0
+		bsr	freet
+		move.l	(a7)+,d0
+		rts
+****************************************************************
 .data
 
 operator_table:
@@ -1373,6 +1393,7 @@ token_strlen:	dc.b	'strlen',0
 
 msg_divide_by_0:		dc.b	'0での除算があります',0
 msg_mod_by_0:			dc.b	'0での剰余があります',0
+msg_cannot_eval_expression:	dc.b	'式を評価できません',0
 
 .end
 

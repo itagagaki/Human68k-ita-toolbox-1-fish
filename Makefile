@@ -9,14 +9,16 @@ TOP       = A:\home\fish
 DESTDIR   = A:\bin
 BACKUPDIR = B:\fish
 
-ARCHIVE_NAME  = FISH022.Lzh
+ARCHIVE_NAME  = FISH030.Lzh
 
 ARCHIVE_FILES = \
+	$(TOP)\doc\MANIFEST \
 	$(TOP)\doc\README \
 	$(TOP)\doc\NOTICE \
 	A:\home\newbin\DIRECTORY \
 	$(TOP)\doc\CHANGES \
-	$(TOP)\doc\FISH022.DOC \
+	$(TOP)\doc\FAQ \
+	$(TOP)\doc\FISH030.DOC \
 	$(TOP)\prg\fish.x \
 	$(TOP)\doc\Pfishrc \
 	$(TOP)\doc\Plogin \
@@ -58,6 +60,7 @@ backup::
 	@$(BACKUP) $(TOP)\prg\fishg.x $(BACKUPDIR)\prg
 	@$(BACKUP) $(TOP)\lib\Makefile $(BACKUPDIR)\lib
 	@$(BACKUP) $(TOP)\lib\*.s $(BACKUPDIR)\lib
+	@$(BACKUP) $(TOP)\extlib\*.Lzh $(BACKUPDIR)\extlib
 	@$(BACKUP) $(TOP)\include\*.* $(BACKUPDIR)\include
 	@$(BACKUP) $(TOP)\doc\*.* $(BACKUPDIR)\doc
 	@$(BACKUP) $(TOP)\memo\*.* $(BACKUPDIR)\memo

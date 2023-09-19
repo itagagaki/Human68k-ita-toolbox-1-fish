@@ -69,7 +69,7 @@ cmd_setenv_set:
 		bsr	strcmp
 		bne	cmd_setenv_success_return
 
-		bsr	inport_path
+		jsr	inport_path
 		bne	cmd_setenv_return
 
 		bsr	rehash

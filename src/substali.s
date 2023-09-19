@@ -6,7 +6,6 @@
 .xref strmove
 .xref strfor1
 .xref strforn
-.xref copy_wordlist
 .xref skip_paren
 .xref is_word_separator
 .xref find_var
@@ -138,55 +137,38 @@ subst_alias_loop:
 		tst.b	1(a0)
 		beq	dup_args			* サブシェルならば置換しない
 subst_alias_1:
-	*
-	*  コマンド名が '.' ならば、コマンド名と引数を単にコピーする
-	*
-		cmpi.b	#'.',(a0)
-		bne	recursion_ok
+		cmpi.b	#'\',(a0)			*  コマンド名が '\' を含むなら
+		beq	dup_args			*  別名置換しない
 
-		tst.b	1(a0)
-		beq	dup_args
-recursion_ok:
-	*
-	*  単語 '.' を加えちゃう
-	*  これは、「続くコマンドはこれ以上別名置換しない」という印
-	*
-		subq.w	#2,d1
-		bcs	subst_alias_over
-
-		move.b	#'.',(a1)+
-		move.b	#' ',(a1)+
-	*
-	*  別名かどうかを調べる
-	*
-		movea.l	a1,a2				* A2 : バッファ・ポインタ
-		movea.l	a0,a1				* A1 : コマンドの先頭
+		move.l	a1,-(a7)			*  バッファ・ポインタを退避
+		movea.l	a0,a1				*  A1 : コマンドの先頭
 		movea.l	alias(a5),a0
-		bsr	find_var			* 別名かどうかを調べる
-		movea.l	a1,a0				* A0 : コマンドの先頭
-		movea.l	a2,a1				* A1 : バッファ・ポインタ
-		beq	dup_args			* 別名ではない .. 単にコピーする
+		bsr	find_var			*  別名かどうかを調べる
+		movea.l	a1,a0				*  A0 : コマンドの先頭
+		movea.l	(a7)+,a1			*  A1 : バッファ・ポインタ
+		beq	dup_args			*  別名ではない .. 置換しない
 	*
 	*  別名を展開する
 	*
-		movea.l	a0,a2				* A2 : コマンドの先頭
+		movea.l	a0,a2				*  A2 : コマンドの先頭
 		movea.l	d0,a0
-		addq.l	#2,a0				* このエントリのバイト数：とばす
-		move.w	(a0)+,d4			* D4.W : このエントリの単語数
-		bsr	strfor1				* エントリ名をとばす
+		addq.l	#2,a0				*  このエントリのバイト数：とばす
+		move.w	(a0)+,d4			*  D4.W : このエントリの単語数
+		bsr	strfor1				*  エントリ名をとばす
 		*
-		* ここで、
-		*      A0     本名定義単語並び
+		*  ここで
+		*      A0     実コマンド単語並び
 		*      A1     展開バッファ・ポインタ
 		*      A2     別名参照単語並び
 		*      D1.W   展開バッファの容量
 		*      D2.W   別名参照の単語数
-		*      D4.W   本名の単語数
+		*      D4.W   実コマンドの単語数
 		*
 		bset	#0,d7				* 「置換した」フラグを立てる
+		moveq	#0,d6				* D6 : 「!置換した」フラグ
 	*
-	*  別名と本名が同名でなければ、更に置換されることを許すために
-	*  先に加えた単語 '.' を削除する
+	*  別名と実名が同名でなければ、更に置換されることを許すために
+	*  先に加えた '\' を削除する
 	*
 		tst.w	d4
 		beq	allow_more_alias
@@ -206,11 +188,17 @@ recursion_ok:
 		bsr	is_word_separator
 		beq	not_allow_more_alias
 allow_more_alias:
-		subq.l	#2,a1
-		addq.w	#2,d1
 		bset	#1,d7				* 「再帰の可能性あり」フラグを立てる
+		bra	expand_alias_start
+
 not_allow_more_alias:
-		moveq	#0,d6				* D6 : 「!置換した」フラグ
+	*
+	*  これ以上は置換しない .. '\' を加える
+	*
+		subq.w	#1,d1
+		bcs	subst_alias_over
+
+		move.b	#'\',(a1)+
 		bra	expand_alias_start
 
 expand_alias_loop:
@@ -273,43 +261,5 @@ subst_alias_over:
 		bsr	too_long_line
 		bra	subst_alias_return
 ****************************************************************
-.xdef remove_dot_word
-
-remove_dot_word:
-		movem.l	d2-d3/d5/a0-a1,-(a7)
-		move.w	d0,d3				* D3.W : 出力単語数
-		move.w	d0,d5				* D5.W : 単語数カウンタ
-remove_dot_loop:
-		bsr	count_command_word
-		tst.w	d2
-		beq	remove_dot_skip_args
-
-		cmpi.b	#'.',(a0)
-		bne	remove_dot_skip_args
-
-		tst.b	1(a0)
-		bne	remove_dot_skip_args
-
-		lea	2(a0),a1
-		subq.w	#1,d5
-		move.w	d5,d0
-		bsr	copy_wordlist			* '.' を削除
-		subq.w	#1,d3
-		subq.w	#1,d2
-remove_dot_skip_args:
-		move.w	d2,d0
-		bsr	strforn
-		sub.w	d2,d5
-		beq	remove_dot_done
-
-		bsr	strfor1
-		subq.w	#1,d5
-		bra	remove_dot_loop
-
-remove_dot_done:
-		move.w	d3,d0
-		movem.l	(a7)+,d2-d3/d5/a0-a1
-		rts
-
 .end
 

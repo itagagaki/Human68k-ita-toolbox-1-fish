@@ -16,8 +16,7 @@
 .xref subst_var_wordlist
 .xref expand_wordlist
 .xref set_svar
-.xref expression2
-.xref check_expression
+.xref expression
 .xref find_history
 .xref delete_old_history
 .xref xmallocp
@@ -43,6 +42,7 @@
 .xref current_eventno
 .xref loop_top_eventno
 .xref keep_loop
+.xref loop_fail
 
 *****************************************************************
 * foreach
@@ -174,7 +174,7 @@ state_while:
 		bsr	while_foreach_init
 		bne	return
 
-		bsr	expression2
+		bsr	expression
 		bne	return
 
 		tst.w	d7
@@ -235,7 +235,11 @@ start_read_loop:
 		move.l	current_eventno(a5),d0
 		subq.l	#1,d0
 		move.l	d0,loop_top_eventno(a5)
+		tst.w	loop_level(a5)
+		beq	success_return
+
 		st	keep_loop(a5)
+		sf	loop_fail(a5)
 		bra	success_return
 
 start_read_loop_source:
@@ -294,6 +298,9 @@ state_end_terminal:
 		tst.l	in_history_ptr(a5)
 		bne	state_end_terminal_static
 
+		tst.b	loop_fail(a5)
+		bne	loop_too_large
+
 		move.l	loop_top_eventno(a5),d0
 		bsr	find_history
 		beq	loop_too_large
@@ -318,7 +325,7 @@ state_end_continue_reading:
 
 loop_too_large:
 		bsr	abort_loops
-		lea	msg_cannot_foreach,a0
+		lea	msg_cannot_while_foreach,a0
 		bra	cannot_because_no_memory
 *****************************************************************
 .xdef loop_stack_p
@@ -413,7 +420,7 @@ clear_loop_stack:
 .data
 
 msg_too_many_loops:		dc.b	'while/foreach のネストが深過ぎます',0
-msg_not_in_while_or_foreach:	dc.b	'while/foreach は始まっていません',0
+msg_not_in_while_or_foreach:	dc.b	'while/foreach は開始していません',0
 msg_bad_varname:		dc.b	'変数名が無効です',0
 msg_word_not_parened:		dc.b	'単語並びが()で囲われていません',0
 msg_cannot_while_foreach:	dc.b	'while/'

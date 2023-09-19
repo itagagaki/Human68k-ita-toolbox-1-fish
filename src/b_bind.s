@@ -525,8 +525,6 @@ bind_usage:
 ****************************************************************
 .data
 
-.xdef msg_key_macro_space
-
 .even
 key_function_name_table:
 		dc.l	name_self_insert

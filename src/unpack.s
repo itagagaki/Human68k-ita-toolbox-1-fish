@@ -12,7 +12,7 @@
 .xref no_close_brace
 .xref open_passwd
 .xref fgetpwnam
-.xref fclose
+.xref close_tmpfd
 .xref word_home
 .xref find_shellvar
 .xref copyhead
@@ -24,6 +24,8 @@
 .xref too_many_words
 
 .xref tmpline
+
+.xref tmpfd
 
 .text
 
@@ -305,13 +307,15 @@ expand_tilde_home:
 		bsr	open_passwd
 		bmi	expand_tilde_unknown_user	*  パスワード・ファイルが無い
 
-		move.w	d0,d4				*  D4.W : パスワード・ファイルのファイル・ハンドル
-		move.l	a1,-(a7)
+		move.l	d0,tmpfd(a5)
+		movem.l	a0-a1,-(a7)
 		movea.l	a0,a1
 		lea	pwd_buf(a6),a0
 		bsr	fgetpwnam
-		movea.l	(a7)+,a1
-		bne	find_user_fail
+		movem.l	(a7)+,a0-a1
+		bsr	close_tmpfd
+		tst.l	d0
+		bne	expand_tilde_unknown_user
 
 		lea	pwd_buf(a6),a0
 		lea	PW_DIR(a0),a0
@@ -382,9 +386,6 @@ expand_tilde_too_long:
 		moveq	#-3,d0
 		bra	expand_tilde_return
 
-find_user_fail:
-		move.w	d4,d0
-		bsr	fclose
 expand_tilde_unknown_user:
 		tst.b	d2
 		beq	expand_tilde_passwd_error_1

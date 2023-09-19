@@ -3,33 +3,24 @@
 *
 *  Itagaki Fumihiko 14-Oct-90  Create.
 
-.include ../src/fish.h
-
 .xref atou
-.xref strfor1
 .xref wordlistlen
 .xref copy_wordlist
 .xref xmalloc
-.xref strip_quotes
-.xref expand_a_word
 .xref free_current_argbuf
 .xref DoSimpleCommand
 .xref too_few_args
 .xref perror_command_name
 .xref pre_perror
-.xref enputs
+.xref enputs1
 .xref usage
 .xref cannot_because_no_memory
 .xref msg_badly_formed_number
 .xref msg_too_large_number
-.xref msg_ambiguous
-.xref msg_too_long_word
 
 .xref argc
 .xref simple_args
 .xref current_argbuf
-
-wordbuf = -(((MAXWORDLEN+1)+1)>>1<<1)
 
 .text
 
@@ -69,35 +60,24 @@ alloc_new_argbuf_fail:
 
 cmd_repeat:
 		move.w	d0,d2
-		cmp.w	#2,d2
-		blo	repeat_too_few_args
+		subq.w	#1,d2
+		bls	repeat_too_few_args
 
 		movea.l	a0,a2
-		link	a6,#wordbuf
-		lea	wordbuf(a6),a1
-		move.w	#MAXWORDLEN,d1
-		bsr	expand_a_word
-		bmi	bad_times_arg
-
-		movea.l	a1,a0
 		lea	msg_badly_formed_number,a1
 		bsr	atou
 		bmi	bad_times
 
-		tst.b	(a0)
+		tst.b	(a0)+
 		bne	bad_times
 
 		lea	msg_too_large_number,a1
 		tst.l	d0
 		bne	bad_times
 
-		unlk	a6
 		move.l	d1,d3
 		beq	return_0
 
-		movea.l	a2,a0
-		bsr	strfor1
-		subq.w	#1,d2
 		move.w	d2,d1
 		bsr	alloc_new_argbuf
 		bmi	cannot_repeat
@@ -115,34 +95,17 @@ loop:
 		subq.l	#1,d3
 		bne	loop
 
-		bsr	free_current_argbuf
+		jsr	free_current_argbuf
 return_0:
 		moveq	#0,d0
 		rts
 ****************
-bad_times_arg:
-		cmp.l	#-4,d0
-		beq	times_arg_error_return
-
-		lea	msg_too_long_word,a1
-		cmp.l	#-2,d0
-		beq	bad_times
-
-		cmp.l	#-3,d0
-		beq	bad_times
-
-		lea	msg_ambiguous,a1
 bad_times:
 		bsr	perror_command_name
 		movea.l	a2,a0
-		bsr	strip_quotes
 		bsr	pre_perror
 		movea.l	a1,a0
-		bsr	enputs
-times_arg_error_return:
-		unlk	a6
-		moveq	#1,d0
-		rts
+		bra	enputs1
 ****************
 repeat_too_few_args:
 		bsr	too_few_args

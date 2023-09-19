@@ -4,6 +4,7 @@
 .include doscall.h
 .include error.h
 .include chrcode.h
+.include stat.h
 
 .xref find_shellvar
 .xref strfor1
@@ -28,10 +29,10 @@
 *      D0.L   ¬Œ÷‚µ‚½‚È‚ç‚Î0
 *      CCR    TST.L D0
 *****************************************************************
-filebuf = -(((53)+1)>>1<<1)
+statbuf = -STATBUFSIZE
 
 tmpname:
-		link	a6,#filebuf
+		link	a6,#statbuf
 		movem.l	d1-d2/a1-a4,-(a7)
 		movea.l	a0,a2
 		lea	word_temp,a0
@@ -85,9 +86,9 @@ put_pid_loop:
 		move.b	(a3,d1.l),(a1)+
 		dbra	d2,put_pid_loop
 scanloop:
-		move.w	#$ff,-(a7)
+		move.w	#MODEVAL_ALL,-(a7)
 		move.l	a2,-(a7)
-		pea	filebuf(a6)
+		pea	statbuf(a6)
 		DOS	_FILES
 		lea	10(a7),a7
 		tst.l	d0

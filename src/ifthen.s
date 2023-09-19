@@ -9,7 +9,7 @@
 .xref strfor1
 .xref skip_paren
 .xref copy_wordlist
-.xref expression2
+.xref expression
 .xref subst_var_wordlist
 .xref do_line
 .xref too_deep_statement_nest
@@ -92,7 +92,7 @@ state_if:
 		bmi	syntax_error
 
 		move.w	d0,d7
-		bsr	expression2
+		bsr	expression
 		bne	return				*  D0.L == 1
 
 		tst.w	d7

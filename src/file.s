@@ -49,7 +49,7 @@ create_normal_file:
 .xdef fclosex
 
 fclosex:
-		tst.w	d0
+		tst.l	d0
 		bpl	fclose
 
 		rts
@@ -57,10 +57,10 @@ fclosex:
 .xdef redirect
 
 redirect:
-		subq.l	#2,a7
+		subq.l	#4,a7
 		move.w	d0,-(a7)		* リダイレクトされるfdの
 		DOS	_DUP			* コピーを
-		move.w	d0,2(a7)		* 取っておく
+		move.l	d0,2(a7)		* 取っておく
 		bmi	cannot_redirect
 
 		move.w	d1,-(a7)		* リダイレクト先にリダイレクトするファイルを
@@ -68,13 +68,13 @@ redirect:
 		addq.l	#2,a7
 cannot_redirect:
 		addq.l	#2,a7
-		move.w	(a7)+,d0
+		move.l	(a7)+,d0
 		rts
 *****************************************************************
 .xdef unredirect
 
 unredirect:
-		tst.w	d1
+		tst.l	d1
 		bmi	unredirect_done
 
 		move.w	d0,-(a7)

@@ -8,7 +8,6 @@
 .xref count_time
 .xref report_time
 .xref DoSimpleCommand
-.xref msg_total_time
 
 .xref shell_timer_high
 .xref shell_timer_low
@@ -46,7 +45,7 @@ report_shell_time:
 		move.l	shell_timer_high(a5),d3
 		move.l	shell_timer_low(a5),d2
 		bsr	count_time
-		lea	msg_total_time(pc),a0
+		suba.l	a0,a0
 		bsr	report_time
 		bra	cmd_time_done
 

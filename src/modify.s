@@ -21,7 +21,7 @@
 .xref copy_wordlist
 .xref hide_escape
 .xref atou
-.xref malloc
+.xref xmalloc
 .xref eputs
 .xref ecputc
 .xref enputs
@@ -678,7 +678,7 @@ modify_dup:
 		bne	modify_dup_fail_1
 
 		move.l	#MAXWORDLISTSIZE,d0
-		bsr	malloc
+		bsr	xmalloc
 		beq	modify_dup_fail
 
 		bclr	#MODIFYSTATBIT_NOMEM,d5

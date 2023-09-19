@@ -17,7 +17,7 @@ LKFLAG_STRIP = -x
 
 VPATH   = ../src
 INCLUDE = ../include
-EXTLIBS = ../lib/ita.l
+EXTLIBS = ../lib/ita.l ../extlib/Extmalloc.a
 
 ###
 
@@ -31,7 +31,7 @@ OBJS_BUILTIN2 = b_set.o b_shift.o b_source.o b_time.o b_unset.o \
                 b_unsetenv.o b_which.o
 
 OBJS_MISC     = chkwild.o dupenv.o echo.o error.o expr.o file.o f_getenv.o \
-                getcwdx.o getline.o misc.o hash.o passwd.o quote.o \
+                getcwdx.o getline.o malloc.o misc.o hash.o passwd.o quote.o \
                 skippar.o tmpfile.o wordlist.o
 
 OBJS_SUBST    = enterhis.o expwords.o glob.o modify.o substali.o substcom.o \
@@ -40,7 +40,7 @@ OBJS_SUBST    = enterhis.o expwords.o glob.o modify.o substali.o substcom.o \
 OBJS_VAR      = f_setenv.o findvar.o flagvar.o printvar.o setvar.o \
                 setsvar.o svartou.o
 
-OBJS_STATE    = ifthen.o switchcase.o foreach.o
+OBJS_STATE    = ifthen.o switchcase.o foreach.o function.o
 
 OBJS_STRING   = qstrchr.o scanch2.o skipvnam.o jstrchr.o stricmp.o strmem.o \
                 strpcmp.o
@@ -100,22 +100,27 @@ clean::
 
 fishg.x: $(FILES) $(EXTLIBS)
 	$(LK) -o $@ $(FILES) $(EXTLIBS)
+	grep bsssize fishg.map
 
 clean::
 	$(RM) fishg.x fishg.map
 
 #
-b_ctty.o b_dirs.o b_eval.o b_repeat.o b_set.o b_source.o main.o expr.o \
-getline.o glob.o hash.o ifthen.o modify.o quote.o substcom.o substhis.o \
+fish_loader.o main.o b_ctty.o b_dirs.o b_eval.o b_source.o expr.o \
+getline.o glob.o ifthen.o malloc.o modify.o substcom.o substhis.o \
 substvar.o switchcase.o unpack.o wordlist.o : fish.h
 
-main.o foreach.o getline.o b_goto.o : source.h
+main.o foreach.o getline.o b_goto.o substvar.o : source.h
 
-main.o enterhis.o substhis.o b_history.o getline.o : history.h
+main.o function.o : function.h
+
+main.o function.o enterhis.o substhis.o b_history.o getline.o : history.h
 
 main.o foreach.o b_goto.o : loop.h
 
 modify.o substhis.o substvar.o : modify.h
+
+b_alloc.o : extmalloc.h
 
 clean::
 	$(RM) *.o
