@@ -1,6 +1,8 @@
 * qstrchr.s
 * Itagaki Fumihiko 23-Sep-90  Create.
 
+.xref issjis
+
 .text
 
 ****************************************************************

@@ -3,6 +3,8 @@
 
 .xref strcmp
 
+.xref flag_autolist
+.xref flag_ampm
 .xref flag_ciglob
 .xref flag_cifilec
 .xref flag_echo
@@ -12,7 +14,7 @@
 .xref flag_noclobber
 .xref flag_noglob
 .xref flag_nonomatch
-*.xref flag_notify
+.xref flag_recexact
 .xref flag_usegets
 .xref flag_verbose
 
@@ -35,35 +37,69 @@
 flagvarptr:
 		move.l	a1,-(a7)
 		lea	flagvar_table,a1
-loop:
+flagvar_findloop:
 		tst.b	(a1)
-		beq	no_match
+		beq	flagvar_nomatch
 
 		bsr	strcmp
-		beq	matched
+		beq	flagvar_matched
+		blo	flagvar_nomatch
 
 		lea	12(a1),a1
-		bra	loop
+		bra	flagvar_findloop
 
-matched:
+flagvar_matched:
 		moveq	#0,d0
 		move.w	10(a1),d0
 		add.l	a5,d0
 		bra	flagvarptr_return
 
-no_match:
+flagvar_nomatch:
 		moveq	#0,d0
 flagvarptr_return:
 		movea.l	(a7)+,a1
 		rts
 ****************************************************************
+* clear_flagvars  フラグ変数で制御されるフラグをすべてクリアする
+*
+* CALL
+*      none
+*
+* RETURN
+*      none
+****************************************************************
+.xdef clear_flagvars
+
+clear_flagvars:
+		move.l	a0,-(a7)
+		lea	flagvar_table,a0
+clear_flagvars_loop:
+		tst.b	(a0)
+		beq	clear_flagvars_done
+
+		lea	10(a0),a0
+		move.w	(a0)+,d0
+		clr.b	(a5,d0.w)
+		bra	clear_flagvars_loop
+
+clear_flagvars_done:
+		movea.l	(a7)+,a0
+		rts
+****************************************************************
 .data
 
 .xdef word_echo
+.xdef word_nomatch
 .xdef word_verbose
 
 .even
 flagvar_table:
+		dc.b	'ampm',0,0,0,0,0,0
+		dc.w	flag_ampm
+
+		dc.b	'autolist',0,0
+		dc.w	flag_autolist
+
 		dc.b	'ciglob',0,0,0,0
 		dc.w	flag_ciglob
 
@@ -88,11 +124,12 @@ word_echo:	dc.b	'echo',0,0,0,0,0,0
 		dc.b	'noglob',0,0,0,0
 		dc.w	flag_noglob
 
-		dc.b	'nonomatch',0
+		dc.b	'no'
+word_nomatch:	dc.b	'nomatch',0
 		dc.w	flag_nonomatch
 
-*		dc.b	'notify',0,0,0,0
-*		dc.w	flag_notify
+		dc.b	'recexact',0,0
+		dc.w	flag_recexact
 
 		dc.b	'usegets',0,0,0
 		dc.w	flag_usegets

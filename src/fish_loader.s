@@ -4,7 +4,7 @@
 .include ../src/fish.h
 
 REQUIRED_OSVER	equ	$100*2+0
-ID_CHECK_LEN	equ	44
+ID_CHECK_LEN	equ	62
 
 MCB_allocater	equ	$004
 MCB_dirname	equ	$080
@@ -22,8 +22,7 @@ header_top:
 header_dataP:	dc.l	0		* $f0(PDB) : 自分のデータのアドレス
 header_codeP:	dc.l	0		* $f4(PDB) : 自分のコードのアドレス
 header_stackP:	dc.l	0		* $f8(PDB) : 自分のスタックのアドレス
-header_id:	dc.b	"fish - Fumihiko Itagaki's shell - Version 1 "
-		dc.b	" Release 1  Revision 1 ",0
+header_id:	dc.b	"FISH - Fumihiko Itagaki's shell - Version  0.1  Patchlevel 1 ",0
 *****************************************************************
 		dc.b	'Copyright(C)1991 by Itagaki Fumihiko',0
 

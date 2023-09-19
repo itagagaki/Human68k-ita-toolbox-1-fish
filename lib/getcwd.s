@@ -1,7 +1,10 @@
 * getcwd.s
 * Itagaki Fumihiko 14-Jul-90  Create.
+* Itagaki Fumihiko 20-Aug-91  bsltosl ÇåƒÇ‘ÇÊÇ§Ç…ÇµÇΩÅD
 
 .include doscall.h
+
+.xref bsltosl
 
 .text
 
@@ -24,23 +27,10 @@ getcwd:
 		move.b	#':',(a0)+
 		move.b	#'/',(a0)+
 		move.l	a0,-(a7)
-		move.l	a0,-(a7)
 		clr.w	-(a7)
 		DOS	_CURDIR
 		addq.l	#6,a7
-		move.l	(a7)+,a0
-replace_loop:
-		tst.b	(a0)
-		beq	done
-
-		cmpi.b	#'\',(a0)
-		bne	replace_next
-
-		move.b	#'/',(a0)
-replace_next:
-		addq.l	#1,a0
-		bra	replace_loop
-done:
+		jsr	bsltosl
 		movem.l	(a7)+,d0/a0
 		rts
 

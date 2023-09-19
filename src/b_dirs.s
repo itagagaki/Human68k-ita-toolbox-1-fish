@@ -8,30 +8,32 @@
 .include ../src/fish.h
 
 .xref atou
+.xref utoa
 .xref strlen
 .xref strcmp
 .xref strcpy
-.xref for1str
-.xref fornstrs
+.xref strfor1
+.xref strforn
 .xref rotate
 .xref memmovd
 .xref memmovi
-.xref isabsolute
+.xref isfullpath
 .xref cat_pathname
-.xref slash_to_backslash
+.xref sltobsl
 .xref putc
 .xref puts
 .xref eputs
 .xref enputs1
+.xref put_tab
 .xref put_space
 .xref put_newline
-.xref echo
+.xref printfi
 .xref chdir
 .xref getcwd
 .xref is_under_home
 .xref find_shellvar
 .xref set_svar
-.xref setenv
+.xref fish_setenv
 .xref perror1
 .xref perror_command_name
 .xref command_error
@@ -49,6 +51,36 @@ cwdbuf = -(((MAXPATH+1)+1)>>1<<1)
 
 .text
 
+.if 0
+****************************************************************
+* xchdir - change current working directory and/or drive
+*          if it differs to current working directory.
+*
+* CALL
+*      A0     string point
+*
+* RETURN
+*      D0.L   DOS status code
+*      CCR    TST.L D0
+*****************************************************************
+.xdef xchdir
+
+xchdir:
+		link	a6,#cwdbuf
+		move.l	a1,-(a7)
+		movea.l	a0,a1
+		lea	cwdbuf(a6),a0
+		bsr	getcwd
+		bsr	strcmp
+		movea.l	a1,a0
+		beq	xchdir_done
+
+		bsr	chdir
+xchdir_done:
+		movea.l	(a7)+,a1
+		unlk	a6
+		rts
+.endif
 ****************************************************************
 * chdir_var - Change current working drive/directory to $varname
 *
@@ -73,8 +105,8 @@ chdir_var:
 		move.w	(a0)+,d1			*  D1.W : 単語数  A0 : 値
 		beq	chdir_var_fail			*  単語が無い
 
-		bsr	for1str
-		bsr	isabsolute
+		bsr	strfor1
+		bsr	isfullpath
 		bne	chdir_var_fail			*  最初の単語が空
 
 		bsr	chdir
@@ -164,11 +196,13 @@ chdirx_try:
 
 		addq.l	#1,a1
 chdirx_1:
-		cmpi.b	#'/',(a1)
-		beq	chdirx_done
+		cmpi.b	#'/',(a1)			*  / ./ ../ ならば
+		beq	chdirx_done			*  これ以上トライしない
 
-		cmpi.b	#'\',(a1)
-		beq	chdirx_done
+		cmpi.b	#'\',(a1)			*  \ .\ ..\ ならば
+		beq	chdirx_done			*  これ以上トライしない
+
+	*  cdpath
 
 		movea.l	a0,a2				*  A2 : dirname
 		lea	word_cdpath,a0
@@ -177,17 +211,27 @@ chdirx_1:
 
 		addq.l	#2,a0
 		move.w	(a0)+,d1			*  D1.W : cdpath の単語数
-		bsr	for1str
+		bsr	strfor1
 		movea.l	a0,a1				*  A1 : cdpath の単語並び
 		lea	pathname_buf,a0
 		bra	try_cdpath_continue
 
 try_cdpath_loop:
+		tst.b	(a1)
+		beq	try_cdpath_next
+
 		bsr	cat_pathname
 		bmi	try_cdpath_continue
 
 		bsr	chdir
-		bpl	chdirx_done1
+		bmi	try_cdpath_continue
+
+		bra	chdirx_done1
+
+try_cdpath_next:
+		exg	a0,a1
+		bsr	strfor1
+		exg	a0,a1
 try_cdpath_continue:
 		dbra	d1,try_cdpath_loop
 ****************
@@ -280,9 +324,9 @@ reset_cwd:
 		moveq	#0,d1
 		bsr	set_svar
 		movea.l	a1,a0
-		bsr	slash_to_backslash
+		bsr	sltobsl
 		lea	word_upper_pwd,a0
-		bsr	setenv
+		bsr	fish_setenv
 		movem.l	(a7)+,d0-d1/a0-a1
 		unlk	a6
 		rts
@@ -437,53 +481,106 @@ popd_return:
 		bra	reset_cwd		*  cwd を setして終了．
 ****************************************************************
 *  Name
-*       pwd/dirs - print current working directory / directory stack
+*       pwd - print current working directory
 *
 *  Synopsis
 *       pwd [ -l ]
-*       dirs [ -l ]
 ****************************************************************
 .xdef cmd_pwd
-.xdef cmd_dirs
 
 cmd_pwd:
-		sf	d1
-		bra	cmd_pwd_dirs
+		lea	msg_pwd_usage,a3
+		lea	print_directory(pc),a1
+pwd_parse_option_loop1:
+		tst.w	d0
+		beq	pwd_1
 
-cmd_dirs:
-		st	d1
-cmd_pwd_dirs:
-		cmp.w	#1,d0
-		blo	print_dirs_1
-		bhi	pwd_dirs_too_many_args
+		cmpi.b	#'-',(a0)
+		bne	pwd_dirs_bad_arg
 
-		lea	word_switch_l,a1
-		bsr	strcmp
+		subq.w	#1,d0
+		addq.l	#1,a0
+pwd_parse_option_loop2:
+		move.b	(a0)+,d1
+		beq	pwd_parse_option_loop1
+
+		cmp.b	#'l',d1
 		bne	pwd_dirs_bad_arg
 
 		lea	puts(pc),a1
-		bra	print_dirs_2
+		bra	pwd_parse_option_loop2
+
+pwd_1:
+		bsr	print_cwd
+		bsr	put_newline
+		bra	return_0
+****************************************************************
+*  Name
+*       dirs - print directory stack
+*
+*  Synopsis
+*       dirs [ -lv ]
+****************************************************************
+.xdef cmd_dirs
 
 print_dirs:
-		st	d1
-print_dirs_1:
+		moveq	#0,d0
+cmd_dirs:
+		lea	msg_dirs_usage,a3
 		lea	print_directory(pc),a1
-print_dirs_2:
+		lea	put_space(pc),a2
+		sf	d1
+dirs_parse_option_loop1:
+		tst.w	d0
+		beq	print_dirs_1
+
+		cmpi.b	#'-',(a0)
+		bne	pwd_dirs_bad_arg
+
+		subq.w	#1,d0
+		addq.l	#1,a0
+dirs_parse_option_loop2:
+		move.b	(a0)+,d2
+		beq	dirs_parse_option_loop1
+
+		cmp.b	#'l',d2
+		beq	dirs_option_l_found
+
+		cmp.b	#'v',d2
+		bne	pwd_dirs_bad_arg
+
+		st	d1
+		lea	put_newline(pc),a2
+		bra	dirs_parse_option_loop2
+
+dirs_option_l_found:
+		lea	puts(pc),a1
+		bra	dirs_parse_option_loop2
+
+print_dirs_1:
+		moveq	#0,d2
+		bsr	print_stacklevel
 		bsr	print_cwd
-		tst.b	d1
-		beq	print_dirs_done
-
 		movea.l	dstack(a5),a0
-		move.w	8(a0),d0
+		move.w	8(a0),d7
 		beq	print_dirs_done
 
-		bsr	put_space
+		subq.w	#1,d7
+		jsr	(a2)
 		lea	10(a0),a0
-		clr.l	a2
-		bsr	echo
+		bra	print_dirs_start
+
+print_dirs_loop:
+		jsr	(a2)
+		bsr	strfor1
+print_dirs_start:
+		bsr	print_stacklevel
+		jsr	(a1)
+		dbra	d7,print_dirs_loop
 print_dirs_done:
 		bsr	put_newline
 		bra	return_0
+
 
 pwd_dirs_bad_arg:
 		bsr	bad_arg
@@ -492,8 +589,46 @@ pwd_dirs_bad_arg:
 pwd_dirs_too_many_args:
 		bsr	too_many_args
 pwd_dirs_usage:
-		lea	msg_pwd_dirs_usage,a0
+		movea.l	a3,a0
 		bra	usage
+****************************************************************
+print_cwd:
+		link	a6,#cwdbuf
+		lea	cwdbuf(a6),a0
+		bsr	getcwd
+		jsr	(a1)
+		unlk	a6
+		rts
+****************************************************************
+print_directory:
+		movem.l	d0/a0,-(a7)
+		bsr	is_under_home
+		beq	print_directory_1
+
+		add.l	d0,a0
+		moveq	#'~',d0
+		bsr	putc
+print_directory_1:
+		bsr	puts
+		movem.l	(a7)+,d0/a0
+		rts
+****************************************************************
+print_stacklevel:
+		tst.b	d1
+		beq	print_stack_level_done
+
+		movem.l	d0-d2/a0-a1,-(a7)
+		move.l	d2,d0					*  番号を
+		lea	utoa(pc),a0				*  unsigned -> decimal で
+		lea	putc(pc),a1				*  標準出力に
+		moveq	#1,d2					*  左詰めで
+		moveq	#1,d1					*  少なくとも 1桁
+		bsr	printfi					*  表示する
+		movem.l	(a7)+,d0-d2/a0-a1
+		bsr	put_tab
+		addq.l	#1,d2
+print_stack_level_done:
+		rts
 ****************************************************************
 * get_dstack_element
 *
@@ -528,7 +663,7 @@ get_dstack_element:
 		bhs	dstack_not_deep		*  エラー．
 
 		move.w	d1,d0
-		bsr	fornstrs
+		bsr	strforn
 		bra	return_0
 ****************************************************************
 * pushd_exchange_sub - ディレクトリ・スタック上のディレクトリに
@@ -618,7 +753,7 @@ popd_sub_delete:
 		lea	(a2,d0.l),a1
 		move.l	a1,d0			*  D0.L : 現在の末尾アドレス（の次）
 		movea.l	a0,a1
-		bsr	for1str
+		bsr	strfor1
 		exg	a0,a1			*  A1 : 次の要素のアドレス
 		sub.l	a1,d0			*  D0 : 移動するバイト数
 		move.l	a1,d1
@@ -629,27 +764,6 @@ popd_sub_delete:
 		movem.l	(a7)+,d1/a0-a2
 return_0:
 		moveq	#0,d0
-		rts
-****************************************************************
-print_cwd:
-		link	a6,#cwdbuf
-		lea	cwdbuf(a6),a0
-		bsr	getcwd
-		jsr	(a1)
-		unlk	a6
-		rts
-****************************************************************
-print_directory:
-		movem.l	d0/a0,-(a7)
-		bsr	is_under_home
-		beq	print_directory_1
-
-		add.l	d0,a0
-		moveq	#'~',d0
-		bsr	putc
-print_directory_1:
-		bsr	puts
-		movem.l	(a7)+,d0/a0
 		rts
 ****************************************************************
 dstack_not_deep:
@@ -677,8 +791,8 @@ stack_full:
 
 word_upper_pwd:		dc.b	'PWD',0
 word_cwd:		dc.b	'cwd',0
-word_switch_l:		dc.b	'-l',0
-msg_pwd_dirs_usage:	dc.b	'[ -l ]',0
+msg_pwd_usage:		dc.b	'[ -l ]',0
+msg_dirs_usage:		dc.b	'[ -lv ]',0
 msg_directory_stack:	dc.b	'ディレクトリ・スタック',0
 msg_dstack_empty:	dc.b	'は空です',0
 msg_not_deep:		dc.b	'はそんなに深くありません',0

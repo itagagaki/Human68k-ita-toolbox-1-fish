@@ -145,8 +145,7 @@ ismatch_list_no_special:
 		cmp.b	#'\',d0
 		bne	ismatch_list_char
 
-		move.b	(a1)+,d0
-		beq	ismatch_list_missing_blaket
+		addq.l	#1,a1
 ismatch_list_char:
 		subq.l	#1,a1
 		exg	a0,a1

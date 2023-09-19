@@ -4,21 +4,22 @@
 set history=30
 set cdpath=~
 set prompt='%\!% '
+set autolist
 set fignore=(.o '.$$$')
 set forceio noclobber
 
 alias a alias
-a calc '(@ reg=(\!*) && echo - $reg)'
-a copy '(set noglob a=(\!*);command /c copy $a:s./.\\.g)'	#  cp ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
-a del  '(set noglob a=(\!*);command /c del  $a:s./.\\.g)'	#  rm ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
-a dir  '(set noglob a=(\!*);command /c dir  $a:s./.\\.g)'	#  ls ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
-a ren  '(set noglob a=(\!*);command /c ren  $a:s./.\\.g)'	#  mv ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
-a ed MuED -N
-a h history
-a lhv lhv -s
-a ls ls -F
-a mount subst \!:2 \!:1
-a ps process
+alias h history
+alias ps   PROCESS
+alias ed   'MuED -N'
+alias lhv  'lhv -s'
+alias ls   'ls -F'
+alias calc '(@ reg=(\!*) && echo - $reg)'
+alias copy '(set noglob a=(\!*);COMMAND /C COPY $a:s./.\\.g)'	#  cp ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
+alias del  '(set noglob a=(\!*);COMMAND /C DEL  $a:s./.\\.g)'	#  rm ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
+alias dir  '(set noglob a=(\!*);COMMAND /C DIR  $a:s./.\\.g)'	#  ls ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
+alias ren  '(set noglob a=(\!*);COMMAND /C REN  $a:s./.\\.g)'	#  mv ‚ªŠ®¬‚·‚é‚Ü‚Å‚Ì‘[’u
+alias lk   '(set hugearg=(indirect -i);. LK \!*)'		#  ‚±‚ê‚Å‚½‚­‚³‚ñƒŠƒ“ƒN‚Å‚«‚é
 
 bind ^A beginning-of-line
 bind ^B backward-char
@@ -68,4 +69,3 @@ bind -1 W   copy-region
 bind -2 ^L downcase-region
 bind -2 ^U upcase-region
 bind -2 ^X exchange-point-and-mark
-

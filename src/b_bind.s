@@ -13,7 +13,7 @@
 .xref memcmp
 .xref memset
 .xref memmovi
-.xref for1str
+.xref strfor1
 .xref putc
 .xref cputc
 .xref cputs
@@ -380,7 +380,7 @@ mapno_ok:
 		*  キー・コードを得る
 		*
 		movea.l	a0,a1
-		bsr	for1str
+		bsr	strfor1
 		exg	a0,a1
 		bsr	strip_quotes
 		move.b	(a0)+,d0
@@ -450,7 +450,7 @@ bind_find_func:
 		blo	missing_macro_string
 		bhi	too_many_macro_string
 		*
-		bsr	for1str			*  A0 : マクロ文字列の先頭アドレス
+		bsr	strfor1			*  A0 : マクロ文字列の先頭アドレス
 		bsr	strlen
 		addq.l	#1,d0
 		move.l	d0,d4			*  D4.L : マクロ文字列の長さ+1

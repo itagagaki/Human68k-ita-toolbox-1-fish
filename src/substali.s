@@ -4,8 +4,8 @@
 .xref strlen
 .xref memcmp
 .xref strmove
-.xref for1str
-.xref fornstrs
+.xref strfor1
+.xref strforn
 .xref copy_wordlist
 .xref skip_paren
 .xref is_word_separator
@@ -56,7 +56,7 @@ count_command_word_1:
 		cmp.b	#'&',d0
 		beq	ampersand_found
 count_command_word_continue:
-		bsr	for1str
+		bsr	strfor1
 		addq.w	#1,d2
 		subq.w	#1,d1
 		bra	count_command_word_loop
@@ -173,7 +173,7 @@ recursion_ok:
 		movea.l	d0,a0
 		addq.l	#2,a0				* このエントリのバイト数：とばす
 		move.w	(a0)+,d4			* D4.W : このエントリの単語数
-		bsr	for1str				* エントリ名をとばす
+		bsr	strfor1				* エントリ名をとばす
 		*
 		* ここで、
 		*      A0     本名定義単語並び
@@ -186,7 +186,7 @@ recursion_ok:
 		bset	#0,d7				* 「置換した」フラグを立てる
 	*
 	*  別名と本名が同名でなければ、更に置換されることを許すために
-	*  先に加えた単語'.'を削除する
+	*  先に加えた単語 '.' を削除する
 	*
 		tst.w	d4
 		beq	allow_more_alias
@@ -236,12 +236,12 @@ expand_alias_start:
 		beq	expand_alias_dup_args
 
 		move.w	d2,d0
-		bsr	fornstrs
+		bsr	strforn
 		sub.w	d0,d5
 		bra	expand_command_done
 
 expand_alias_dup_args:
-		bsr	for1str
+		bsr	strfor1
 		subq.w	#1,d5
 		subq.w	#1,d2
 		bra	dup_args
@@ -298,11 +298,11 @@ remove_dot_loop:
 		subq.w	#1,d2
 remove_dot_skip_args:
 		move.w	d2,d0
-		bsr	fornstrs
+		bsr	strforn
 		sub.w	d2,d5
 		beq	remove_dot_done
 
-		bsr	for1str
+		bsr	strfor1
 		subq.w	#1,d5
 		bra	remove_dot_loop
 

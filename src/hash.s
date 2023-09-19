@@ -6,7 +6,8 @@
 
 .xref toupper
 .xref utoa
-.xref for1str
+.xref memmovi
+.xref strfor1
 .xref putc
 .xref puts
 .xref nputs
@@ -16,7 +17,7 @@
 .xref word_path
 .xref find_shellvar
 .xref is_builtin_dir
-.xref isabsolute
+.xref isfullpath
 .xref dos_allfile
 .xref cat_pathname
 .xref drvchkp
@@ -27,6 +28,7 @@
 .xref hash_misses
 .xref hash_flag
 .xref hash_table
+.xref hash_table2			*  ［デバッグ用］
 
 .text
 
@@ -108,20 +110,22 @@ rehash_clear_loop:
 
 		addq.l	#2,a0
 		move.w	(a0)+,d1			* D1.W : $#path
-		bsr	for1str
+		bsr	strfor1
 		movea.l	a0,a1				* A1 : $path ポインタ
 		moveq	#0,d2				* D2.B : インデックス
 		bra	rehash_start
 
 rehash_loop:
+		tst.b	(a1)
+		beq	rehash_next
+
 		movea.l	a1,a0
 		bsr	is_builtin_dir
 		beq	rehash_builtin
 
-		bsr	isabsolute
+		bsr	isfullpath
 		bne	rehash_next
 ****************
-rehash_real_directory:
 		lea	searchnamebuf(a6),a0
 		lea	dos_allfile,a2
 		bsr	cat_pathname
@@ -166,13 +170,17 @@ rehash_builtin_loop:
 ****************
 rehash_next:
 		movea.l	a1,a0
-		bsr	for1str
+		bsr	strfor1
 		movea.l	a0,a1
 rehash_continue:
 		addq.w	#1,d2
 rehash_start:
 		dbra	d1,rehash_loop
 rehash_done:
+		lea	hash_table(a5),a1
+		lea	hash_table2(a5),a0
+		move.l	#1024,d0
+		bsr	memmovi
 		movem.l	(a7)+,d0-d2/a0-a4
 		unlk	a6
 		st	hash_flag(a5)

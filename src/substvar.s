@@ -8,14 +8,14 @@
 .xref isspace
 .xref issjis
 .xref strlen
-.xref strchr
+.xref jstrchr
+.xref strfor1
+.xref strforn
 .xref skip_space
-.xref for1str
-.xref fornstrs
 .xref atou
 .xref utoa
 .xref skip_varname
-.xref getenv
+.xref fish_getenv
 .xref find_shellvar
 .xref modify
 .xref getline_file
@@ -497,13 +497,14 @@ range_ok:
 		beq	out_of_range
 
 		subq.w	#1,d0					* D0.W : 最初に跳ばす単語数
-		bsr	fornstrs
+		bsr	strforn
 		move.l	word_to(a6),d7
 		sub.l	word_from(a6),d7			* D7.W : 取り出す単語数-1
 		bra	expand_var_start_var
 
 expand_var_null:
 		st	not_expand(a6)
+		lea	str_nul,a0
 ****************
 *  展開を開始する
 expand_var_start_var:
@@ -597,7 +598,7 @@ expand_var_dup1_mode1:
 		move.l	a0,-(a7)
 		lea	characters_to_be_escaped_3,a0		*  ` "
 expand_var_dup_character_check:
-		bsr	strchr
+		bsr	jstrchr
 		movea.l	(a7)+,a0
 		beq	expand_var_dup1
 
@@ -709,18 +710,15 @@ eval_sub:
 		addq.l	#2,a0
 		moveq	#0,d0
 		move.w	(a0)+,d0
-		bsr	for1str
+		bsr	strfor1
 		bra	eval_var_done
 
 shellvar_undefined:
 		cmpi.b	#'@',eval_option(a6)
 		beq	eval_var_undefined
 try_env:
-		move.l	a1,-(a7)
-		movea.l	a2,a1
-		movea.l	envwork(a5),a0
-		bsr	getenv
-		movea.l	(a7)+,a1
+		movea.l	a2,a0
+		bsr	fish_getenv
 		beq	eval_var_undefined
 
 		movea.l	d0,a0
@@ -1072,7 +1070,8 @@ msg_cannot_getline:		dc.b	'$<を処理できません',0
 
 characters_to_be_escaped_1:	dc.b	'~{*?['
 characters_to_be_escaped_2:	dc.b	"\'"
-characters_to_be_escaped_3:	dc.b	'`"',0
+characters_to_be_escaped_3:	dc.b	'`"'
+str_nul:			dc.b	0
 
 .end
 

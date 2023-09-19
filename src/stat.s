@@ -5,12 +5,11 @@
 .include limits.h
 
 .xref drvchkp
-.xref includes_dos_wildcard
+.xref contains_dos_wildcard
 .xref headtail
 .xref memmovi
 .xref strcpy
 .xref stricmp
-.xref dos_allfile
 
 .text
 
@@ -37,7 +36,7 @@ stat:
 		bsr	drvchkp
 		bmi	stat_fail
 
-		bsr	includes_dos_wildcard	*  Human68k のワイルドカードを含んで
+		bsr	contains_dos_wildcard	*  Human68k のワイルドカードを含んで
 		bne	stat_fail		*  いるならば無効
 
 		bsr	headtail
@@ -48,7 +47,7 @@ stat:
 		movea.l	a0,a1			*  A1 : top of search pathname
 		lea	searchnamebuf(a6),a0
 		bsr	memmovi
-		lea	dos_allfile,a1
+		lea	allfile,a1		*  "*.*" で検索する（さもなくば検索されないエントリがある）
 		bsr	strcpy
 		move.w	#$3f,-(a7)		*  すべてのエントリを検索する
 		pea	searchnamebuf(a6)
@@ -80,6 +79,9 @@ stat_return:
 		unlk	a6
 		rts
 ****************************************************************
+.data
+
+allfile:	dc.b	'*.*',0
 
 .end
 

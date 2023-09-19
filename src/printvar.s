@@ -1,7 +1,7 @@
 * printvar.s
 * Itagaki Fumihiko 24-Sep-90  Create.
 
-.xref for1str
+.xref strfor1
 .xref putc
 .xref cputs
 .xref put_tab
@@ -23,26 +23,25 @@
 .xdef print_var_value
 
 print_var_value:
-		movem.l	d0-d1/a0-a2,-(a7)
-		move.w	d0,d1
-		cmp.w	#1,d1
+		movem.l	d0-d2/a1,-(a7)
+		move.w	d0,d2
+		cmp.w	#1,d2
 		beq	print_var_value_start
 
 		move.b	#'(',d0			* ( を
 		bsr	putc			* 表示する
 print_var_value_start:
-		move.w	d1,d0
+		move.w	d2,d0
 		lea	cputs(pc),a1
-		clr.l	a2
 		bsr	echo
 
-		cmp.w	#1,d1
+		cmp.w	#1,d2
 		beq	print_var_value_done
 
 		move.b	#')',d0			* ) を
 		bsr	putc			* 表示する
 print_var_value_done:
-		movem.l	(a7)+,d0-d1/a0-a2
+		movem.l	(a7)+,d0-d2/a1
 		rts
 ****************************************************************
 * print_var - 変数を表示する
@@ -69,7 +68,7 @@ loop:
 		move.w	(a0)+,d0		* D0.W : この変数の要素数
 		bsr	cputs			* 変数名を表示する
 		bsr	put_tab			* 水平タブを表示する
-		bsr	for1str
+		bsr	strfor1
 		bsr	print_var_value		* 変数の値を表示する
 		bsr	put_newline		* 改行する
 		movea.l	a1,a0			* 次の変数のアドレス

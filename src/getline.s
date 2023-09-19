@@ -1,9 +1,12 @@
 * getline.s
 * Itagaki Fumihiko 29-Jul-90  Create.
+* Itagaki Fumihiko 16-Aug-91  'complete' で、'.' で始まるエントリ
+*                             （"." と ".." を除く）を補完するようにした．
 
 .include doscall.h
 .include chrcode.h
 .include limits.h
+.include pwd.h
 .include ../src/fish.h
 .include ../src/source.h
 .include ../src/history.h
@@ -17,17 +20,18 @@
 .xref atou
 .xref utoa
 .xref strbot
-.xref strchr
+.xref jstrchr
 .xref strcpy
+.xref strcmp
 .xref strlen
+.xref strfor1
+.xref strforn
 .xref memcmp
 .xref memxcmp
 .xref memmovi
 .xref memmovd
 .xref rotate
 .xref skip_space
-.xref for1str
-.xref fornstrs
 .xref sort_wordlist
 .xref close_source
 .xref putc
@@ -38,12 +42,14 @@
 .xref printfs
 .xref builtin_dir_match
 .xref isttyin
+.xref fgetc
 .xref fgets
 .xref fclose
 .xref open_passwd
+.xref fgetpwent
 .xref expand_tilde
-.xref includes_dos_wildcard
-.xref test_pathname
+.xref contains_dos_wildcard
+.xref headtail
 .xref find_shellvar
 .xref common_spell
 .xref getcwdx
@@ -55,6 +61,7 @@
 .xref manage_interrupt_signal
 .xref too_long_line
 .xref command_table
+.xref word_nomatch
 .xref word_prompt
 .xref word_prompt2
 .xref dos_allfile
@@ -69,9 +76,11 @@
 .xref if_status
 .xref loop_status
 .xref histchar1
-.xref flag_usegets
+.xref flag_autolist
 .xref flag_cifilec
 .xref flag_nobeep
+.xref flag_recexact
+.xref flag_usegets
 .xref last_congetbuf
 .xref keymap
 .xref keymacromap
@@ -655,11 +664,11 @@ x_search_character:
 		exg	d0,d4
 		add.w	d2,d4
 		lea	(a0,d4.w),a0
-		bsr	strchr
+		bsr	jstrchr
 		bne	x_search_char_ok
 x_search_char_1:
 		movea.l	line_top(a6),a0
-		bsr	strchr
+		bsr	jstrchr
 		beq	x_error
 x_search_char_ok:
 		move.l	a0,d0
@@ -1194,11 +1203,13 @@ x_complete:
 filec_dir_buf = -auto_dirbuf
 filec_pattern = filec_dir_buf-auto_word
 filec_pattern2 = filec_pattern-auto_word
-filec_pattern_length = filec_pattern2-4
-filec_fignore = filec_pattern_length-4
+filec_fignore = filec_pattern2-4
 filec_buffer_free = filec_fignore-2
-filec_maxlen = filec_buffer_free-2
-filec_numentry = filec_maxlen-2
+filec_patlen = filec_buffer_free-2
+filec_maxlen = filec_patlen-2
+filec_minlen = filec_maxlen-2
+filec_comlen = filec_minlen-2
+filec_numentry = filec_comlen-2
 filec_listflag = filec_numentry-1
 filec_condition = filec_listflag-1
 filec_pad = filec_condition-0
@@ -1225,7 +1236,7 @@ filec_find_word_loop:
 		beq	filec_find_word_sjis
 
 		lea	filec_separators,a0
-		bsr	strchr
+		bsr	jstrchr
 		bne	filec_find_word_remember
 
 		bra	filec_find_word_loop
@@ -1243,7 +1254,7 @@ filec_find_word_done:
 		add.l	line_top(a6),d0
 		sub.l	a1,d0
 		cmp.l	#MAXWORDLEN,d0
-		bhi	filec_fail
+		bhi	filec_error
 
 		lea	filec_pattern(a4),a0
 		bsr	memmovi
@@ -1279,19 +1290,20 @@ filec_no_fignore:
 		lea	1(a0,d0.l),a1			*  A1   : 検索パターンの先頭アドレス
 		movea.l	a1,a0
 		bsr	strlen
-		move.l	d0,filec_pattern_length(a4)
+		move.w	d0,filec_patlen(a4)
 		lea	command_table,a0
 		bsr	filec_reset
 filec_builtin_loop:
 		tst.b	(a0)
 		beq	filec_find_done
 
-		move.l	filec_pattern_length(a4),d0
+		moveq	#0,d0
+		move.w	filec_patlen(a4),d0
 		bsr	memcmp
 		bne	filec_builtin_next
 
 		bsr	filec_enter
-		bcs	filec_fail
+		bcs	filec_error
 filec_builtin_next:
 		lea	14(a0),a0
 		bra	filec_builtin_loop
@@ -1301,7 +1313,7 @@ filec_not_builtin:
 		bne	filec_file
 
 		moveq	#'/',d0
-		bsr	strchr
+		bsr	jstrchr
 		beq	filec_username
 ****************
 filec_file:
@@ -1324,49 +1336,36 @@ filec_file:
 		*       ファイル名を検索する
 		*
 		lea	filec_pattern2(a4),a0
-		bsr	includes_dos_wildcard		*  Human68k のワイルドカードを含んで
+		bsr	contains_dos_wildcard		*  Human68k のワイルドカードを含んで
 		bne	filec_find_done			*  いるならば無効
 
 		moveq	#'\',d0				*  \ を
-		bsr	strchr				*  含んで
+		bsr	jstrchr				*  含んで
 		bne	filec_find_done			*  いるならば無効
 
 		lea	filec_pattern2(a4),a0
-		movem.l	d1,-(a7)
-		bsr	test_pathname			*  D0-D3/A1-A3
-		movem.l	(a7)+,d1
-		bhi	filec_find_done
-
 		bsr	test_directory
 		bne	filec_find_done
 
-		movea.l	a2,a1				*  A1   : 比較する名前
-		move.l	d2,filec_pattern_length(a4)
-		add.l	d3,filec_pattern_length(a4)
+		bsr	headtail
+		movea.l	a1,a2
+		movea.l	a0,a1
+		lea	filec_pattern(a4),a0
+		bsr	memmovi
+		cmp.l	#MAXWORDLEN-3,d0
+		bhi	filec_find_done
+
+		lea	dos_allfile,a1
+		bsr	strcpy
+		movea.l	a2,a1
+		movea.l	a1,a0
+		bsr	strlen
+		move.w	d0,filec_patlen(a4)
+
 		bsr	filec_reset
 
-		bsr	strbot
-		tst.l	d3
-		bne	filec_file_5
-
-		cmp.l	#MAXFILE,d2
-		bhs	filec_file_4
-
-		move.b	#'*',(a0)+
-filec_file_4:
-		tst.l	d3
-		bne	filec_file_5
-
-		move.b	#'.',(a0)+
-filec_file_5:
-		cmp.l	#MAXEXT,d3
-		bhs	filec_file_6
-
-		move.b	#'*',(a0)+
-filec_file_6:
-		clr.b	(a0)
 		move.w	#$37,-(a7)			*  ボリューム・ラベル以外の全てを検索
-		pea	filec_pattern2(a4)
+		pea	filec_pattern(a4)
 		pea	filec_dir_buf(a4)
 		DOS	_FILES
 		lea	10(a7),a7
@@ -1376,17 +1375,27 @@ filec_file_loop:
 
 		lea	filec_dir_buf+30(a4),a0
 		cmpi.b	#'.',(a0)
-		beq	filec_file_next
+		bne	filec_file_ok
 
+		tst.b	1(a0)
+		beq	filec_file_next			*  "." は除外
+
+		cmpi.b	#'.',1(a0)
+		bne	filec_file_ok
+
+		tst.b	2(a0)
+		beq	filec_file_next			*  ".." は除外
+filec_file_ok:
 		movem.l	d1,-(a7)
 		move.b	flag_cifilec(a5),d1
-		move.l	filec_pattern_length(a4),d0
+		moveq	#0,d0
+		move.w	filec_patlen(a4),d0
 		bsr	memxcmp
 		movem.l	(a7)+,d1
 		bne	filec_file_next
 
 		bsr	filec_enter
-		bcs	filec_fail
+		bcs	filec_error
 
 		tst.b	filec_listflag(a4)
 		beq	filec_file_next
@@ -1395,7 +1404,7 @@ filec_file_loop:
 		beq	filec_file_next
 
 		subq.w	#1,filec_buffer_free(a4)
-		bcs	filec_fail
+		bcs	filec_error
 
 		move.b	#'/',-1(a3)
 		clr.b	(a3)+
@@ -1418,44 +1427,47 @@ filec_username:
 
 		lea	filec_pattern+1(a4),a0
 		bsr	strlen
-		move.l	d0,filec_pattern_length(a4)
+		move.w	d0,filec_patlen(a4)
 		bsr	filec_reset
-filec_username_loop:
-		lea	congetbuf+2,a0
-		move.w	d2,d0
-		move.w	d1,-(a7)
-		move.w	#255,d1
-		bsr	fgets
-		move.w	(a7)+,d1
-		tst.l	d0
-		bmi	filec_username_done
-		bne	filec_username_loop
 
-		lea	congetbuf+2,a0
-		moveq	#';',d0
-		bsr	strchr
-		clr.b	(a0)
-		lea	congetbuf+2,a0
+pwd_buf = -(((PW_SIZE+1)+1)>>1<<1)
+
+		link	a6,#pwd_buf
+filec_username_loop:
+		move.w	d2,d0
+		lea	pwd_buf(a6),a0
+		bsr	fgetpwent
+		bne	filec_username_done0
+
+		lea	PW_NAME(a0),a0
 		lea	filec_pattern+1(a4),a1
-		move.l	filec_pattern_length(a4),d0
+		moveq	#0,d0
+		move.w	filec_patlen(a4),d0
 		bsr	memcmp
 		bne	filec_username_loop
 
 		bsr	filec_enter
 		bcc	filec_username_loop
+
+		moveq	#0,d0
+		bra	filec_username_done
+
+filec_username_done0:
+		moveq	#-1,d0
 filec_username_done:
+		unlk	a6
 		move.l	d0,-(a7)
 		move.w	d2,d0
 		bsr	fclose
 		move.l	(a7)+,d0
-		bpl	filec_fail
+		bpl	filec_error
 ****************
 filec_find_done:
 		tst.b	filec_listflag(a4)
 		bne	filec_list			*  リスト表示へ
 
 		tst.w	filec_numentry(a4)
-		beq	filec_fail
+		beq	filec_nomatch
 		*
 		*  最初の曖昧でない部分を確定する
 		*
@@ -1463,32 +1475,90 @@ filec_find_done:
 		move.w	filec_numentry(a4),d0
 		move.b	flag_cifilec(a5),d2
 		move.l	d1,-(a7)
-		move.l	filec_pattern_length(a4),d1
+		moveq	#0,d1
+		move.w	filec_patlen(a4),d1
 		bsr	common_spell
+		move.w	d0,filec_comlen(a4)
 		move.l	(a7)+,d1
 		*
 		*  完成部分を挿入する
 		*
 		movea.l	a0,a1
-		adda.l	filec_pattern_length(a4),a1
+		adda.w	filec_patlen(a4),a1		*  正しい
 		move.l	d0,d2
 		bsr	open_columns
-		bcs	filec_file_over
+		bcs	filec_error
 
 		move.l	d2,d0
 		move.l	a0,-(a7)
 		bsr	memmovi
 		movea.l	(a7)+,a0
 		bsr	post_insert_job
-		subq.w	#1,filec_numentry(a4)
+		cmp.w	#1,filec_numentry(a4)
 		beq	filec_done
-filec_fail:
-filec_file_over:
+
+		tst.b	flag_recexact(a5)
+		beq	filec_ambiguous
+
+		move.w	filec_patlen(a4),d0
+		add.w	filec_comlen(a4),d0
+		cmp.w	filec_minlen(a4),d0
+		bne	filec_ambiguous
+filec_notuniq:
+		bsr	find_matchbeep
+		beq	filec_done			*  正しい
+		bpl	filec_done
+
+		lea	word_notunique,a1
+		bsr	strcmp
+		bne	filec_done
+filec_beep:
+filec_error:
 		bsr	beep
 filec_done:
 		unlk	a4
 		bra	getline_x_1
-****************
+
+
+filec_nomatch:
+		bsr	find_matchbeep
+		beq	filec_beep
+		bpl	filec_done
+
+		lea	word_nomatch,a1
+		bsr	strcmp
+		beq	filec_beep
+
+		lea	word_ambiguous,a1
+		bsr	strcmp
+		beq	filec_beep
+
+		lea	word_notunique,a1
+		bsr	strcmp
+		beq	filec_beep
+		bra	filec_done
+
+
+filec_ambiguous:
+		bsr	find_matchbeep
+		beq	filec_ambiguous_beep
+		bpl	filec_ambiguous_nobeep
+
+		lea	word_ambiguous,a1
+		bsr	strcmp
+		beq	filec_ambiguous_beep
+
+		lea	word_notunique,a1
+		bsr	strcmp
+		bne	filec_ambiguous_nobeep
+filec_ambiguous_beep:
+		bsr	beep
+filec_ambiguous_nobeep:
+		tst.l	d2
+		bne	filec_done
+
+		tst.b	flag_autolist(a5)
+		beq	filec_done
 filec_list:
 		*
 		*  リスト表示
@@ -1553,7 +1623,7 @@ filec_list_height_ok:
 filec_list_loop1:
 		bsr	put_newline
 		movea.l	a1,a0
-		bsr	for1str
+		bsr	strfor1
 		exg	a0,a1				*  A0:この行の先頭項目  A1:次行の先頭項目
 		move.w	d2,d5
 filec_list_loop2:
@@ -1573,7 +1643,7 @@ filec_list_loop2:
 		beq	filec_list_loop2_break
 
 		move.w	d3,d0
-		bsr	fornstrs
+		bsr	strforn
 		bra	filec_list_loop2
 
 filec_list_loop2_break:
@@ -1594,6 +1664,7 @@ filec_list_done:
 filec_reset:
 		clr.w	filec_numentry(a4)
 		clr.w	filec_maxlen(a4)
+		move.w	#$ffff,filec_minlen(a4)
 		lea	tmpargs,a3
 		move.w	#MAXWORDLISTSIZE,filec_buffer_free(a4)
 		rts
@@ -1630,7 +1701,7 @@ check_fignore_loop:
 		bsr	memxcmp				*  ケツが一致するか？
 		beq	ignore_or_keep
 check_fignore_continue:
-		bsr	for1str
+		bsr	strfor1
 		dbra	d4,check_fignore_loop
 not_ignore:
 		tst.b	filec_condition(a4)
@@ -1652,6 +1723,11 @@ filec_add_entry:
 
 		move.w	d2,filec_maxlen(a4)
 filec_entry_1:
+		cmp.w	filec_minlen(a4),d2
+		bhs	filec_entry_2
+
+		move.w	d2,filec_minlen(a4)
+filec_entry_2:
 		addq.w	#1,filec_numentry(a4)
 		bcs	filec_entry_return
 
@@ -1675,6 +1751,23 @@ filec_enter_error:
 		moveq	#0,d0
 		subq.w	#1,d0
 		bra	filec_entry_return
+
+
+find_matchbeep:
+		lea	word_matchbeep,a0
+		bsr	find_shellvar
+		beq	find_matchbeep_return		*  D0.L == 0
+
+		moveq	#1,d0
+		addq.l	#2,a0
+		tst.w	(a0)+
+		beq	find_matchbeep_return		*  D0.L == 1
+
+		bsr	strfor1
+		moveq	#-1,d0				*  D0.L == -1
+find_matchbeep_return:
+		tst.l	d0
+		rts
 *****************************************************************
 getline_x_getletter:
 		bsr	getline_x_getc
@@ -1692,6 +1785,7 @@ getline_x_getletter:
 getline_x_getletter_1:
 		cmp.l	d0,d0
 getline_x_getletter_return:
+getline_x_getc_return:
 		rts
 *****************************************************************
 getline_x_getc:
@@ -1709,12 +1803,8 @@ getline_x_getc:
 
 		clr.l	macro_ptr(a6)
 getline_x_getc_tty:
-		move.w	input_handle(a6),-(a7)
-		DOS	_FGETC
-		addq.l	#2,a7
-		tst.l	d0
-getline_x_getc_return:
-		rts
+		move.w	input_handle(a6),d0
+		bra	fgetc
 *****************************************************************
 x_size_forward:
 		movem.l	d0/a0,-(a7)
@@ -2072,7 +2162,7 @@ is_dot_space:
 is_special_character:
 		and.w	#$ff,d0
 		lea	x_special_characters,a0
-		bra	strchr
+		bra	jstrchr
 *****************************************************************
 * move_letter_backward - ポインタを1文字戻し、カーソルも左に移動する
 * move_word_backward - ポインタを1語戻し、カーソルも左に移動する
@@ -2443,7 +2533,7 @@ put_prompt_2:
 		tst.w	(a0)+
 		beq	prompt_done
 
-		bsr	for1str
+		bsr	strfor1
 		movea.l	a0,a1
 prompt_loop:
 		move.b	(a1)+,d0
@@ -2618,7 +2708,7 @@ prompt_abbrev_month:
 		and.l	#%1111,d0
 		subq.l	#1,d0
 prompt_name_in_table:
-		bsr	fornstrs
+		bsr	strforn
 		bsr	prompt_string
 		bra	prompt_loop
 ****************
@@ -2738,7 +2828,7 @@ test_directory_loop:
 		*
 		movea.l	a3,a0				*  現在着目しているエレメントの後ろに
 		moveq	#'/',d0				*  / が
-		bsr	strchr				*  あるか？
+		bsr	jstrchr				*  あるか？
 		beq	test_directory_true		*  無い .. true
 
 		move.l	a0,d2
@@ -2835,6 +2925,9 @@ key_function_jump_table:
 		dc.l	x_list
 
 word_fignore:		dc.b	'fignore',0
+word_matchbeep:		dc.b	'matchbeep',0
+word_ambiguous:		dc.b	'ambiguous',0
+word_notunique:		dc.b	'notunique',0
 
 filec_separators:	dc.b	'"',"'",'`^'
 word_separators:	dc.b	' ',HT,LF,VT,FS,CR

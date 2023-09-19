@@ -12,8 +12,8 @@
 .xref stpcpy
 .xref strmove
 .xref strpcmp
+.xref strfor1
 .xref memmovi
-.xref for1str
 .xref sort_wordlist
 .xref copy_wordlist
 .xref escape_quoted
@@ -537,12 +537,12 @@ glob_wordlist_2:
 		moveq	#2,d4
 glob_wordlist_glob_3:
 		add.w	d0,d3
-		bsr	for1str
+		bsr	strfor1
 		bra	glob_wordlist_continue
 
 glob_wordlist_just_copy:
 		movea.l	a0,a2
-		bsr	for1str
+		bsr	strfor1
 		exg	a0,a2
 		bsr	strip_quotes
 		bsr	strlen

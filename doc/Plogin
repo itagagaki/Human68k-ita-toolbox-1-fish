@@ -15,10 +15,9 @@ set path=(~~ . A:/usr/local/bin ~/newbin A:/usr/pds A:/bin A:/usr/bin A:/usr/bin
 set savehist=30
 set ignoreeof
 
-key 25 ''
-key 26 ''
-key 27 ''
-key 28 ''
+KEY 25 ''
+KEY 26 ''
+KEY 27 ''
+KEY 28 ''
 
-yow
-
+TODAY

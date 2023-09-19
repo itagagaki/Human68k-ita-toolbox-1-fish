@@ -1,6 +1,8 @@
 * chkwild.s
 * Itagaki Fumihiko 02-Sep-90  Create.
 
+.xref issjis
+
 .text
 
 ****************************************************************

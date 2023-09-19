@@ -5,28 +5,32 @@
 * getenv - get environment variable address
 *
 * CALL
-*      A0     top point of environment
-*      A1     name point
+*      A0     検索する変数名の先頭アドレス
+*      A3     環境変数ブロックの先頭アドレス
 *
 * RETURN
-*      A0     name point of environment   (no mean if not found)
-*      D0.L   value point of environment  (0L if not found)
+*      A0     見つかったならば環境ブロックの変数名の先頭を指す
+*      D0.L   見つかったならば値の文字列の先頭アドレスを指す
+*             見つからなければ 0
 *      CCR    TST.L D0
 *****************************************************************
 .xdef getenv
 
 getenv:
-		movem.l	d1/a2-a3,-(a7)
-		addq.l	#4,a0
-getenv_loop1:
-		tst.b	(a0)
+		movem.l	d1/a1-a3,-(a7)
+		cmpa.l	#-1,a3
 		beq	getenv_fail
 
-		movea.l	a0,a2
-		movea.l	a1,a3
+		addq.l	#4,a3
+getenv_loop1:
+		tst.b	(a3)
+		beq	getenv_fail
+
+		movea.l	a3,a2
+		movea.l	a0,a1
 getenv_loop2:
-		move.b	(a0)+,d1
-		move.b	(a3)+,d0
+		move.b	(a3)+,d1
+		move.b	(a1)+,d0
 		beq	getenv_term
 
 		cmp.b	d0,d1
@@ -37,18 +41,18 @@ getenv_term:
 		cmp.b	#'=',d1
 		beq	env_found
 getenv_next:
-		subq.l	#1,a0
+		subq.l	#1,a3
 getenv_next_loop:
-		tst.b	(a0)+
+		tst.b	(a3)+
 		bne	getenv_next_loop
 		bra	getenv_loop1
 
 getenv_fail:
-		clr.l	a0
+		suba.l	a3,a3
 env_found:
-		move.l	a0,d0
+		move.l	a3,d0
 		movea.l	a2,a0
-		movem.l	(a7)+,d1/a2-a3
+		movem.l	(a7)+,d1/a1-a3
 		rts
 
 .end

@@ -1,6 +1,10 @@
 * skipvnam.s
 * Itagaki Fumihiko 24-Jan-91  Create.
 
+.xref iscsym
+.xref iscsymf
+.xref issjis
+
 .text
 
 ****************************************************************

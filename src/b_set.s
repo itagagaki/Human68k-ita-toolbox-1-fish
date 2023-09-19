@@ -5,8 +5,8 @@
 
 .include ../src/fish.h
 
-.xref for1str
-.xref fornstrs
+.xref strfor1
+.xref strforn
 .xref divsl
 .xref mulsl
 .xref atou
@@ -110,7 +110,7 @@ value_found:
 		tst.l	d2
 		bpl	syntax_error
 
-		bsr	for1str
+		bsr	strfor1
 		subq.w	#1,d7
 		movea.l	a0,a1
 		move.w	d7,d0
@@ -125,7 +125,7 @@ set_single_word:
 		move.l	a1,d6				* D6.L : 展開前の値を指すポインタ
 		moveq	#1,d0
 set_value:
-		bsr	for1str
+		bsr	strfor1
 		subq.w	#1,d7
 		movea.l	a0,a4				* A4 : 次の引数を指すポインタ
 		lea	tmpargs,a0
@@ -295,7 +295,7 @@ set_expression_postcalc:
 		beq	set_expression_lvalue_ok
 
 		addq.l	#4,a0
-		bsr	for1str
+		bsr	strfor1
 		move.l	d2,d0
 		bmi	set_expression_get_lvalue
 		beq	set_expression_lvalue_ok
@@ -306,7 +306,7 @@ set_expression_postcalc:
 		bgt	set_expression_lvalue_ok
 
 		subq.l	#1,d0
-		bsr	fornstrs
+		bsr	strforn
 set_expression_get_lvalue:
 		tst.b	(a0)
 		beq	set_expression_lvalue_ok
@@ -597,7 +597,7 @@ set_a_element:
 		bgt	subscript_out_of_range
 
 		addq.l	#4,a0
-		bsr	for1str
+		bsr	strfor1
 set_a_element_ok:
 		movea.l	a0,a3
 		lea	tmpline(a5),a0
@@ -610,7 +610,7 @@ set_a_element_dup_loop:
 
 		bsr	strmove
 		exg	a0,a3
-		bsr	for1str
+		bsr	strfor1
 		exg	a0,a3
 		bra	set_a_element_dup_continue
 

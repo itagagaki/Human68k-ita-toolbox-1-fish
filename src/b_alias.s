@@ -3,11 +3,11 @@
 *
 * Itagaki Fumihiko 05-Sep-90  Create.
 
+.xref strfor1
 .xref cputs
 .xref enputs1
 .xref put_newline
 .xref echo
-.xref for1str
 .xref strip_quotes
 .xref expand_wordlist
 .xref strcmp
@@ -29,14 +29,13 @@
 .xdef print_alias_value
 
 print_alias_value:
-		movem.l	d0/a0-a2,-(a7)
+		movem.l	d0/a0-a1,-(a7)
 		addq.l	#2,a0
 		move.w	(a0)+,d0
-		bsr	for1str
+		bsr	strfor1
 		lea	cputs(pc),a1
-		clr.l	a2
 		bsr	echo
-		movem.l	(a7)+,d0/a0-a2
+		movem.l	(a7)+,d0/a0-a1
 		rts
 ****************************************************************
 *  Name
@@ -59,7 +58,7 @@ cmd_alias:
 		beq	print_all_alias		* ˆø”‚ª–³‚¢‚È‚ç•Ê–¼‚ÌƒŠƒXƒg‚ğ•\¦
 
 		movea.l	a0,a2
-		bsr	for1str
+		bsr	strfor1
 		exg	a0,a2			* A0 : name   A2 : wordlist
 		bsr	strip_quotes
 		subq.w	#1,d1

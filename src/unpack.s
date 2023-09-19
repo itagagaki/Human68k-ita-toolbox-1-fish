@@ -1,21 +1,20 @@
 * unpack.s
 * Itagaki Fumihiko 23-Sep-90  Create.
 
+.include limits.h
+.include pwd.h
 .include ../src/fish.h
 
 .xref iscsym
 .xref qstrchr
+.xref strfor1
 .xref memmovi
 .xref no_close_brace
 .xref open_passwd
-.xref findpwent
-.xref fseek_nextfield
-.xref fgets
+.xref fgetpwnam
 .xref fclose
-.xref strchr
 .xref word_home
 .xref find_shellvar
-.xref for1str
 .xref copyhead
 .xref strlen
 .xref pre_perror
@@ -23,8 +22,6 @@
 .xref too_long_word
 .xref too_long_line
 .xref too_many_words
-
-.xref congetbuf
 
 .xref tmpline
 
@@ -265,7 +262,10 @@ unpack_word_return:
 *****************************************************************
 .xdef expand_tilde
 
+pwd_buf = -(((PW_SIZE+1)+1)>>1<<1)
+
 expand_tilde:
+		link	a6,#pwd_buf
 		movem.l	d4-d6/a2-a3,-(a7)
 		move.w	d1,d6
 		move.w	#MAXWORDLEN,d5
@@ -295,64 +295,43 @@ expand_tilde_1:
 		cmp.b	#'\',d0
 		bne	expand_tilde_go
 expand_tilde_home:
-		addq.l	#1,a2			* A2 は ~ の次を指す
+		addq.l	#1,a2				*  A2 は ~ の次を指す
 		move.l	a0,d1
-		sub.l	a2,d1			* D1.L : username の長さ
+		sub.l	a2,d1				*  D1.L : username の長さ
 		beq	expand_tilde_myhome
 ****************
-		exg	a0,a2			* A0 : ユーザ名の先頭  A2 : ユーザ名の次
+		exg	a0,a2				*  A0 : ユーザ名の先頭  A2 : ユーザ名の次
 
 		bsr	open_passwd
-		bmi	expand_tilde_unknown_user	* ［暫定］パスワード・ファイルが無い
+		bmi	expand_tilde_unknown_user	*  パスワード・ファイルが無い
 
-		move.w	d0,d4		* D4.W : パスワード・ファイルのファイル・ハンドル
-		bsr	findpwent
-		bmi	find_user_fail
+		move.w	d0,d4				*  D4.W : パスワード・ファイルのファイル・ハンドル
+		move.l	a1,-(a7)
+		movea.l	a0,a1
+		lea	pwd_buf(a6),a0
+		bsr	fgetpwnam
+		movea.l	(a7)+,a1
+		bne	find_user_fail
 
-		moveq	#3,d1			*  password:uid:gid:GCOS: を跳ばす
-goto_home_field:
-		move.w	d4,d0
-		bsr	fseek_nextfield
-		bmi	find_user_fail
-
-		cmp.b	#';',d0
-		bne	expand_tilde_go		* ［暫定］フィールドが足りない：ユーザ名以降をコピーする
-
-		dbra	d1,goto_home_field
-
-		lea	congetbuf+2,a0
-		move.w	#255,d1
-		move.w	d4,d0
-		bsr	fgets
-		bmi	find_user_fail
-
-		exg	d0,d4
-		bsr	fclose
-		tst.l	d4
-		bne	expand_tilde_go		* ［暫定］行が長過ぎる：ユーザ名以降をコピーする
-
-		lea	congetbuf+2,a0
-		moveq	#';',d0
-		bsr	strchr
-		clr.b	(a0)
-		lea	congetbuf+2,a0
+		lea	pwd_buf(a6),a0
+		lea	PW_DIR(a0),a0
 		bra	expand_tilde_copy_home
 ****************
 expand_tilde_myhome:
-		lea	word_home,a0		* シェル変数 home が
-		bsr	find_shellvar		* 定義されて
-		beq	expand_tilde_go		* いなければ、~以降をコピーするのみ
+		lea	word_home,a0			*  シェル変数 home が
+		bsr	find_shellvar			*  定義されて
+		beq	expand_tilde_go			*  いなければ、~以降をコピーするのみ
 
 		addq.l	#2,a0
-		move.w	(a0)+,d0		* $#home が
-		beq	expand_tilde_go		* 0 ならば、~以降をコピーするのみ
+		move.w	(a0)+,d0			*  $#home が
+		beq	expand_tilde_go			*  0 ならば、~以降をコピーするのみ
 
-		bsr	for1str			* 変数名をスキップして $home[1]を得る
+		bsr	strfor1				*  変数名をスキップして $home[1]を得る
 ****************
 expand_tilde_copy_home:
 		move.w	d6,d0
 		exg	a0,a1
-		bsr	copyhead		* ホーム・ディレクトリ名をバッファにコピーする
+		bsr	copyhead			*  ホーム・ディレクトリ名をバッファにコピーする
 		exg	a0,a1
 		tst.l	d0
 		bmi	expand_tilde_buffer_over
@@ -362,16 +341,17 @@ expand_tilde_copy_home:
 		sub.w	d4,d5
 		bcs	expand_tilde_too_long
 
-		move.w	d0,d6			* D6.W : バッファの残り容量
-		tst.b	d1			* コピーしたディレクトリ部がルート
-		beq	expand_tilde_go		* でないならば ~以降を結合する
+		move.w	d0,d6				*  D6.W : バッファの残り容量
+		btst	#0,d1				*  / で終わって
+		beq	expand_tilde_go			*  いないならば ~以降を結合する
 
-		tst.b	(a2)			* ~以降が空ならば
-		beq	expand_tilde_go		* 結合する
+		tst.b	(a2)				*  ~以降が空ならば
+		beq	expand_tilde_go			*  結合する
 
-		subq.l	#1,a1			* ディレクトリ部（ルート・ディレクトリである）
-		addq.w	#1,d6			* の / を削除して
-		addq.w	#1,d5			* ~以降を結合する
+		*  最後の / を削除して ~ 以降を結合する
+		subq.l	#1,a1
+		addq.w	#1,d6
+		addq.w	#1,d5
 ****************
 expand_tilde_go:
 		movea.l	a2,a0
@@ -390,6 +370,7 @@ expand_tilde_go:
 expand_tilde_return:
 		move.w	d6,d1
 		movem.l	(a7)+,d4-d6/a2-a3
+		unlk	a6
 		tst.l	d0
 		rts
 
@@ -452,7 +433,7 @@ unpack_wordlist_loop:
 		bmi	unpack_wordlist_error
 
 		add.w	d0,d3
-		bsr	for1str
+		bsr	strfor1
 unpack_wordlist_continue:
 		dbra	d4,unpack_wordlist_loop
 ****************

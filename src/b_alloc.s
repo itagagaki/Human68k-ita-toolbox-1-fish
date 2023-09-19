@@ -10,7 +10,7 @@
 .xref printfi
 .xref mulul
 .xref divul
-.xref find_env_bottom
+.xref strazbot
 .xref too_many_args
 .xref msg_environment
 .xref msg_directory_stack
@@ -50,7 +50,8 @@ cmd_alloc:
 		*
 		movea.l	envwork(a5),a1
 		lea	4(a1),a0
-		bsr	find_env_bottom
+		bsr	strazbot
+		addq.l	#1,a0
 		move.l	a0,d6
 		sub.l	a1,d6			*  D6: Žg—p—Ê
 		lea	msg_environment,a0

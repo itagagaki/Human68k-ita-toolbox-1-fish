@@ -1,30 +1,27 @@
 #! A:/bin/MAKE.X -f
-#  Makefile for FISH product
+#  Makefile for Human68k ITA TOOLBOX #1 - FISH
 
 BACKUP    = A:\bin\COPYALL.X -t
 ARCHIVE   = A:\usr\pds\LHA.x a
+RM        = -\usr\local\bin\rm -f
 
 TOP       = A:\home\fish
 DESTDIR   = A:\bin
 BACKUPDIR = B:\fish
 
-ARCHIVE_NAME  = FISH010.Lzh
+ARCHIVE_NAME  = FISH020.Lzh
 
 ARCHIVE_FILES = \
 	$(TOP)\doc\README \
 	$(TOP)\doc\NOTICE \
-	$(TOP)\doc\PROBLEMS \
-	$(TOP)\doc\FISH010.DOC \
-	$(TOP)\doc\LOGIN00.DOC \
+	A:\home\newbin\DIRECTORY \
+	$(TOP)\doc\CHANGES \
+	$(TOP)\doc\FISH020.DOC \
 	$(TOP)\prg\fish.x \
-	$(HOME)\newbin\login.x \
-	$(TOP)\doc\Passwd \
 	$(TOP)\doc\Pfishrc \
 	$(TOP)\doc\Plogin \
 	$(TOP)\doc\Plogout \
-	$(TOP)\doc\HUPAIR.DOC \
-	$(TOP)\lib\DecHUPAIR.s \
-	$(TOP)\lib\EncHUPAIR.s
+	$(TOP)\doc\Passwd
 
 define newline
 
@@ -53,12 +50,13 @@ clobber::
 	cd $(TOP)\prg || $(MAKE) clobber
 
 backup::
+	@$(BACKUP) $(TOP)\Mail.LZH $(BACKUPDIR)
 	@$(BACKUP) $(TOP)\Makefile $(BACKUPDIR)
 	@$(BACKUP) $(TOP)\src\*.* $(BACKUPDIR)\src
 	@$(BACKUP) $(TOP)\prg\Makefile $(BACKUPDIR)\prg
 	@$(BACKUP) $(TOP)\prg\fish.x $(BACKUPDIR)\prg
 	@$(BACKUP) $(TOP)\prg\fishg.x $(BACKUPDIR)\prg
-	@$(BACKUP) $(TOP)\lib\Makefile $(BACKUPDIR)\lib\italib
+	@$(BACKUP) $(TOP)\lib\Makefile $(BACKUPDIR)\lib
 	@$(BACKUP) $(TOP)\lib\*.s $(BACKUPDIR)\lib
 	@$(BACKUP) $(TOP)\include\*.* $(BACKUPDIR)\include
 	@$(BACKUP) $(TOP)\doc\*.* $(BACKUPDIR)\doc
@@ -77,8 +75,8 @@ clean::
 clobber::
 	$(RM) $(ARCHIVE_NAME)
 
-backup::
-	@$(BACKUP) $(TOP)\$(ARCHIVE_NAME) $(BACKUPDIR)
+#backup::
+#	@$(BACKUP) $(TOP)\$(ARCHIVE_NAME) $(BACKUPDIR)
 
 ###
 

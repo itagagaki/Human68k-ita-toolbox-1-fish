@@ -4,11 +4,11 @@
 .xref issjis
 .xref strcmp
 .xref strcpy
-.xref for1str
-.xref slash_to_backslash
+.xref strfor1
+.xref sltobsl
 .xref rehash
 .xref set_var
-.xref setenv
+.xref fish_setenv
 .xref flagvarptr
 .xref is_builtin_dir
 .xref no_space_for
@@ -171,14 +171,14 @@ dup_a_word:
 		tst.b	d3
 		beq	dup_a_word_done
 
-		bsr	slash_to_backslash
+		bsr	sltobsl
 dup_a_word_done:
 		adda.l	d0,a0
 		exg	a0,a3
 		moveq	#0,d1
 build_ignore_this:
 		exg	a0,a1
-		bsr	for1str
+		bsr	strfor1
 		exg	a0,a1
 export_continue_build:
 		dbra	d2,build_loop
@@ -186,7 +186,7 @@ do_export:
 		clr.b	(a3)
 		lea	tmpargs,a1
 		movea.l	a4,a0
-		bsr	setenv
+		bsr	fish_setenv
 set_svar_return:
 		movem.l	(a7)+,d1-d3/a0-a4
 		rts

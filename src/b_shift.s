@@ -3,7 +3,7 @@
 *
 * Itagaki Fumihiko 30-Oct-90  Create.
 
-.xref for1str
+.xref strfor1
 .xref find_shellvar
 .xref set_svar
 .xref undefined
@@ -43,8 +43,8 @@ shift_var:
 
 		exg	a0,a2
 		addq.l	#4,a0
-		bsr	for1str
-		bsr	for1str
+		bsr	strfor1
+		bsr	strfor1
 		subq.w	#1,d0
 		movea.l	a0,a1
 		movea.l	a2,a0

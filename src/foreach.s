@@ -8,7 +8,7 @@
 .include ../src/source.h
 .include ../src/loop.h
 
-.xref fornstrs
+.xref strforn
 .xref strmove
 .xref wordlistlen
 .xref copy_wordlist
@@ -87,7 +87,7 @@ state_foreach:
 
 		movea.l	a0,a1				*  A1 : 単語並び（展開前）の先頭
 		move.w	d7,d0
-		bsr	fornstrs
+		bsr	strforn
 		cmpi.b	#')',(a0)+
 		bne	word_not_parened
 
@@ -134,7 +134,7 @@ continue_foreach:
 		addq.w	#1,(a0)
 		move.w	(a0)+,d0
 		movea.l	a0,a1
-		bsr	fornstrs
+		bsr	strforn
 		exg	a0,a1
 		moveq	#1,d0
 		st	d1

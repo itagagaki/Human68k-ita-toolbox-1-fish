@@ -1,7 +1,7 @@
 * skippar.s
 * Itagaki Fumihiko 10-Nov-90  Create.
 
-.xref for1str
+.xref strfor1
 
 .text
 
@@ -41,7 +41,7 @@ not_close_paren:
 		bsr	skip_paren
 		beq	skip_paren_return
 next:
-		bsr	for1str
+		bsr	strfor1
 		subq.w	#1,d0
 		bne	loop
 skip_paren_return:

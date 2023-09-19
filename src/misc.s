@@ -408,6 +408,146 @@ put_tab:
 		move.l	(a7)+,d0
 		rts
 *****************************************************************
+* putsex - エスケープ付き単語を出力する
+*
+* CALL
+*      A0     単語のアドレス
+*      A1     1文字出力ルーチンのアドレス
+*
+* RETURN
+*      D0     \c があったならば 1，さもなくば 0
+*      CCR    TST.L D0
+*****************************************************************
+.xdef putsex
+
+putsex:
+		movem.l	d1-d3/a0,-(a7)
+		moveq	#0,d3
+putsex_loop:
+		move.b	(a0)+,d0
+		beq	putsex_done
+
+		bsr	issjis
+		beq	putsex_sjis
+
+		cmp.b	#'\',d0
+		bne	putsex_normal
+
+		move.b	(a0),d1
+		cmp.b	#'\',d1
+		beq	putsex_escape_1
+
+		moveq	#BS,d0
+		cmp.b	#'b',d1
+		beq	putsex_escape_1
+
+		moveq	#FS,d0
+		cmp.b	#'f',d1
+		beq	putsex_escape_1
+
+		moveq	#CR,d0
+		cmp.b	#'r',d1
+		beq	putsex_escape_1
+
+		moveq	#HT,d0
+		cmp.b	#'t',d1
+		beq	putsex_escape_1
+
+		moveq	#VT,d0
+		cmp.b	#'v',d1
+		beq	putsex_escape_1
+
+		cmp.b	#'n',d1
+		beq	putsex_newline
+
+		cmp.b	#'0',d1
+		beq	putsex_octal
+
+		moveq	#'\',d0
+		cmp.b	#'c',d1
+		bne	putsex_normal
+
+		moveq	#1,d3
+		bra	putsex_escape_2
+
+putsex_newline:
+		moveq	#CR,d0
+		jsr	(a1)
+		moveq	#LF,d0
+putsex_escape_1:
+		jsr	(a1)
+putsex_escape_2:
+		addq.l	#1,a0
+		bra	putsex_loop
+
+putsex_octal:
+		addq.l	#1,a0
+		moveq	#0,d0
+		moveq	#2,d2
+putsex_octal_1:
+		move.b	(a0),d1
+		sub.b	#'0',d1
+		blo	putsex_normal
+
+		cmp.b	#7,d1
+		bhi	putsex_normal
+
+		lsl.b	#3,d0
+		add.b	d1,d0
+		addq.l	#1,a0
+		dbra	d2,putsex_octal_1
+
+		bra	putsex_normal
+
+putsex_sjis:
+		jsr	(a1)
+		move.b	(a0)+,d0
+		beq	putsex_done
+putsex_normal:
+		jsr	(a1)
+		bra	putsex_loop
+
+putsex_done:
+		move.l	d3,d0
+		movem.l	(a7)+,d1-d3/a0
+		rts
+*****************************************************************
+* putse - エスケープ付き単語を標準出力に出力する
+*
+* CALL
+*      A0     単語のアドレス
+*
+* RETURN
+*      D0     \c があったならば 1，さもなくば 0
+*      CCR    TST.L D0
+*****************************************************************
+.xdef putse
+
+putse:
+		move.l	a1,-(a7)
+		lea	putc(pc),a1
+		bsr	putsex
+		movea.l	(a7)+,a1
+		rts
+*****************************************************************
+* eputse - エスケープ付き単語を標準エラー出力に出力する
+*
+* CALL
+*      A0     単語のアドレス
+*
+* RETURN
+*      D0     \c があったならば 1，さもなくば 0
+*      CCR    TST.L D0
+*****************************************************************
+.xdef eputse
+
+eputse:
+		move.l	a1,-(a7)
+		lea	eputc(pc),a1
+		bsr	putsex
+		movea.l	(a7)+,a1
+		rts
+*****************************************************************
 
 .end
 

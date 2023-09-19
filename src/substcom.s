@@ -8,7 +8,7 @@
 
 .xref issjis
 .xref isspace
-.xref strchr
+.xref jstrchr
 .xref copy_wordlist
 .xref dup1
 .xref dup1_2
@@ -70,7 +70,8 @@
 tmpfilename = -(((MAXPATH+1)+1)>>1<<1)
 tmpfiledesc = tmpfilename-4
 quote_char = tmpfiledesc-1
-pad = quote_char-1		*  偶数バウンダリに合わせる
+escape = quote_char-1
+pad = escape-0			*  偶数バウンダリに合わせる
 
 subst_command:
 		link	a6,#pad
@@ -138,17 +139,18 @@ subst_command_search_bottom:
 		bne	subst_command_loop
 
 		move.l	d0,tmpfiledesc(a6)
-		moveq	#0,d7				* D7 : first flag
+		st	d7				*  first_flag = TRUE;
 		movea.l	a0,a3
 substcom_skiploop:
-		bsr	substcom_get1
+		move.l	tmpfiledesc(a6),d0
+		bsr	fgetc
 		bmi	substcom_input_done
 
 		bsr	is_separator
 		beq	substcom_skiploop
 
 		tst.b	d7
-		beq	substcom_duploop
+		bne	substcom_dup_start
 
 		move.b	d0,d6
 		tst.b	quote_char(a6)
@@ -172,22 +174,63 @@ subst_command_terminate_word_1:
 		bmi	subst_command_return
 subst_command_terminate_word_2:
 		move.b	d6,d0
+substcom_dup_start:
+		sf	d7				*  sjis_flag = FALSE;
 substcom_duploop:
-		bsr	substcom_dup1
+		tst.b	d7
+		bne	i_dup_normal
+
+		tst.b	quote_char(a6)
+		bne	i_check_character_2
+
+		cmp.b	#'\',d0
+		beq	i_dup1_with_escaping
+
+		cmp.b	#"'",d0
+		beq	i_dup1_with_escaping
+i_check_character_2:
+		cmp.b	#'"',d0
+		beq	i_dup1_with_escaping
+i_dup_normal:
+		bsr	dup1
+		bra	i_dup1_check
+
+i_dup1_with_escaping:
+		tst.b	quote_char(a6)
+		bne	i_dup1_in_quote
+
+		bsr	dup1_with_escaping
+		bra	i_dup1_check
+
+i_dup1_in_quote:
+		bsr	dup1_with_escaping_in_quote
+i_dup1_check:
 		bmi	subst_command_return
 
-		bsr	substcom_get1
+		tst.b	d7
+		bne	i_dup1_next0
+
+		bsr	issjis
+		bne	i_dup1_next
+
+		st	d7				*  sjis_flag = TRUE;
+		bra	i_dup1_next
+
+i_dup1_next0:
+		sf	d7				*  sjis_flag = FALSE;
+i_dup1_next:
+		move.l	tmpfiledesc(a6),d0
+		bsr	fgetc
 		bmi	substcom_input_done
+
+		tst.b	d7
+		bne	substcom_duploop
 
 		bsr	is_separator
 		bne	substcom_duploop
 
-		moveq	#1,d7
+		sf	d7				*  first_flag = FALSE;
 		bra	substcom_skiploop
-****************
-substcom_get1:
-		move.l	tmpfiledesc(a6),d0
-		bra	fgetc
 ****************
 is_separator:
 		tst.b	d0
@@ -202,23 +245,6 @@ is_separator:
 		cmp.b	#CR,d0
 is_separator_return:
 		rts
-****************
-substcom_dup1:
-		tst.b	quote_char(a6)
-		bne	i_check_character_2
-
-		cmp.b	#'\',d0
-		beq	i_dup1_with_escaping
-
-		cmp.b	#"'",d0
-		beq	i_dup1_with_escaping
-i_check_character_2:
-		cmp.b	#'"',d0
-		bne	dup1
-i_dup1_with_escaping:
-		tst.b	quote_char(a6)
-		beq	dup1_with_escaping
-		bra	dup1_with_escaping_in_quote
 ****************
 substcom_input_done:
 		move.l	tmpfiledesc(a6),d0
@@ -334,7 +360,7 @@ subst_command_2_loop:
 ********************************
 		movea.l	a0,a2
 		moveq	#'`',d0
-		bsr	strchr
+		bsr	jstrchr
 		beq	unmatched_2
 
 		move.l	a0,d0

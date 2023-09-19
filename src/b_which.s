@@ -6,7 +6,7 @@
 .include chrcode.h
 .include limits.h
 
-.xref for1str
+.xref strfor1
 .xref strlen
 .xref strcpy
 .xref puts
@@ -14,7 +14,7 @@
 .xref put_space
 .xref put_newline
 .xref search_command
-.xref test_pathname
+.xref headtail
 .xref find_var
 .xref find_shellvar
 .xref print_alias_value
@@ -72,7 +72,7 @@ no_option:
 		bra	start
 
 start0:
-		bsr	for1str
+		bsr	strfor1
 		subq.w	#1,d1
 start:
 		subq.w	#1,d1
@@ -118,10 +118,10 @@ not_alias:
 
 not_found:
 		bsr	print_name_is
-		movem.l	d1-d2/a1,-(a7)
-		bsr	test_pathname
-		cmpa.l	a0,a2
-		movem.l	(a7)+,d1-d2/a1
+		move.l	a1,-(a7)
+		bsr	headtail
+		cmpa.l	a0,a1
+		movea.l	(a7)+,a1
 		lea	msg_not_found,a0
 		bne	continue
 
@@ -132,7 +132,7 @@ not_found:
 
 		addq.l	#2,a0
 		move.w	(a0)+,d0			* D0.W : $path の要素数
-		bsr	for1str				* A0 : $path[1] のアドレス
+		bsr	strfor1				* A0 : $path[1] のアドレス
 put_pathlist:
 		bsr	print_var_value
 		lea	msg_not_found_in,a0
@@ -145,7 +145,7 @@ continue:
 		bsr	cputs
 		bsr	put_newline
 		movea.l	a1,a0
-		bsr	for1str
+		bsr	strfor1
 		dbra	d1,loop
 
 		moveq	#0,d0
@@ -164,7 +164,7 @@ msg_usage:		dc.b	'[ -o | -O ] <コマンド名> ...',CR,LF
 			dc.b	'    -O   別名と組み込みコマンドを除外する',0
 msg_is:			dc.b	' は',0
 msg_aliased:		dc.b	' の別名です',0
-msg_builtin:		dc.b	' fish の組み込みコマンドです',0
+msg_builtin:		dc.b	' FISH の組み込みコマンドです',0
 msg_not_found_in:	dc.b	' の中に'
 msg_not_found:		dc.b	'ありません',0
 

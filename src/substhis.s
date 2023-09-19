@@ -10,13 +10,13 @@
 .xref issjis
 .xref atou
 .xref utoa
-.xref strchr
+.xref jstrchr
 .xref strlen
+.xref strfor1
+.xref strforn
 .xref strmem
 .xref memmovi
 .xref skip_space
-.xref for1str
-.xref fornstrs
 .xref make_wordlist
 .xref scanchar2
 .xref eputs
@@ -105,7 +105,7 @@ wordlistmem_loop:
 		bsr	strmem				* 文字列を探す
 		bne	wordlistmem_done		* 見つかった
 
-		bsr	for1str
+		bsr	strfor1
 		addq.l	#1,d2
 wordlistmem_continue:
 		dbra	d3,wordlistmem_loop
@@ -521,7 +521,7 @@ expand_history_empty_range:
 		moveq	#-1,d1
 expand_history_word_range_ok:
 		addq.w	#1,d1				*  D1.W : 取得単語数
-		bsr	fornstrs			*  A0 : 取得単語並び
+		bsr	strforn				*  A0 : 取得単語並び
 		move.w	d1,d0				*  D0.W : 取得単語数
 		move.l	(a7)+,d1
 ****************
@@ -774,7 +774,7 @@ find_str_loop:
 
 		move.l	a0,-(a7)
 		lea	special_word_selecters_2,a0	*   -  *  $  ^
-		bsr	strchr
+		bsr	jstrchr
 		movea.l	(a7)+,a0
 		bne	find_str_done
 
@@ -800,7 +800,7 @@ search_istr:
 		addq.l	#1,a2				*  1つめの ? をスキップ
 		movea.l	a2,a0				*  A0 : str の先頭
 		moveq	#'?',d0
-		bsr	strchr
+		bsr	jstrchr
 		exg	a0,a2				*  A2 : 次のポイント
 		move.l	a2,d0
 		sub.l	a0,d0				*  D0.L : strの長さ
@@ -1077,7 +1077,7 @@ error:
 is_special_word_selecter:
 		move.l	a0,-(a7)
 		lea	special_word_selecters,a0
-		bsr	strchr
+		bsr	jstrchr
 		movea.l	(a7)+,a0
 		rts
 ****************************************************************

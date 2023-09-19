@@ -6,7 +6,7 @@
 .include ../src/fish.h
 
 .xref atou
-.xref for1str
+.xref strfor1
 .xref wordlistlen
 .xref copy_wordlist
 .xref xmalloc
@@ -96,7 +96,7 @@ cmd_repeat:
 		beq	return_0
 
 		movea.l	a2,a0
-		bsr	for1str
+		bsr	strfor1
 		subq.w	#1,d2
 		move.w	d2,d1
 		bsr	alloc_new_argbuf

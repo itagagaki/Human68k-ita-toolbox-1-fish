@@ -1,8 +1,9 @@
 * findsvar.s
 * Itagaki Fumihiko 24-Sep-90  Create.
+* Itagaki Fumihiko 14-Aug-91  バグ修正
 
 .xref atou
-.xref for1str
+.xref strfor1
 .xref find_shellvar
 
 .text
@@ -19,8 +20,8 @@ sub1:
 		tst.w	(a0)+
 		beq	sub1_done			*  単語が無い ; return 1
 
-		moveq	#2,d2
-		bsr	for1str
+		moveq	#2,d2				*  単語が空   ; return 2
+		bsr	strfor1
 		tst.b	(a0)
 sub1_done:
 		rts
@@ -69,7 +70,7 @@ svartou:
 		bne	svartou_return
 
 		tst.l	d0
-		beq	sub2_done
+		beq	svartou_return
 
 		moveq	#-1,d2				*  オーバーフロー ; return -1
 svartou_return:

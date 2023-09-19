@@ -6,7 +6,7 @@
 .include chrcode.h
 
 .xref find_shellvar
-.xref for1str
+.xref strfor1
 .xref cat_pathname
 .xref drvchkp
 .xref strcpy
@@ -42,7 +42,7 @@ tmpname:
 		tst.w	(a0)+
 		beq	notemp
 
-		bsr	for1str
+		bsr	strfor1
 		tst.b	(a0)
 		beq	notemp
 ****************

@@ -6,7 +6,7 @@
 .include ../src/fish.h
 
 .xref strcmp
-.xref for1str
+.xref strfor1
 .xref skip_paren
 .xref copy_wordlist
 .xref expression2
@@ -42,7 +42,7 @@ test_statement_paren:
 		bsr	skip_paren
 		beq	test_statement_paren_error
 
-		bsr	for1str
+		bsr	strfor1
 		exg	a0,a1				*  A1 : ')' の次の単語
 		subq.w	#1,d0
 		exg	d0,d1				*  D1 : A1 以降の単語数
@@ -51,7 +51,7 @@ test_statement_paren:
 		subq.w	#2,d0				*  D0 : ()の中の単語数
 		beq	test_statement_paren_error
 
-		bsr	for1str				*  A0 : '(' の次の単語
+		bsr	strfor1				*  A0 : '(' の次の単語
 		cmp.w	d0,d0
 		rts
 
@@ -112,7 +112,7 @@ state_if_then:
 		subq.w	#1,d7
 		bne	syntax_error
 
-		bsr	for1str
+		bsr	strfor1
 state_if_set_status:
 		tst.l	d1
 		seq	if_status(a5)

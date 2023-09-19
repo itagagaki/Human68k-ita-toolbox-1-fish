@@ -1,6 +1,8 @@
 * enterhis.s
 * Itagaki Fumihiko 29-Jul-90  Create.
+* Itagaki Fumihiko 19-Aug-91  イベント毎に時刻を記憶するようにした．
 
+.include doscall.h
 .include ../src/history.h
 
 .xref memmovi
@@ -61,6 +63,8 @@ enter_history_2:
 		move.l	d0,HIST_EVENTNO(a0)
 		move.l	d0,HIST_REFNO(a0)
 		move.w	d1,HIST_NWORDS(a0)
+		DOS	_GETTIM2
+		move.l	d0,HIST_TIME(a0)
 		lea	HIST_BODY(a0),a0
 		move.l	d2,d0
 		bsr	memmovi

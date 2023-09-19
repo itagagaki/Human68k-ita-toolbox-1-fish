@@ -24,6 +24,7 @@
 *     sizeof <filename>
 *     timeof <filename>
 *     freeof <drive>:
+*     strlen <string>
 *     { <command> }
 *     ( expression )
 *
@@ -93,7 +94,7 @@ itoabuf = -12
 .xref strcmp
 .xref strpcmp
 .xref strcpy
-.xref for1str
+.xref strfor1
 .xref skip_space
 .xref enputs1
 .xref escape_quoted
@@ -1081,7 +1082,7 @@ expr_expand_a_word:
 
 		clr.b	(a1)
 expr_expand_ok:
-		bsr	for1str
+		bsr	strfor1
 		bra	success
 
 expr_ambiguous:
@@ -1131,7 +1132,7 @@ operator_return:
 		bra	success
 ****************************************************************
 next_token:
-		bsr	for1str
+		bsr	strfor1
 		subq.w	#1,d7
 		rts
 ****************************************************************

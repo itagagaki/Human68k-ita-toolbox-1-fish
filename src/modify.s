@@ -10,10 +10,10 @@
 .xref isdigit
 .xref scanchar2
 .xref strlen
-.xref strchr
+.xref jstrchr
 .xref strcpy
 .xref strbot
-.xref for1str
+.xref strfor1
 .xref memmovd
 .xref memmovi
 .xref wordlistlen
@@ -26,7 +26,7 @@
 .xref ecputc
 .xref enputs
 .xref eput_newline
-.xref test_pathname
+.xref split_pathname
 .xref cannot_because_no_memory
 .xref msg_no_prev_search
 
@@ -127,7 +127,7 @@ modify_loop:
 		exg	a0,a3
 		move.b	d0,d6
 		lea	str_modifier_rhtedf,a0
-		bsr	strchr
+		bsr	jstrchr
 		bne	modify_pathname
 
 		cmp.w	#'s',d0
@@ -189,7 +189,7 @@ modify_pathname:
 		bra	modify_pathname_continue
 
 modify_pathname_loop:
-		bsr	test_pathname
+		bsr	split_pathname
 		cmp.b	#'e',d6
 		beq	modify_extention
 
@@ -229,7 +229,7 @@ modify_head:
 		addq.l	#1,d0
 modify_pathname_cut_tail:
 		lea	(a0,d0.l),a1
-		bsr	for1str
+		bsr	strfor1
 		exg	a0,a1
 		clr.b	(a0)+
 		cmpa.l	a1,a0
@@ -255,7 +255,7 @@ modify_file:
 		addq.w	#1,d0
 		bsr	copy_wordlist
 modify_pathname_next:
-		bsr	for1str
+		bsr	strfor1
 modify_pathname_continue:
 		dbra	d7,modify_pathname_loop
 
@@ -635,7 +635,7 @@ modify_subst_search_next:
 		tst.b	special_pattern(a6)
 		beq	modify_subst_search
 
-		bsr	for1str
+		bsr	strfor1
 		subq.w	#1,d0
 modify_subst_search:
 		move.l	d2,-(a7)

@@ -4,11 +4,11 @@
 * Itagaki Fumihiko 16-Jul-90  Create.
 
 .xref strcmp
-.xref for1str
+.xref strfor1
 .xref nputs
 .xref strip_quotes
 .xref expand_wordlist
-.xref setenv
+.xref fish_setenv
 .xref inport_path
 .xref rehash
 .xref too_many_args
@@ -43,7 +43,7 @@ cmd_setenv:
 		bhi	too_many_args		* エラー
 
 		movea.l	a0,a2			* A2 : 変数名
-		bsr	for1str
+		bsr	strfor1
 		movea.l	a0,a1			* A1 : 値
 		move.l	a1,-(a7)
 		lea	tmpargs,a0		* tmpargs に
@@ -59,7 +59,7 @@ cmd_setenv:
 		movea.l	a2,a0			* A0 : 変数名
 cmd_setenv_set:
 		bsr	strip_quotes
-		bsr	setenv
+		bsr	fish_setenv
 		bne	cmd_setenv_return
 		*
 		*  環境変数 path が再設定されたのならば
@@ -83,7 +83,7 @@ printenv_loop:
 		beq	cmd_setenv_success_return	* 終わり
 
 		bsr	nputs
-		bsr	for1str
+		bsr	strfor1
 		bra	printenv_loop
 
 cmd_setenv_success_return:

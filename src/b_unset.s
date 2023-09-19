@@ -3,7 +3,7 @@
 *
 * Itagaki Fumihiko 15-Jul-90  Create.
 
-.xref for1str
+.xref strfor1
 .xref memmovi
 .xref strcmp
 .xref strpcmp
@@ -119,7 +119,7 @@ loop:
 		move.b	d1,d0
 		bsr	unset_var
 		exg	a0,a2
-		bsr	for1str
+		bsr	strfor1
 		dbra	d2,loop
 
 		moveq	#0,d0

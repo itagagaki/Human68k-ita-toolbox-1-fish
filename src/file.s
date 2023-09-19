@@ -7,6 +7,7 @@
 .include chrcode.h
 
 .xref isspace
+.xref fclose
 .xref drvchkp
 
 .text
@@ -36,11 +37,6 @@ create_normal_file:
 		tst.l	d0
 		rts
 *****************************************************************
-* fclose - ファイルをクローズする
-*
-* CALL
-*      D0.W   ファイル・デスクリプタ
-*
 * fclosex - ファイル・デスクリプタが正ならばファイルをクローズする
 *
 * CALL
@@ -51,17 +47,11 @@ create_normal_file:
 *      CCR    TST.L D0
 *****************************************************************
 .xdef fclosex
-.xdef fclose
 
 fclosex:
 		tst.w	d0
-		bmi	fclose_return
-fclose:
-		move.w	d0,-(a7)
-		DOS	_CLOSE
-		addq.l	#2,a7
-		tst.l	d0
-fclose_return:
+		bpl	fclose
+
 		rts
 *****************************************************************
 .xdef redirect
@@ -159,7 +149,7 @@ fgets_over:
 		moveq	#1,d0
 		bra	fgets_return
 *****************************************************************
-* fseek_nextline - ファイルを次の行の先頭にシークする
+* fforline - ファイルを次の行の先頭にシークする
 *
 * CALL
 *      D0.W   ファイル・ハンドル
@@ -170,23 +160,23 @@ fgets_over:
 *
 *      CCR    TST.L D0
 *****************************************************************
-.xdef fseek_nextline
+.xdef fforline
 
-fseek_nextline:
+fforline:
 		move.w	d0,-(a7)
-fseek_nextline_loop:
+fforline_loop:
 		DOS	_FGETC
 		tst.l	d0
-		bmi	fseek_nextline_return
+		bmi	fforline_return
 
 		cmp.b	#LF,d0
-		bne	fseek_nextline_loop
-fseek_nextline_return:
+		bne	fforline_loop
+fforline_return:
 		addq.l	#2,a7
 		tst.l	d0
 		rts
 *****************************************************************
-* fseek_nextfield - ファイルを次のフィールドの先頭にシークする
+* fforfield - ファイルを次のフィールドの先頭にシークする
 *
 * CALL
 *      D0.W   ファイル・ハンドル
@@ -198,21 +188,21 @@ fseek_nextline_return:
 *
 *      CCR    TST.L D0
 *****************************************************************
-.xdef fseek_nextfield
+.xdef fforfield
 
-fseek_nextfield:
+fforfield:
 		move.w	d0,-(a7)
-fseek_nextfield_loop:
+fforfield_loop:
 		DOS	_FGETC
 		tst.l	d0
-		bmi	fseek_nextfield_return
+		bmi	fforfield_return
 
 		cmp.b	#';',d0
-		beq	fseek_nextfield_return
+		beq	fforfield_return
 
 		cmp.b	#LF,d0
-		bne	fseek_nextfield_loop
-fseek_nextfield_return:
+		bne	fforfield_loop
+fforfield_return:
 		addq.l	#2,a7
 		tst.l	d0
 		rts
@@ -246,6 +236,7 @@ fskip_space_return:
 		addq.l	#2,a7
 		tst.l	d0
 		rts
+.if 0
 *****************************************************************
 * fmemcmp - ストリームとメモリを照合する
 *
@@ -290,6 +281,7 @@ fmemcmp_fail:
 		moveq	#1,d0
 		bra	fmemcmp_return
 *****************************************************************
+.endif
 
 .end
 

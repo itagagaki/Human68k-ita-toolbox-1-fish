@@ -5,8 +5,8 @@
 .xref tolower
 .xref toupper
 .xref strcpy
-.xref for1str
-.xref isabsolute
+.xref strfor1
+.xref isfullpath
 .xref getcwd
 .xref find_shellvar
 .xref word_home
@@ -86,7 +86,7 @@ is_under_home:
 		movem.l	d1-d2/a0-a2,-(a7)
 		moveq	#0,d2			*  D2.L : 結果
 		movea.l	a0,a2			*  A2 : ディレクトリ名の先頭アドレス
-		bsr	isabsolute		*  ディレクトリ名は絶対パス
+		bsr	isfullpath		*  ディレクトリ名は絶対パス
 		bne	is_under_home_return	*  ではない
 
 		lea	word_home,a0		*  シェル変数 home
@@ -97,8 +97,8 @@ is_under_home:
 		tst.w	(a0)+			*  シェル変数 home の単語数
 		beq	is_under_home_return	*  は 0 である
 
-		bsr	for1str			*  A0 : $home[1]
-		bsr	isabsolute		*  $home[1] は絶対パス名
+		bsr	strfor1			*  A0 : $home[1]
+		bsr	isfullpath		*  $home[1] は絶対パス名
 		bne	is_under_home_return	*  ではない
 
 		move.b	(a0),d0			*  $home[1] のドライブ名

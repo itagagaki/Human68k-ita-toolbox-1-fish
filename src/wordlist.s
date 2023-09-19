@@ -6,40 +6,18 @@
 .xref issjis
 .xref toupper
 .xref skip_space
-.xref strchr
+.xref jstrchr
 .xref strlen
 .xref strcmp
 .xref strmove
+.xref strfor1
+.xref strforn
 .xref rotate
 .xref too_many_words
 .xref too_long_line
 .xref too_long_word
 .xref word_separators
 
-****************************************************************
-.xdef for1str
-
-for1str:
-		tst.b	(a0)+
-		bne	for1str
-
-		rts
-*****************************************************************
-.xdef fornstrs
-
-fornstrs:
-		tst.w	d0
-		beq	fornstrs_end
-
-		move.w	d0,-(a7)
-		subq.w	#1,d0
-fornstrs_loop:
-		bsr	for1str
-		dbra	d0,fornstrs_loop
-
-		move.w	(a7)+,d0
-fornstrs_end:
-		rts
 ****************************************************************
 * make_wordlist - íPåÍï¿Ç—ÇçÏÇÈ
 *
@@ -286,7 +264,7 @@ is_word_separator:
 		movem.l	d0/a0,-(a7)
 		lea	word_separators,a0
 		and.w	#$ff,d0
-		bsr	strchr
+		bsr	jstrchr
 		seq	d0
 		tst.b	d0
 		movem.l	(a7)+,d0/a0
@@ -310,7 +288,7 @@ words_to_line:
 		bra	words_to_line_continue
 
 words_to_line_loop:
-		bsr	for1str
+		bsr	strfor1
 		move.b	#' ',-1(a0)
 words_to_line_continue:
 		dbra	d0,words_to_line_loop
@@ -335,16 +313,15 @@ words_to_line_null:
 .xdef copy_wordlist
 
 copy_wordlist:
-		movem.l	d0-d1/a0-a1,-(a7)
-		move.w	d0,d1
+		movem.l	d0/a0-a1,-(a7)
 		bra	copy_wordlist_continue
 
 copy_wordlist_loop:
 		bsr	strmove
 copy_wordlist_continue:
-		dbra	d1,copy_wordlist_loop
+		dbra	d0,copy_wordlist_loop
 
-		movem.l	(a7)+,d0-d1/a0-a1
+		movem.l	(a7)+,d0/a0-a1
 		rts
 ****************************************************************
 * find_close_paren - find ) in wordlist
@@ -372,7 +349,7 @@ find_close_paren_loop:
 		cmpi.b	#')',(a0)
 		beq	close_paren_found
 
-		bsr	for1str
+		bsr	strfor1
 		addq.w	#1,d1
 find_close_paren_start:
 		dbra	d0,find_close_paren_loop
@@ -406,7 +383,7 @@ sort_wordlist:
 		movem.l	d0-d2/a0-a3,-(a7)
 		move.w	d0,d1
 		movea.l	a0,a2
-		bsr	fornstrs
+		bsr	strforn
 		exg	a0,a2
 sort_wordlist_loop2:
 		cmp.w	#2,d1
@@ -418,7 +395,7 @@ sort_wordlist_loop2:
 		movea.l	a0,a3
 		movea.l	a0,a1
 sort_wordlist_loop1:
-		bsr	for1str
+		bsr	strfor1
 		bsr	strcmp
 		bhs	sort_wordlist_loop1_continue
 
@@ -432,7 +409,7 @@ sort_wordlist_loop1_continue:
 
 		bsr	rotate
 sort_wordlist_loop2_continue:
-		bsr	for1str
+		bsr	strfor1
 		bra	sort_wordlist_loop2
 
 sort_wordlist_done:
@@ -507,7 +484,7 @@ common_spell_ank_1:
 		bra	common_spell_ank_continue
 
 common_spell_ank_loop:
-		bsr	for1str
+		bsr	strfor1
 		add.l	d1,a0
 		move.b	(a0),d0
 		tst.b	d2
@@ -532,7 +509,7 @@ common_spell_sjis:
 		bra	common_spell_sjis_continue
 
 common_spell_sjis_loop:
-		bsr	for1str
+		bsr	strfor1
 		add.l	d1,a0
 		move.b	(a0),d6
 		lsl.l	#8,d6

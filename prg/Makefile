@@ -24,28 +24,28 @@ EXTLIBS = ../lib/ita.l
 FILES	= main.o state.l builtin1.l builtin2.l subst.l var.l misc.l string.l dir_io.l
 
 OBJS_BUILTIN1 = b_alias.o b_alloc.o b_bind.o b_dirs.o b_echo.o b_eval.o \
-                b_exit.o b_glob.o b_goto.o b_history.o b_logout.o b_printf.o \
-                b_repeat.o b_setenv.o
+                b_exit.o b_glob.o b_goto.o b_history.o b_logout.o \
+                b_printf.o b_repeat.o b_setenv.o
 
-OBJS_BUILTIN2 = b_set.o b_shift.o b_source.o b_time.o b_unset.o b_unsetenv.o \
-                b_which.o
+OBJS_BUILTIN2 = b_set.o b_shift.o b_source.o b_time.o b_unset.o \
+                b_unsetenv.o b_which.o
 
-OBJS_MISC     = chkwild.o dupenv.o echo.o error.o expr.o file.o getcwdx.o \
-                getenv.o getline.o misc.o hash.o passwd.o quote.o skippar.o \
-                tmpfile.o wordlist.o
+OBJS_MISC     = chkwild.o dupenv.o echo.o error.o expr.o file.o f_getenv.o \
+                getcwdx.o getline.o misc.o hash.o passwd.o quote.o \
+                skippar.o tmpfile.o wordlist.o
 
 OBJS_SUBST    = enterhis.o expwords.o glob.o modify.o substali.o substcom.o \
                 substhis.o substvar.o unpack.o
 
-OBJS_VAR      = findvar.o flagvar.o printvar.o setvar.o setenv.o setsvar.o \
-                svartou.o
+OBJS_VAR      = f_setenv.o findvar.o flagvar.o printvar.o setvar.o \
+                setsvar.o svartou.o
 
 OBJS_STATE    = ifthen.o switchcase.o foreach.o
 
-OBJS_STRING   = _strchr.o qstrchr.o scanch2.o skipvnam.o strazcpy.o \
-                strchr.o strcpy.o strechr.o stricmp.o strmem.o strpcmp.o
+OBJS_STRING   = qstrchr.o scanch2.o skipvnam.o jstrchr.o stricmp.o strmem.o \
+                strpcmp.o
 
-OBJS_DIR_IO   = chdir.o getcwd.o pathname.o stat.o
+OBJS_DIR_IO   = pathname.o stat.o
 
 ###
 
