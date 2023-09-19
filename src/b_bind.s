@@ -67,21 +67,23 @@ X_KILL_BACK_WORD	equ	22
 X_KILL_FOR_WORD		equ	23
 X_KILL_BOL		equ	24
 X_KILL_EOL		equ	25
-X_KILL_REGION		equ	26
-X_COPY_REGION		equ	27
-X_YANK			equ	28
-X_UPCASE_CHAR		equ	29
-X_DOWNCASE_CHAR		equ	30
-X_UPCASE_WORD		equ	31
-X_DOWNCASE_WORD		equ	32
-X_UPCASE_REGION		equ	33
-X_DOWNCASE_REGION	equ	34
-X_TRANSPOSE_CHARS	equ	35
-X_TRANSPOSE_WORDS	equ	36
-X_UP_HISTORY		equ	37
-X_DOWN_HISTORY		equ	38
-X_COMPLETE		equ	39
-X_LIST			equ	40
+X_KILL_WHOLE_LINE	equ	26
+X_KILL_REGION		equ	27
+X_COPY_REGION		equ	28
+X_YANK			equ	29
+X_UPCASE_CHAR		equ	30
+X_DOWNCASE_CHAR		equ	31
+X_UPCASE_WORD		equ	32
+X_DOWNCASE_WORD		equ	33
+X_UPCASE_REGION		equ	34
+X_DOWNCASE_REGION	equ	35
+X_TRANSPOSE_CHARS	equ	36
+X_TRANSPOSE_WORDS	equ	37
+X_UP_HISTORY		equ	38
+X_DOWN_HISTORY		equ	39
+X_COMPLETE		equ	40
+X_LIST			equ	41
+X_COPY_PREV_WORD	equ	42
 
 .text
 
@@ -553,6 +555,7 @@ key_function_name_table:
 		dc.l	name_kill_for_word
 		dc.l	name_kill_bol
 		dc.l	name_kill_eol
+		dc.l	name_kill_whole_line
 		dc.l	name_kill_region
 		dc.l	name_copy_region
 		dc.l	name_yank
@@ -568,6 +571,7 @@ key_function_name_table:
 		dc.l	name_down_history
 		dc.l	name_complete
 		dc.l	name_list
+		dc.l	name_copy_prev_word
 		dc.l	0
 
 .even
@@ -585,23 +589,24 @@ name_abort:			dc.b	'abort',0
 name_eof:			dc.b	'eof',0
 name_accept_line:		dc.b	'accept-line',0
 name_quoted_insert:		dc.b	'quoted-insert',0
+name_clear_and_redraw:		dc.b	'clear-and-'
 name_redraw:			dc.b	'redraw',0
-name_clear_and_redraw:		dc.b	'clear-and-redraw',0
 name_set_mark:			dc.b	'set-mark',0
 name_exg_point_and_mark:	dc.b	'exchange-point-and-mark',0
 name_search_character:		dc.b	'search-character',0
 name_bol:			dc.b	'beginning-of-line',0
 name_eol:			dc.b	'end-of-line',0
+name_del_back_char:		dc.b	'delete-'
 name_backward_char:		dc.b	'backward-char',0
+name_del_for_char:		dc.b	'delete-'
 name_forward_char:		dc.b	'forward-char',0
+name_kill_back_word:		dc.b	'kill-'
 name_backward_word:		dc.b	'backward-word',0
+name_kill_for_word:		dc.b	'kill-'
 name_forward_word:		dc.b	'forward-word',0
-name_del_back_char:		dc.b	'delete-backward-char',0
-name_del_for_char:		dc.b	'delete-forward-char',0
-name_kill_back_word:		dc.b	'kill-backward-word',0
-name_kill_for_word:		dc.b	'kill-forward-word',0
 name_kill_bol:			dc.b	'kill-to-bol',0
 name_kill_eol:			dc.b	'kill-to-eol',0
+name_kill_whole_line:		dc.b	'kill-whole-line',0
 name_kill_region:		dc.b	'kill-region',0
 name_copy_region:		dc.b	'copy-region',0
 name_yank:			dc.b	'yank',0
@@ -617,6 +622,7 @@ name_up_history:		dc.b	'up-history',0
 name_down_history:		dc.b	'down-history',0
 name_complete:			dc.b	'complete',0
 name_list:			dc.b	'list',0
+name_copy_prev_word:		dc.b	'copy-prev-word',0
 
 msg_main:		dc.b	'        ',0
 

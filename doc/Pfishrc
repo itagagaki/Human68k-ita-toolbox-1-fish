@@ -49,7 +49,10 @@ bind ^_ downcase-char
 bind ^? delete-forward-char
 
 bind -1 ^H  kill-backward-word
+bind -1 ^I  complete
 bind -1 ^L  clear-and-redraw
+bind -1 ^[  complete
+bind -1 ^_  copy-prev-word
 bind -1 ' ' set-mark
 bind -1 '?' list
 bind -1 b   backward-word
@@ -66,8 +69,6 @@ bind -1 u   upcase-word
 bind -1 U   upcase-word
 bind -1 w   copy-region
 bind -1 W   copy-region
-bind -1 ^I  complete
-bind -1 ^[  complete
 bind -1 ^?  kill-forward-word
 
 bind -2 ^L downcase-region

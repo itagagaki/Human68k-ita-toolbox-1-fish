@@ -27,10 +27,10 @@ OBJS_BUILTIN1 = b_alias.o b_alloc.o b_bind.o b_dirs.o b_echo.o b_eval.o \
                 b_exit.o b_glob.o b_goto.o b_history.o b_logout.o \
                 b_printf.o b_repeat.o b_setenv.o
 
-OBJS_BUILTIN2 = b_set.o b_shift.o b_source.o b_time.o b_unset.o \
+OBJS_BUILTIN2 = b_set.o b_shift.o b_source.o b_srand.o b_time.o b_unset.o \
                 b_unsetenv.o b_which.o
 
-OBJS_MISC     = chkwild.o dupenv.o echo.o error.o expr.o file.o f_getenv.o \
+OBJS_MISC     = chkwild.o echo.o error.o expr.o file.o f_getenv.o \
                 getcwdx.o getline.o malloc.o misc.o hash.o passwd.o quote.o \
                 skippar.o tmpfile.o wordlist.o
 
@@ -42,8 +42,7 @@ OBJS_VAR      = f_setenv.o findvar.o flagvar.o printvar.o setvar.o \
 
 OBJS_STATE    = ifthen.o switchcase.o foreach.o function.o
 
-OBJS_STRING   = qstrchr.o scanch2.o skipvnam.o jstrchr.o stricmp.o strmem.o \
-                strpcmp.o
+OBJS_STRING   = qstrchr.o scanch2.o skipvnam.o jstrchr.o strpcmp.o
 
 OBJS_DIR_IO   = pathname.o stat.o
 
@@ -106,9 +105,11 @@ clean::
 	$(RM) fishg.x fishg.map
 
 #
-fish_loader.o main.o b_ctty.o b_dirs.o b_eval.o b_source.o expr.o \
-getline.o glob.o ifthen.o malloc.o modify.o substcom.o substhis.o \
+fish_loader.o main.o b_ctty.o b_dirs.o b_eval.o b_source.o b_srand.o \
+expr.o getline.o glob.o ifthen.o malloc.o modify.o substcom.o substhis.o \
 substvar.o switchcase.o unpack.o wordlist.o : fish.h
+
+main.o b_setenv.o f_getenv.o f_setenv.o substvar.o pathname.o misc.o : var.h
 
 main.o foreach.o getline.o b_goto.o substvar.o : source.h
 

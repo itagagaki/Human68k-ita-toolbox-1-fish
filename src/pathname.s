@@ -4,16 +4,14 @@
 * This contains pathname controll routines.
 
 .include limits.h
+.include ../src/var.h
 
 .xref strbot
 .xref strlen
-.xref memmovi
+.xref strfor1
 .xref headtail
 .xref cat_pathname
 .xref fish_getenv
-.xref find_shellvar
-
-.xref word_home
 
 .text
 
@@ -116,12 +114,14 @@ make_sys_pathname:
 		movea.l	a0,a3
 		lea	word_sysroot,a0
 		bsr	fish_getenv
-		bne	make_sys_pathname_1
+		lea	str_nul,a1
+		beq	make_sys_pathname_1
 
-		lea	str_nul,a0
-		move.l	a0,d0
+		movea.l	d0,a0
+		lea	var_body(a0),a0
+		bsr	strfor1
+		movea.l	a0,a1
 make_sys_pathname_1:
-		movea.l	d0,a1
 		movea.l	a3,a0
 		bsr	cat_pathname
 make_sys_pathname_return:

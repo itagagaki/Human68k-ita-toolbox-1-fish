@@ -83,7 +83,7 @@ cmd_alias:
 		movea.l	a0,a2			* A2 : tmpargs
 		movea.l	alias(a5),a0
 		bsr	set_var
-		bne	no_space
+		beq	no_space
 		bra	return_0
 ****************
 print_one_alias:

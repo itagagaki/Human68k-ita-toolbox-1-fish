@@ -30,20 +30,20 @@ strmem:
 		move.l	d0,d2		* D2.L : 照合パターンの長さ
 		beq	strmem_found	* 0 ならば文字列の先頭を返す
 
-		bsr	strlen
+		jsr	strlen
 		move.l	d0,d3		* 文字列の長さから
 		sub.l	d2,d3		* 照合パターンの長さを引く
 		bcs	strmem_fail	* 照合パターンより文字列が短いなら見つかるわけはない
 strmem_loop:
 		move.l	d2,d0
-		bsr	memxcmp
+		jsr	memxcmp
 		beq	strmem_found
 
 		subq.l	#1,d3
 		bcs	strmem_fail
 
 		move.b	(a0)+,d0
-		bsr	issjis
+		jsr	issjis
 		bne	strmem_loop
 
 		subq.l	#1,d3

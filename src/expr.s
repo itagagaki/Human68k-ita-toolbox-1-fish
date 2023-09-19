@@ -191,12 +191,15 @@ triterm:
 
 		bsr	next_token			*  演算子 ? をスキップする
 
+		tst.b	d6
+		beq	triterm_ignore
+
 		bsr	expr_atoi			*  条件項を数値に変換する
 		bne	return
 
 		tst.l	d1				*  条件項は真か偽か
 		beq	triterm_false
-
+	*  真
 		bsr	triterm				*  第一項を得る
 		bne	return
 
@@ -206,13 +209,21 @@ triterm:
 		bra	triterm_skip_term		*  第二項をスキップする
 
 triterm_false:
+	*  偽
 		bsr	triterm_skip_term		*  第一項をスキップする
 		bne	return
-
+triterm_false_1:
 		bsr	triterm_skip_colon
 		bne	return
 
 		bra	triterm				*  第二項を得る
+
+
+triterm_ignore:
+		bsr	triterm
+		bne	return
+
+		bra	triterm_false_1
 
 
 triterm_skip_colon:
@@ -244,11 +255,11 @@ bool_or:
 
 		move.w	d6,-(a7)
 bool_or_loop:
-		bsr	expr_atoi
-		bne	bool_error
-
 		tst.b	d6
 		beq	bool_or_1
+
+		bsr	expr_atoi
+		bne	bool_error
 
 		move.l	d1,d2
 		seq	d6
@@ -286,11 +297,11 @@ bool_and:
 
 		move.w	d6,-(a7)
 bool_and_loop:
-		bsr	expr_atoi
-		bne	bool_error
-
 		tst.b	d6
 		beq	bool_and_1
+
+		bsr	expr_atoi
+		bne	bool_error
 
 		move.l	d1,d2
 		sne	d6
@@ -412,6 +423,8 @@ do_compare_string_1:
 
 do_compare_ignore:
 		bsr	compare_less_or_greater
+		bne	return
+
 		bra	compare_string_loop
 
 compare_string_error1:
@@ -603,6 +616,9 @@ unary_1:
 		cmpa.l	a2,a3
 		beq	unary_return
 
+		tst.b	d6
+		beq	unary_return
+
 		bsr	expr_atoi
 		bne	return
 unary_more:
@@ -709,12 +725,15 @@ primary_command_count_continue:
 			bra	primary_command_count_loop
 
 primary_command_count_break:
+			tst.b	d6
+			beq	primary_command_done
+
 			moveq	#1,d1
-			move.b	d6,d2
-			not.b	d2
+			sf	d2
 			jsr	fork
 			tst.l	d0
 			bsr	eq1_ne0
+primary_command_done:
 			movea.l	a2,a0
 			bsr	next_token
 			bra	success
@@ -811,7 +830,7 @@ primary_device_io:
 			bne	expr_error
 
 			tst.b	d6
-			beq	store_0
+			beq	success
 
 			exg	a0,a1
 			moveq	#2,d0
@@ -835,7 +854,7 @@ primary_devicetype:
 			bne	expr_error
 
 			tst.b	d6
-			beq	store_0
+			beq	success
 
 			exg	a0,a1
 			moveq	#2,d0
@@ -855,11 +874,11 @@ primary_isatty:
 			bsr	next_token__expand
 			bne	expr_error
 
+			tst.b	d6
+			beq	success
+
 			bsr	expr_atoi
 			bne	expr_error
-
-			tst.b	d6
-			beq	store_0
 
 			cmp.l	#$ffff,d1
 			bhi	store_0
@@ -928,7 +947,7 @@ primary_not_timeof:
 			bne	expr_error
 
 			tst.b	d6
-			beq	store_0
+			beq	success
 
 			move.b	(a1),d0
 			beq	expression_syntax_error
@@ -979,7 +998,7 @@ primary_not_freeof:
 			bne	expr_error
 
 			tst.b	d6
-			beq	store_0
+			beq	success
 
 			exg	a0,a1
 			bsr	strlen
@@ -992,6 +1011,9 @@ primary_not_strlen:
 **
 **  normal primary word
 **
+		tst.b	d6
+		beq	expr_expand_ok
+
 		cmp.b	#OP_MATCH,d5
 		beq	primary_pattern
 
@@ -1004,6 +1026,9 @@ primary_pattern:
 next_token__expand:
 		bsr	next_token
 		bcs	expression_syntax_error
+
+		tst.b	d6
+		beq	expr_expand_ok
 expr_expand_a_word:
 		move.l	#MAXWORDLEN,d1
 		bsr	expand_a_word
@@ -1036,7 +1061,7 @@ stat_operand:
 		bne	expr_error
 
 		tst.b	d6
-		beq	store_0
+		beq	success
 
 		movem.l	a0-a1,-(a7)
 		movea.l	a1,a0
@@ -1095,6 +1120,9 @@ next_token:
 *      その他は破壊
 ****************************************************************
 dual_term:
+		tst.b	d6
+		beq	dual_term_false
+
 		bsr	expr_atoi			*  左項を数値に変換する
 		bne	return
 
@@ -1117,6 +1145,10 @@ dual_term_done:
 dual_term_return:
 		movem.l	(a7)+,d1/a1
 		rts
+
+dual_term_false:
+		bsr	next_token			*  演算子をスキップする
+		jmp	(a2)				*  右項を得る
 ****************************************************************
 * expr_atoi
 *

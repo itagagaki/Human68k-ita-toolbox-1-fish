@@ -10,7 +10,7 @@
 .xref headtail
 .xref memmovi
 .xref strcpy
-.xref stricmp
+.xref strcmp
 
 .text
 
@@ -31,11 +31,10 @@
 searchnamebuf = -(((MAXPATH+1)+1)>>1<<1)
 
 stat:
-		link	a6,#searchnamebuf
 		movem.l	a0-a3,-(a7)
 		movea.l	a1,a3				*  A3 : statbuf
 		bsr	drvchkp
-		bmi	stat_fail
+		bmi	stat_return
 
 		bsr	contains_dos_wildcard		*  Human68k のワイルドカードを含んで
 		bne	stat_fail			*  いるならば無効
@@ -44,40 +43,58 @@ stat:
 		cmp.l	#MAXHEAD,d0
 		bhi	stat_fail
 
+		cmpi.b	#'.',(a1)
+		bne	stat_normal
+
+		tst.b	1(a1)
+		beq	stat_special
+
+		cmpi.b	#'.',1(a1)
+		bne	stat_normal
+
+		tst.b	2(a1)
+		bne	stat_normal
+stat_special:
 		movea.l	a1,a2				*  A2 : tail part of search pathname
 		movea.l	a0,a1				*  A1 : top of search pathname
+		link	a6,#searchnamebuf
 		lea	searchnamebuf(a6),a0
 		bsr	memmovi
-		lea	allfile,a1			*  "*.*" で検索する（さもなくば検索されないエントリがある）
+		lea	allfile,a1			*  "*.*" で検索する（さもなくば検索されない）
 		bsr	strcpy
 		move.w	#MODEVAL_ALL,-(a7)		*  すべてのエントリを検索する
 		pea	searchnamebuf(a6)
 		move.l	a3,-(a7)
 		DOS	_FILES
 		lea	10(a7),a7
+		unlk	a6
 		movea.l	a2,a0
-		lea	30(a3),a1
+		lea	ST_NAME(a3),a1
 stat_loop:
 		tst.l	d0
-		bmi	stat_fail
+		bmi	stat_return
 
-		bsr	stricmp
-		beq	stat_ok
+		bsr	strcmp
+		beq	stat_return
 
 		move.l	a3,-(a7)
 		DOS	_NFILES
 		addq.l	#4,a7
 		bra	stat_loop
 
-stat_fail:
-		moveq	#-1,d0
+stat_normal:
+		move.w	#MODEVAL_ALL,-(a7)		*  すべてのエントリを検索する
+		move.l	a0,-(a7)
+		move.l	a3,-(a7)
+		DOS	_FILES
+		lea	10(a7),a7
+		tst.l	d0
 		bra	stat_return
 
-stat_ok:
-		moveq	#0,d0
+stat_fail:
+		moveq	#-1,d0
 stat_return:
 		movem.l	(a7)+,a0-a3
-		unlk	a6
 		rts
 ****************************************************************
 .data

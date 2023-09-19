@@ -9,7 +9,7 @@ TOP       = A:\home\fish
 DESTDIR   = A:\bin
 BACKUPDIR = B:\fish
 
-ARCHIVE_NAME  = FISH030.Lzh
+ARCHIVE_NAME  = FISH040.Lzh
 
 ARCHIVE_FILES = \
 	$(TOP)\doc\MANIFEST \
@@ -18,7 +18,7 @@ ARCHIVE_FILES = \
 	A:\home\newbin\DIRECTORY \
 	$(TOP)\doc\CHANGES \
 	$(TOP)\doc\FAQ \
-	$(TOP)\doc\FISH030.DOC \
+	$(TOP)\doc\FISH.DOC \
 	$(TOP)\prg\fish.x \
 	$(TOP)\doc\Pfishrc \
 	$(TOP)\doc\Plogin \

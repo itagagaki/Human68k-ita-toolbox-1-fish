@@ -3,9 +3,13 @@
 *
 * Itagaki Fumihiko 16-Jul-90  Create.
 
+.include ../src/var.h
+
 .xref strcmp
 .xref strfor1
-.xref nputs
+.xref putc
+.xref cputs
+.xref put_newline
 .xref strip_quotes
 .xref expand_wordlist
 .xref fish_setenv
@@ -18,7 +22,7 @@
 
 .xref tmpargs
 
-.xref envwork
+.xref envtop
 
 .text
 
@@ -60,7 +64,7 @@ cmd_setenv:
 cmd_setenv_set:
 		bsr	strip_quotes
 		bsr	fish_setenv
-		bne	cmd_setenv_return
+		beq	cmd_setenv_fail
 		*
 		*  ŠÂ‹«•Ï” path ‚ªÄİ’è‚³‚ê‚½‚Ì‚È‚ç‚Î
 		*  ƒVƒFƒ‹•Ï” path ‚àÄİ’è‚µ‚Ä rehash ‚·‚é
@@ -76,14 +80,19 @@ cmd_setenv_set:
 		bra	cmd_setenv_success_return
 ****************
 printenv:
-		movea.l	envwork(a5),a0
-		addq.l	#4,a0
+		movea.l	envtop(a5),a1
 printenv_loop:
-		tst.b	(a0)				* Å‰‚Ì•¶š‚ªNUL‚È‚ç‚Î
-		beq	cmd_setenv_success_return	* I‚í‚è
+		cmpa.l	#0,a1
+		beq	cmd_setenv_success_return
 
-		bsr	nputs
+		lea	var_body(a1),a0
+		bsr	cputs
+		moveq	#'=',d0
+		bsr	putc
 		bsr	strfor1
+		bsr	cputs
+		bsr	put_newline
+		movea.l	var_next(a1),a1
 		bra	printenv_loop
 
 cmd_setenv_success_return:
@@ -91,7 +100,10 @@ cmd_setenv_success_return:
 cmd_setenv_return:
 		rts
 
-
+cmd_setenv_fail:
+		moveq	#1,d0
+		rts
+****************
 setenv_ambiguous:
 		movea.l	a1,a0
 		bra	ambiguous

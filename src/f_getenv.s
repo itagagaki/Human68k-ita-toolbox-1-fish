@@ -1,31 +1,45 @@
 * f_getenv.s
 * Itagaki Fumihiko 18-Aug-91  Create.
 
-.xref getenv
+.include ../src/var.h
 
-.xref envwork
+.xref strcmp
+.xref strfor1
+
+.xref envtop
 
 .text
 
 ****************************************************************
-* fish_getenv - FISH の環境変数ブロックから名前で変数を探す
+* fish_getenv - FISH の環境変数リストから名前で変数を探す
 *
 * CALL
 *      A0     検索する変数名の先頭アドレス
 *
 * RETURN
-*      A0     見つかったならば環境ブロックの変数名の先頭を指す
-*      D0.L   見つかったならば値の文字列の先頭アドレスを指す
-*             見つからなければ 0
+*      D0.L   見つかった変数のヘッダの先頭アドレス．
+*             見つからなければ 0．
 *      CCR    TST.L D0
 *****************************************************************
 .xdef fish_getenv
 
 fish_getenv:
-		move.l	a3,-(a7)
-		movea.l	envwork(a5),a3
-		bsr	getenv
-		movea.l	(a7)+,a3
+		movem.l	a1-a2,-(a7)
+		movea.l	envtop(a5),a2
+loop:
+		cmpa.l	#0,a2
+		beq	done
+
+		lea	var_body(a2),a1
+		bsr	strcmp
+		beq	done
+
+		movea.l	var_next(a2),a2
+		bra	loop
+
+done:
+		move.l	a2,d0
+		movem.l	(a7)+,a1-a2
 		rts
 
 .end

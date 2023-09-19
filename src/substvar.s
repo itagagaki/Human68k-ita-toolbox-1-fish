@@ -3,6 +3,7 @@
 
 .include limits.h
 .include ../src/fish.h
+.include ../src/var.h
 .include ../src/source.h
 .include ../src/modify.h
 
@@ -41,9 +42,9 @@
 
 .xref tmpgetlinebufp
 
-.xref envwork
 .xref tmpline
 .xref pid
+.xref irandom_struct
 .xref not_execute
 .xref current_source
 
@@ -407,6 +408,7 @@ not_pid:
 		cmpi.b	#',',special(a6)
 		bne	not_random
 		* {
+			lea	irandom_struct(a5),a0
 			bsr	irandom
 			bra	expand_var_utoa
 		* }
@@ -724,8 +726,7 @@ eval_sub:
 		addq.l	#2,a0
 		moveq	#0,d0
 		move.w	(a0)+,d0
-		bsr	strfor1
-		bra	eval_var_done
+		bra	eval_var_found
 
 shellvar_undefined:
 		cmpi.b	#'@',eval_option(a6)
@@ -736,11 +737,11 @@ try_env:
 		beq	eval_var_undefined
 
 		movea.l	d0,a0
-		moveq	#1,d0
-		tst.b	(a0)
-		bne	eval_var_done
-
 		moveq	#0,d0
+		move.w	var_nwords(a0),d0
+		lea	var_body(a0),a0
+eval_var_found:
+		bsr	strfor1
 		bra	eval_var_done
 
 eval_var_undefined:

@@ -128,6 +128,12 @@ badly_formed_number:
 		lea	msg_badly_formed_number,a0
 		bra	command_error
 ****************************************************************
+.xdef too_large_number
+
+too_large_number:
+		lea	msg_too_large_number,a0
+		bra	command_error
+****************************************************************
 .xdef no_close_brace
 
 no_close_brace:
@@ -153,6 +159,12 @@ ambiguous:
 
 no_match:
 		lea	msg_no_match,a0
+		bra	enputs1
+****************************************************************
+.xdef insufficient_memory
+
+insufficient_memory:
+		lea	msg_insufficient_memory,a0
 		bra	enputs1
 ****************************************************************
 .xdef no_space_for
@@ -305,6 +317,7 @@ msg_too_few_args:		dc.b	'引数が足りません',0
 msg_no_close_brace:		dc.b	'} がありません',0
 msg_no_match:			dc.b	'マッチするファイルやディレクトリがありません',0
 msg_bacause_of_no_memory:	dc.b	'メモリが足りないため',0
+msg_insufficient_memory:	dc.b	'メモリが足りません',0
 msg_no_space_for:		dc.b	'の容量が足りません',0
 msg_err:			dc.b	'error',0
 msg_nofile:			dc.b	'このようなファイルはありません',0

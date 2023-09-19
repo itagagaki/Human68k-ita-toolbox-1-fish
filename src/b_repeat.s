@@ -10,13 +10,10 @@
 .xref free_current_argbuf
 .xref DoSimpleCommand
 .xref too_few_args
-.xref perror_command_name
-.xref pre_perror
-.xref enputs1
 .xref usage
 .xref cannot_because_no_memory
-.xref msg_badly_formed_number
-.xref msg_too_large_number
+.xref badly_formed_number
+.xref too_large_number
 
 .xref argc
 .xref simple_args
@@ -63,17 +60,14 @@ cmd_repeat:
 		subq.w	#1,d2
 		bls	repeat_too_few_args
 
-		movea.l	a0,a2
-		lea	msg_badly_formed_number,a1
 		bsr	atou
-		bmi	bad_times
+		bmi	badly_formed_number
 
 		tst.b	(a0)+
-		bne	bad_times
+		bne	badly_formed_number
 
-		lea	msg_too_large_number,a1
 		tst.l	d0
-		bne	bad_times
+		bne	too_large_number
 
 		move.l	d1,d3
 		beq	return_0
@@ -99,13 +93,6 @@ loop:
 return_0:
 		moveq	#0,d0
 		rts
-****************
-bad_times:
-		bsr	perror_command_name
-		movea.l	a2,a0
-		bsr	pre_perror
-		movea.l	a1,a0
-		bra	enputs1
 ****************
 repeat_too_few_args:
 		bsr	too_few_args

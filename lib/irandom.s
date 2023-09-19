@@ -2,6 +2,7 @@
 
 *
 *  Itagaki Fumihiko   26 Mar 1989
+*  Itagaki Fumihiko   19 Oct 1991   引数の受け渡しとアクセス方法を変更
 *
 
 *
@@ -56,21 +57,13 @@
 *
 *          本パッケージを利用するには，本パッケージの他に
 *
-*                  .BSS
-*                  irandom_index:       ds.b    1
-*                  irandom_position:    ds.b    1
-*                  irandom_poolsize:    ds.b    1
-*                  irandom_table:       ds.w    55
-*                  irandom_pool:        ds.w    (irandom_poolsize)
+*          .BSS
+*          irandom_struct:      ds.b    IRANDOM_STRUCT_HEADER_SIZE+(2*POOLSIZE)
 *
-*  が必要である．
+*  が必要である．IRANDOM_STRUCT_HEADER_SIZE は irandom.h で定義されている．
 *
 
-.xref irandom_index
-.xref irandom_position
-.xref irandom_poolsize
-.xref irandom_table
-.xref irandom_pool
+.include irandom.h
 
 .text
 
@@ -78,14 +71,14 @@
 * randomize
 *
 * CALL
-*      none
+*      A0     乱数構造体の先頭アドレス
 *
 * RETURN
 *      none
 ****************************************************************
 randomize:
 		movem.l	d0-d1/a0,-(a7)
-		lea	irandom_table,a0
+		lea	irandom_table(a0),a0
 		moveq	#23,d1
 randomize_loop1:
 		move.w	31*2(a0),d0
@@ -104,17 +97,16 @@ randomize_loop2:
 * _irandom - 簡単な疑似一様乱数整数
 *
 * CALL
-*      none
+*      A0     乱数構造体の先頭アドレス
 *
 * RETURN
-*      D0.L   簡単な疑似一様乱数整数 (0..32767)
+*      D0.L   簡易疑似一様乱数整数 (0..32767)
 ****************************************************************
 .xdef _irandom
 
 _irandom:
-		move.l	a0,-(a7)
 		moveq	#0,d0
-		move.b	irandom_index,d0
+		move.b	irandom_index(a0),d0
 		addq.b	#1*2,d0
 		cmp.b	#55*2,d0
 		blo	_irandom_1
@@ -122,16 +114,14 @@ _irandom:
 		bsr	randomize
 		moveq	#0,d0
 _irandom_1:
-		move.b	d0,irandom_index
-		lea	irandom_table,a0
-		move.w	(a0,d0.l),d0
-		movea.l	(a7)+,a0
+		move.b	d0,irandom_index(a0)
+		move.w	irandom_table(a0,d0.w),d0
 		rts
 ****************************************************************
 * irandom - 改良版疑似一様乱数整数
 *
 * CALL
-*      none
+*      A0     乱数構造体の先頭アドレス
 *
 * RETURN
 *      D0.L   改良版疑似一様乱数整数 (0..32767)
@@ -139,61 +129,49 @@ _irandom_1:
 .xdef irandom
 
 irandom:
-		movem.l	d1-d2/a0,-(a7)
+		tst.b	irandom_poolsize(a0)
+		beq	_irandom
+
+		movem.l	d1-d2,-(a7)
 		moveq	#0,d2
-		move.b	irandom_position,d2
-		lea	irandom_pool,a0
-		move.w	(a0,d2.w),d2
-		moveq	#0,d1
-		move.b	irandom_poolsize,d1
-		mulu	d1,d2
-		clr.w	d2
-		swap	d2
+		move.b	irandom_position(a0),d2
 		lsl.w	#1,d2
-		move.b	d2,irandom_position
-		move.w	(a0,d2.w),d1
+		move.w	irandom_pool(a0,d2.w),d2
+		moveq	#0,d1
+		move.b	irandom_poolsize(a0),d1
+		mulu	d1,d2
+		moveq	#15,d1
+		lsr.l	d1,d2
+		move.b	d2,irandom_position(a0)
+		lsl.w	#1,d2
+		move.w	irandom_pool(a0,d2.w),d1
 		bsr	_irandom
-		move.w	d0,(a0,d2.w)
+		move.w	d0,irandom_pool(a0,d2.w)
 		moveq	#0,d0
 		move.w	d1,d0
-		movem.l	(a7)+,d1-d2/a0
+		movem.l	(a7)+,d1-d2
 		rts
 ****************************************************************
 * init_irandom - 改良版疑似一様乱数整数を初期化する
 *
 * CALL
+*      A0     乱数構造体の先頭アドレス
 *      D0.W   (signed) seed (乱数の種) (0..32767)
-*      D1.B   (signed) poolsize (1..63)
+*      D1.B   (unsigned) poolsize (0..255)
 *
 * RETURN
 *      none
 *
 * NOTE
-*      D0.W の MSB は CLR する．
-*
-*      D1.B が 1 から 63 の範囲に無い場合には 1 から 63 の範囲に
-*      クリッピングする．
+*      D0.W の MSB は CLR される．
 ****************************************************************
 .xdef init_irandom
 
 init_irandom:
-		movem.l	d0-d4/a0,-(a7)
-*
-		moveq	#1,d2
-		cmp.b	d2,d1
-		blt	init_irandom_1
-
-		moveq	#63,d2
-		cmp.b	d2,d1
-		ble	init_irandom_2
-init_irandom_1:
-		move.b	d2,d1
-init_irandom_2:
-		move.b	d1,irandom_poolsize
-*
+		movem.l	d0-d4/a1,-(a7)
+		move.b	d1,irandom_poolsize(a0)
 		bclr	#15,d0
-		lea	irandom_table,a0
-		move.w	d0,54*2(a0)
+		move.w	d0,irandom_table+54*2(a0)
 		moveq	#1,d1
 		moveq	#1,d2
 init_irandom_loop1:
@@ -202,7 +180,7 @@ init_irandom_loop1:
 		divu	#55,d3
 		swap	d3
 		lsl.w	#1,d3
-		move.w	d1,(a0,d3.w)
+		move.w	d1,irandom_table(a0,d3.w)
 		move.w	d1,d4
 		sub.w	d0,d1
 		neg.w	d1
@@ -215,23 +193,24 @@ init_irandom_loop1:
 		bsr	randomize
 		bsr	randomize
 		bsr	randomize
-		move.b	#54*2,irandom_index
+		move.b	#54*2,irandom_index(a0)
 *
-		lea	irandom_pool,a0
+		lea	irandom_pool(a0),a1
 		moveq	#0,d1
-		move.b	irandom_poolsize,d1
-		subq.w	#1,d1
-init_irandom_loop2:
+		move.b	irandom_poolsize(a0),d1
+		bra	init_pool_continue
+
+init_pool_loop
 		bsr	_irandom
-		move.w	d0,(a0)+
-		dbra	d1,init_irandom_loop2
+		move.w	d0,(a1)+
+init_pool_continue:
+		dbra	d1,init_pool_loop
 *
-		move.b	irandom_poolsize,d0
+		move.b	irandom_poolsize(a0),d0
 		subq.b	#1,d0
-		lsl.b	#1,d0
-		move.b	d0,irandom_position
+		move.b	d0,irandom_position(a0)
 *
-		movem.l	(a7)+,d0-d4/a0
+		movem.l	(a7)+,d0-d4/a1
 		rts
 
 .end

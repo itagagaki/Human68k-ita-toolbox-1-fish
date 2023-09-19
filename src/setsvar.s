@@ -4,11 +4,13 @@
 .xref issjis
 .xref itoa
 .xref strcmp
+.xref strpcmp
 .xref strcpy
 .xref strfor1
 .xref sltobsl
 .xref rehash
 .xref set_var
+.xref find_shellvar
 .xref fish_setenv
 .xref flagvarptr
 .xref is_builtin_dir
@@ -54,13 +56,15 @@ set_svar_nul:
 		lea	str_nul,a1
 		moveq	#1,d0
 set_svar:
-		movem.l	d1-d3/a0-a4,-(a7)
+		movem.l	d1-d4/a0-a4,-(a7)
 		movea.l	a1,a2				*  A2 : value
 		movea.l	a0,a1				*  A1 : name
 		move.w	d0,d2				*  D2.W : number of words
 		movea.l	shellvar(a5),a0
 		bsr	set_var
-		bne	no_space_in_shellvar
+		beq	no_space_in_shellvar
+
+		movea.l	d0,a3				*  A3 : セットした変数の先頭アドレス
 ****************
 		exg	a0,a1
 		bsr	flagvarptr
@@ -96,53 +100,75 @@ not_histchars:
 		tst.b	d1				*  エクスポートが禁止されているならば
 		beq	set_svar_return0		*  完了
 
-		lea	export_table-6,a3
+		lea	export_table-6,a2
 compare_export_loop:
-		addq.l	#6,a3
-		move.l	(a3)+,d0
-		beq	set_svar_return
+		addq.l	#6,a2
+		move.l	(a2)+,d0
+		beq	set_svar_return0
 
 		movea.l	d0,a0
 		bsr	strcmp
 		bne	compare_export_loop
 
-		movea.l	(a3)+,a4			*  A4 : 環境変数名
-		move.w	(a3),d3				*  D3.B : フラグ
-		lea	tmpargs,a3			*  A3 : temporaly
+		lea	4(a3),a0
+		bsr	strfor1				*  A0   : シェル変数の値
+		movea.l	(a2)+,a3			*  A3   : 環境変数名
+		move.w	(a2),d3				*  D3.B : フラグ
+		lea	tmpargs,a2			*  A2   : バッファ
 		btst	#1,d3
-		beq	export_normal
-		*
-		*  シェル変数 path が再設定された．
-		*  ハッシュ表を更新し，環境変数 path に形を変えてexportする．
-		*
-		bsr	rehash
-		movea.l	a2,a1				*  A1 : value
-		bra	export_continue_build
-****************
-export_normal:
-		movea.l	a2,a1				*  A1 : value
+		bne	export_path
+
 		tst.w	d2
 		beq	do_export
 
 		moveq	#0,d2
 		bra	dup_a_word
+****************
+export_path:
+		bsr	rehash
 
-build_loop:
-		lea	str_current_dir,a0
+		move.l	a0,-(a7)
+		lea	word_notexportpath,a0
+		bsr	find_shellvar
+		movea.l	(a7)+,a0
+		movea.l	d0,a4
+		beq	export_build_path_continue
+
+		addq.l	#2,a4
+		bra	export_build_path_continue
+****************
+export_build_path_loop:
+		lea	str_current_dir,a1
 		bsr	strcmp
-		beq	build_ignore_this
+		beq	export_build_path_ignore_this
 
-		exg	a0,a1
 		bsr	is_builtin_dir
-		exg	a0,a1
-		beq	build_ignore_this
+		beq	export_build_path_ignore_this
 
+		cmpa.l	#0,a4
+		beq	not_notexportpath
+
+		movea.l	a4,a1
+		move.w	(a1)+,d4
+		bra	check_notexportpath_continue
+
+check_notexportpath_loop:
+		exg	a0,a1
+		bsr	strfor1
+		exg	a0,a1
+		moveq	#0,d0
+		bsr	strpcmp
+		beq	export_build_path_ignore_this
+check_notexportpath_continue:
+		dbra	d4,check_notexportpath_loop
+not_notexportpath:
 		tst.b	d1
 		bne	dup_a_word
 
-		move.b	#';',(a3)+
+		move.b	#';',(a2)+
 dup_a_word:
-		exg	a0,a3
+		movea.l	a0,a1
+		exg	a0,a2
 		bsr	strcpy
 		btst	#0,d3
 		beq	dup_a_word_done
@@ -150,30 +176,29 @@ dup_a_word:
 		bsr	sltobsl
 dup_a_word_done:
 		adda.l	d0,a0
-		exg	a0,a3
+		exg	a0,a2
 		moveq	#0,d1
-build_ignore_this:
-		exg	a0,a1
+export_build_path_ignore_this:
 		bsr	strfor1
-		exg	a0,a1
-export_continue_build:
-		dbra	d2,build_loop
+export_build_path_continue:
+		dbra	d2,export_build_path_loop
 do_export:
-		clr.b	(a3)
+		clr.b	(a2)
 		lea	tmpargs,a1
-		movea.l	a4,a0
+		movea.l	a3,a0
 		bsr	fish_setenv
-set_svar_return:
-		movem.l	(a7)+,d1-d3/a0-a4
-		rts
-****************
+		beq	set_svar_return1
 set_svar_return0:
 		moveq	#0,d0
-		bra	set_svar_return
+set_svar_return:
+		movem.l	(a7)+,d1-d4/a0-a4
+		rts
 ****************
 no_space_in_shellvar:
 		lea	msg_shellvar_space,a0
 		bsr	no_space_for
+set_svar_return1:
+		moveq	#1,d0
 		bra	set_svar_return
 ****************************************************************
 get_histchar:
@@ -255,6 +280,7 @@ export_table:
 		dc.l	0
 
 word_histchars:		dc.b	'histchars',0
+word_notexportpath:	dc.b	'notexportpath',0
 msg_shellvar_space:	dc.b	'シェル変数ブロック',0
 
 .end

@@ -101,11 +101,11 @@ flagvar_table:
 		dc.l	word_autolist
 		dc.w	flag_autolist
 
-		dc.l	word_ciglob
-		dc.w	flag_ciglob
-
 		dc.l	word_cifilec
 		dc.w	flag_cifilec
+
+		dc.l	word_ciglob
+		dc.w	flag_ciglob
 
 		dc.l	word_echo
 		dc.w	flag_echo

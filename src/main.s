@@ -11,7 +11,9 @@
 .include chrcode.h
 .include stat.h
 .include pwd.h
+.include irandom.h
 .include ../src/fish.h
+.include ../src/var.h
 .include ../src/source.h
 .include ../src/function.h
 .include ../src/history.h
@@ -23,8 +25,6 @@ PDB_ProcessFlag	equ	$50
 
 PDB_dataPtr	equ	$f0
 PDB_stackPtr	equ	$f8
-
-RND_POOLSIZE	equ	61
 
 .xref isspace
 .xref issjis
@@ -96,7 +96,7 @@ RND_POOLSIZE	equ	61
 .xref EncodeHUPAIR
 .xref SetHUPAIR
 .xref fish_getenv
-.xref dupenv
+.xref fish_setenv
 .xref rehash
 .xref set_svar
 .xref set_svar_num
@@ -182,6 +182,7 @@ RND_POOLSIZE	equ	61
 .xref cmd_setenv
 .xref cmd_shift
 .xref cmd_source
+.xref cmd_srand
 .xref cmd_time
 .xref cmd_unalias
 .xref cmd_undefun
@@ -195,6 +196,7 @@ RND_POOLSIZE	equ	61
 .xref syntax_error
 .xref too_long_line
 .xref no_match
+.xref insufficient_memory
 .xref cannot_because_no_memory
 .xref msg_syntax_error
 .xref word_cwd
@@ -203,7 +205,6 @@ RND_POOLSIZE	equ	61
 .xref word_verbose
 
 auto_pathname	equ	(((MAXPATH+1)+1)>>1<<1)
-auto_word	equ	(((MAXWORDLEN+1)+1)>>1<<1)
 auto_passwd	equ	(((PW_SIZE+1)+1)>>1<<1)
 
 .text
@@ -246,9 +247,6 @@ binded:
 
 		move.l	#1,pid_count
 		clr.l	tmpgetlinebufp
-		bsr	getitimer
-		moveq	#RND_POOLSIZE,d1
-		bsr	init_irandom
 i_am_not_root_shell:
 		move.l	a7,stackp(a5)
 	**
@@ -285,7 +283,6 @@ i_am_not_root_shell:
 		clr.b	last_congetbuf(a5)
 		clr.b	last_congetbuf+1(a5)
 		clr.l	arg_command(a5)			*  最後の -c のコマンド
-		clr.l	flag_e_size(a5)			*  -E の指定値
 		sf	not_execute(a5)			*  -n
 		sf	exit_on_error(a5)		*  -e
 		sf	flag_t(a5)			*  -t
@@ -293,7 +290,14 @@ i_am_not_root_shell:
 		clr.l	d7				*  *------------------------------l
 		movea.l	PDB_argPtr(a4),a0
 		addq.l	#1,a0
+		bsr	strlen
+		addq.l	#1,d0
+		bsr	xmalloc
+		beq	abort_because_of_insufficient_memory
+
+		movea.l	d0,a1
 		bsr	DecodeHUPAIR
+		movea.l	a1,a0				*  A0   : 引数ポインタ
 		move.w	d0,d5				*  D5.W : 引数カウンタ
 parse_args_loop:
 		tst.w	d5
@@ -361,9 +365,6 @@ parse_one_arg_loop:
 		cmp.b	#'l',d0			*  -l : login shell として働く
 		beq	flag_l_found
 
-		cmp.b	#'E',d0			*  -Eddd : 環境の余裕の大きさ
-		beq	flag_xe_found
-
 		bra	parse_one_arg_loop
 
 flag_parse_sjis:
@@ -410,23 +411,8 @@ flag_l_found:
 		bset	#0,d7
 		bra	parse_one_arg_loop
 
-flag_xe_found:
-		clr.l	flag_e_size(a5)
-		bsr	atou
-		move.l	d1,d2
-		move.b	(a0),d1
-		bsr	strfor1
-		tst.l	d0
-		bne	parse_args_loop
-
-		tst.b	d1
-		bne	parse_args_loop
-
-		move.l	d2,flag_e_size(a5)
-		bra	parse_args_loop
-
 done_flag_argument_parsing:
-		move.l	a0,argv0p(a5)
+		move.l	a0,arg_script(a5)
 
 		sf	i_am_login_shell(a5)
 		btst	#31,d7				*  -ctnef があったならば
@@ -458,44 +444,18 @@ flags_ok:
 	**
 	**  動的データ・ブロックをallocする
 	**
-		moveq	#0,d1
-		movea.l	PDB_envPtr(a4),a1		*  A1 : 親の環境のアドレス
-		cmpa.l	#-1,a1
-		beq	make_current_env_1
-
-		move.l	(a1),d1				*  D1.L : 親の環境ブロックのサイズ
-make_current_env_1:
-		move.l	flag_e_size(a5),d0		*  D0.L : 環境ブロックの指定サイズ
-		bsr	minmaxul
-		move.l	#MINENVSIZE,d0
-		bsr	minmaxul			*  D1.L : 環境ブロックのサイズ
 		*
 		*  動的ブロックをallocする
 		*
-		move.l	d1,d0				*  D0.L := 環境ブロックのサイズ
-		add.l	#SHELLVARSIZE,d0		*        + シェル変数ブロックのサイズ
+		move.l	#SHELLVARSIZE,d0		*  D0.L := シェル変数ブロックのサイズ
 		add.l	#ALIASSIZE,d0			*        + 別名ブロックのサイズ
 		add.l	#KMACROSIZE,d0			*        + キーボード・マクロ・ブロックのサイズ
 		add.l	#DSTACKSIZE,d0			*        + ディレクトリ・スタックのサイズ
 		move.l	d0,ddatasize(a5)
 		bsr	xmalloc
-		beq	cannot_allocate_data_block
+		beq	abort_because_of_insufficient_memory
 
 		movea.l	d0,a2
-		*
-		*  環境を初期化
-		*
-		move.l	d1,d0
-		lea	envwork(a5),a3
-		bsr	init_block
-		clr.b	(a0)
-		cmpa.l	#-1,a1
-		beq	make_current_env_4
-
-		addq.l	#4,a1
-		bsr	strazcpy
-make_current_env_4:
-		bsr	reset_bss
 		*
 		*  シェル変数を初期化
 		*
@@ -533,6 +493,41 @@ make_current_env_4:
 		clr.l	history_top(a5)
 		clr.l	history_bot(a5)
 		move.l	#1,current_eventno(a5)
+		*
+		*  環境を初期化
+		*
+		clr.l	envtop(a5)
+		clr.l	envbot(a5)
+		movea.l	PDB_envPtr(a4),a0		*  A0 : 親から受け取った環境エリアの先頭アドレス
+		cmpa.l	#-1,a0
+		beq	init_env_done
+
+		addq.l	#4,a0
+init_env_loop:
+		tst.b	(a0)
+		beq	init_env_done
+
+		movea.l	a0,a1
+		moveq	#'=',d0
+		bsr	jstrchr
+		exg	a0,a1
+		move.b	(a1),d1
+		beq	init_env_1
+
+		clr.b	(a1)+
+init_env_1:
+		bsr	fish_setenv
+		beq	abort_because_of_insufficient_memory
+
+		tst.b	d1
+		beq	init_env_2
+
+		move.b	#'=',-1(a1)
+init_env_2:
+		bsr	strfor1
+		bra	init_env_loop
+
+init_env_done:
 	**
 	**  ログインシェルならば $HOME に chdir する
 	**  ［暫定］（/bin/login がやるべき）
@@ -545,6 +540,8 @@ make_current_env_4:
 		beq	no_home
 
 		movea.l	d0,a0
+		lea	var_body(a0),a0
+		bsr	strfor1
 		bsr	chdir
 		bpl	chdir_home_done
 
@@ -558,8 +555,8 @@ chdir_home_done:
 	**
 	**  $0 と $argv を初期設定する
 	**
-		movea.l	argv0p(a5),a0
-		clr.l	argv0p(a5)
+		movea.l	arg_script(a5),a0
+		clr.l	arg_script(a5)
 		move.w	d5,d0
 		beq	set_argv
 
@@ -572,7 +569,7 @@ chdir_home_done:
 		tst.l	arg_command(a5)			*  -c
 		bne	set_argv
 
-		move.l	a0,argv0p(a5)
+		move.l	a0,arg_script(a5)
 		bsr	strfor1
 		subq.w	#1,d5
 set_argv:
@@ -626,6 +623,8 @@ inport_user_done:
 		beq	set_shlvl
 
 		movea.l	d0,a0
+		lea	var_body(a0),a0
+		bsr	strfor1
 		bsr	atou
 		bne	set_shlvl
 
@@ -715,7 +714,7 @@ set_shell_done:
 		*  misc. static variables
 		*
 		lea	initial_vars_stdin_mode,a2
-		tst.l	argv0p(a5)
+		tst.l	arg_script(a5)
 		beq	set_initial_vars
 
 		lea	initial_vars_script_mode,a2
@@ -833,7 +832,7 @@ start_run:
 
 		bsr	rehash
 
-		tst.l	argv0p(a5)
+		tst.l	arg_script(a5)
 		bne	do_file
 
 		lea	main(pc),a0
@@ -896,7 +895,7 @@ do_file:
 		tst.b	interrupted(a5)
 		bne	exit_shell_status
 
-		movea.l	argv0p(a5),a0
+		movea.l	arg_script(a5),a0
 		bsr	OpenLoadRun_source
 		bra	exit_shell_status
 *****************************************************************
@@ -904,9 +903,16 @@ do_file:
 *****************************************************************
 init_bss:
 		movem.l	d0-d1/a0,-(a7)
+
 		bsr	getitimer
 		move.l	d1,shell_timer_high(a5)
 		move.l	d0,shell_timer_low(a5)
+
+		moveq	#1,d0
+		moveq	#RND_POOLSIZE,d1
+		lea	irandom_struct(a5),a0
+		bsr	init_irandom
+
 		clr.l	current_source(a5)
 		clr.l	current_argbuf(a5)
 		clr.l	command_name(a5)
@@ -928,6 +934,7 @@ init_bss:
 		clr.b	switch_status(a5)
 		clr.w	switch_level(a5)
 		clr.b	loop_status(a5)
+
 		lea	loop_stack(a5),a0
 		moveq	#MAXLOOPLEVEL,d0
 clear_loop_stack:
@@ -961,7 +968,10 @@ inport_path:
 		bsr	fish_getenv
 		beq	init_path_default
 
-		movea.l	d0,a2
+		movea.l	d0,a0
+		lea	var_body(a0),a0
+		bsr	strfor1
+		movea.l	a0,a2
 		bsr	init_path_static
 inport_path_loop:
 		cmpi.b	#';',(a2)+
@@ -1070,6 +1080,8 @@ inportx:
 		beq	not_inport
 
 		movea.l	d0,a0
+		lea	var_body(a0),a0
+		bsr	strfor1
 		bsr	strlen
 		cmp.l	#MAXWORDLEN,d0
 		bhi	inport_too_long
@@ -1128,7 +1140,6 @@ reset_bss:
 		DOS	_GETPDB
 		movea.l	d0,a0
 		move.l	a5,PDB_dataPtr(a0)
-		move.l	envwork(a5),PDB_envPtr(a0)
 		movem.l	(a7)+,d0/a0
 		rts
 *****************************************************************
@@ -1188,10 +1199,10 @@ break_shell:
 		clr.l	command_name(a5)
 		sf	exitflag(a5)
 		*
+		move.l	d0,-(a7)
 	.if EXTMALLOC
 		bsr	free_all_tmp
 	.endif
-		move.l	d0,-(a7)
 		lea	user_command_env(a5),a0
 		bsr	xfreep
 		lea	tmpgetlinebufp,a0
@@ -1262,10 +1273,9 @@ longjmp_mainjmp:
 ****************
 .xdef logout
 
-cannot_allocate_data_block:
-		lea	msg_insufficient_memory,a0
-		bsr	enputs
-		bra	exit_shell_1
+abort_because_of_insufficient_memory:
+		bsr	insufficient_memory
+		bra	do_exit_shell
 
 shell_eof:
 		bsr	check_end
@@ -1496,8 +1506,7 @@ fork:
 
 		*  環境，シェル変数，別名，キー・マクロ，ディレクトリ・スタックを複製する
 
-		movea.l	envwork(a5),a0
-		move.l	(a0),d0
+		moveq	#0,d0
 		movea.l	shellvar(a5),a0
 		add.l	(a0),d0
 		movea.l	alias(a5),a0
@@ -1511,19 +1520,23 @@ fork:
 		beq	fork_fail2
 
 		movea.l	d0,a0
-		move.l	a0,envwork(a4)
-		movea.l	envwork(a5),a1
+		move.l	a0,shellvar(a4)
+		movea.l	shellvar(a5),a1
 		move.l	d5,d0
 		bsr	memmovi
-		movea.l	envwork(a4),a0
-		adda.l	(a0),a0
-		move.l	a0,shellvar(a4)
+
+		move.l	shellvar(a4),a0
 		adda.l	(a0),a0
 		move.l	a0,alias(a4)
 		adda.l	(a0),a0
 		move.l	a0,keymacro(a4)
 		adda.l	(a0),a0
 		move.l	a0,dstack(a4)
+
+		clr.l	envtop(a4)
+		clr.l	envbot(a4)
+		clr.l	history_top(a4)
+		clr.l	history_bot(a4)
 
 		*  関数リストを複製する
 
@@ -1548,11 +1561,53 @@ dup_funcs_done:
 		movem.l	(a7)+,d0-d1/a0-a3
 		bmi	fork_fail3
 
+		*  環境リストを複製する
+
+		movem.l	d0-d1/a0-a2,-(a7)
+		movea.l	envtop(a5),a2
+dup_env_loop:
+		cmpa.l	#0,a2
+		beq	dup_env_done
+
+		movea.l	a2,a0
+		bsr	varsize
+		move.l	d0,d1
+		add.l	#VAR_HEADER_SIZE,d0
+		bsr	xmalloc
+		beq	dup_env_fail
+
+		movea.l	d0,a0
+		tst.l	envtop(a4)
+		bne	dup_env_1
+
+		clr.l	var_prev(a0)
+		move.l	a0,envtop(a4)
+		bra	dup_env_2
+
+dup_env_1:
+		movea.l	envbot(a4),a1
+		move.l	a1,var_prev(a0)
+		move.l	a0,var_next(a1)
+dup_env_2:
+		clr.l	var_next(a0)
+		move.l	a0,envbot(a4)
+		move.w	var_nwords(a2),var_nwords(a0)
+		lea	var_body(a0),a0
+		lea	var_body(a2),a1
+		move.l	d1,d0
+		bsr	memmovi
+		movea.l	var_next(a2),a2
+		bra	dup_env_loop
+
+dup_env_fail:
+		moveq	#-1,d0
+dup_env_done:
+		movem.l	(a7)+,d0-d1/a0-a2
+		bmi	fork_fail3
+
 		*  履歴リストを複製する
 
 		movem.l	d0-d1/a0-a3,-(a7)
-		clr.l	history_top(a4)
-		clr.l	history_bot(a4)
 		movea.l	history_top(a5),a2
 dup_history_loop:
 		cmpa.l	#0,a2
@@ -1590,7 +1645,7 @@ dup_history_no_memory:
 		moveq	#-1,d0
 dup_history_done:
 		movem.l	(a7)+,d0-d1/a0-a3
-		bmi	fork_fail4
+		bmi	fork_fail3
 
 		bsr	remember_misc_environments
 
@@ -1634,34 +1689,20 @@ fork_ran:
 		bsr	reset_bss
 		bsr	resume_misc_environments
 ****************
-fork_fail4:
-		movea.l	history_top(a4),a0
-free_history_loop:
-		cmpa.l	#0,a0
-		beq	free_history_done
-
-		movea.l	HIST_NEXT(a0),a1
-		move.l	a0,d0
-		bsr	free
-		movea.l	a1,a0
-		bra	free_history_loop
-
-free_history_done:
-****************
 fork_fail3:
+		movea.l	history_top(a4),a0
+		move.l	#HIST_NEXT,d1
+		bsr	freelist
+
+		movea.l	envtop(a4),a0
+		move.l	#var_next,d1
+		bsr	freelist
+
 		movea.l	function_root(a4),a0
-free_funcs_loop:
-		cmpa.l	#0,a0
-		beq	free_funcs_done
+		move.l	#FUNC_NEXT,d1
+		bsr	freelist
 
-		movea.l	FUNC_NEXT(a0),a1
-		move.l	a0,d0
-		bsr	free
-		movea.l	a1,a0
-		bra	free_funcs_loop
-
-free_funcs_done:
-		move.l	envwork(a4),d0
+		move.l	shellvar(a4),d0
 		bsr	free
 ****************
 fork_fail2:
@@ -1688,7 +1729,16 @@ fork_fail1:
 ****************
 fork_done:
 		movem.l	(a7)+,d1-d7/a0-a4/a6
+freelist_done:
 		rts
+*****************************************************************
+freelist:
+		move.l	a0,d0
+		beq	freelist_done
+
+		movea.l	(a0,d1.l),a0
+		bsr	free
+		bra	freelist
 *****************************************************************
 close_source:
 		tst.l	current_source(a5)
@@ -3677,19 +3727,23 @@ get_shell_done:
 		beq	hugearg_error_script
 get_shellarg_done:
 		bsr	close_tmpfd
+
+		lea	congetbuf+2,a0		* ［暫定］
+		bsr	strlen
+		tst.w	d0
+		beq	do_script_2
+
+		subq.w	#1,d3
+		bcs	simple_command_too_long_line
+
+		sub.w	d0,d3
+		bcs	simple_command_too_long_line
+
+		movea.l	a0,a1
 		movea.l	a3,a0
-		move.w	d3,d0
-
-		lea	congetbuf+2,a1		* ［暫定］
-		tst.b	(a1)
-		beq	set_shellarg_done
-
-		moveq	#1,d1
-		bsr	EncodeHUPAIR
-		bmi	simple_command_too_long_line
-set_shellarg_done:
+		move.b	#' ',(a0)+
+		bsr	memmovi
 		movea.l	a0,a3
-		move.w	d0,d3
 		bra	do_script_2
 ****************
 explicit_shell_too_long:
@@ -3768,8 +3822,7 @@ do_binary_command:
 		cmp.w	d1,d0
 		sne	arg_is_huge(a6)
 
-		movea.l	envwork(a5),a0
-		bsr	dupenv
+		bsr	build_user_env
 		beq	exec_failure
 
 		move.l	d0,user_command_env(a5)
@@ -4035,6 +4088,77 @@ simple_command_errorp:
 		bsr	pre_perror
 		movea.l	a1,a0
 		bra	print_shell_error
+****************************************************************
+build_user_env:
+		movem.l	d1-d2/a0-a2,-(a7)
+		movea.l	envtop(a5),a1
+		moveq	#0,d2
+build_user_env_calc_loop:
+		cmpa.l	#0,a1
+		beq	build_user_env_calc_done
+
+		movea.l	a1,a0
+		bsr	varsize
+		add.l	d0,d2
+		movea.l	var_next(a1),a1
+		bra	build_user_env_calc_loop
+
+build_user_env_calc_done:
+		lea	word_envmargin,a0
+		bsr	find_shellvar
+		beq	build_user_env_margin_ok
+
+		addq.l	#2,a0
+		tst.w	(a0)+
+		beq	build_user_env_margin_ok
+
+		bsr	strfor1				*  変数名をスキップ
+		bsr	atou
+		bmi	build_user_env_margin_ok
+		bne	build_user_env_fail
+
+		add.l	d1,d2
+build_user_env_margin_ok:
+		addq.l	#4+1+1,d2
+		bclr	#0,d2
+		move.l	d2,d0
+		bsr	xmalloc
+		beq	build_user_env_fail
+
+		movea.l	d0,a0
+		move.l	d2,(a0)+
+		move.l	d0,d1
+		movea.l	envtop(a5),a2
+build_user_env_loop:
+		cmpa.l	#0,a2
+		beq	build_user_env_done
+
+		lea	var_body(a2),a1
+		bsr	strmove
+		move.b	#'=',-1(a0)
+		bsr	strmove
+		movea.l	var_next(a2),a2
+		bra	build_user_env_loop
+
+build_user_env_done:
+		clr.b	(a0)
+		move.l	d1,d0
+build_user_env_return:
+		movem.l	(a7)+,d1-d2/a0-a2
+		rts
+
+build_user_env_fail:
+		moveq	#0,d0
+		bra	build_user_env_return
+****************************************************************
+varsize:
+		move.l	a0,-(a7)
+		move.w	var_nwords(a0),d0
+		addq.w	#1,d0
+		lea	var_body(a0),a0
+		bsr	wordlistlen
+		movea.l	(a7)+,a0
+		rts
 ****************************************************************
 remember_misc_environments:
 		movem.l	d0/a0,-(a7)
@@ -4862,7 +4986,7 @@ fish_copyright:	dc.b	'Copyright(C)1991 by Itagaki Fumihiko',0
 fish_author:	dc.b	'板垣 史彦 ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
-		dc.b	'3',0		*  minor version
+		dc.b	'4',0		*  minor version
 		dc.b	'0',0		*  patch level
 
 .even
@@ -5051,6 +5175,10 @@ builtin_table:
 		dc.l	cmd_source
 		dc.b	4,0
 
+		dc.l	word_srand
+		dc.l	cmd_srand
+		dc.b	0,0
+
 		dc.l	word_time
 		dc.l	cmd_time
 		dc.b	1,0
@@ -5125,6 +5253,7 @@ word_unsetenv:		dc.b	'un'
 word_setenv:		dc.b	'setenv',0
 word_shift:		dc.b	'shift',0
 word_source:		dc.b	'source',0
+word_srand:		dc.b	'srand',0
 word_time:		dc.b	'time',0
 word_undefun:		dc.b	'undefun',0
 word_unhash:		dc.b	'unhash',0
@@ -5147,6 +5276,7 @@ word_argv:		dc.b	'argv',0
 word_cdpath:		dc.b	'cd'	* "cdpath"
 word_path:		dc.b	'path',0
 word_batshell:		dc.b	'batshell',0
+word_envmargin:		dc.b	'envmargin',0
 word_force:		dc.b	'force',0
 word_gid:		dc.b	'gid',0
 dot_history:		dc.b	'%'	* "%history"
@@ -5216,7 +5346,6 @@ initial_vars_script_mode:
 			dc.l	0
 
 msg_no_home:			dc.b	'環境変数 HOME が定義されていません',0
-msg_insufficient_memory:	dc.b	'fishのデータ領域のためのメモリを確保できません',0
 msg_dirnofile:			dc.b	' '
 msg_nofile:			dc.b	'ファイルがありません',0
 msg_nodir:			dc.b	'ディレクトリが見つかりません',0
@@ -5269,11 +5398,6 @@ msg_too_long_source_name:	dc.b	'スクリプトのファイル名が長過ぎます',0
 **  ルート・シェルが初期設定する
 
 .xdef tmpgetlinebufp
-.xdef irandom_index
-.xdef irandom_position
-.xdef irandom_poolsize
-.xdef irandom_table
-.xdef irandom_pool
 .xdef dummy
 
 .even
@@ -5282,11 +5406,6 @@ user_command_signal:	ds.l	1
 tmpgetlinebufp:		ds.l	1
 in_fish:		ds.b	1
 doing_logout:		ds.b	1
-irandom_index:		ds.b	1
-irandom_position:	ds.b	1
-irandom_poolsize:	ds.b	1
-irandom_table:		ds.w	55
-irandom_pool:		ds.w	RND_POOLSIZE
 dummy:			ds.b	1
 
 **  各シェル共通の一時バッファ
@@ -5342,7 +5461,8 @@ bsstop:
 .xdef loop_top_eventno
 .xdef funcdef_topptr
 .xdef funcdef_size
-.xdef envwork
+.xdef envtop
+.xdef envbot
 .xdef line
 .xdef tmpline
 .xdef current_eventno
@@ -5386,6 +5506,7 @@ bsstop:
 .xdef not_execute
 .xdef keymap
 .xdef keymacromap
+.xdef irandom_struct
 
 mainjmp:		ds.l	1
 stackp:			ds.l	1
@@ -5393,7 +5514,8 @@ fork_stackp:		ds.l	1			*  プログラム・スタック・ポインタ
 ddatasize:		ds.l	1			*  動的データサイズ
 lake_top:		ds.l	1			*  Extmallocの湖源
 tmplake_top:		ds.l	1			*  Extmallocの湖源
-envwork:		ds.l	1			*  環境
+envtop:			ds.l	1
+envbot:			ds.l	1
 shellvar:		ds.l	1			*  シェル変数
 alias:			ds.l	1			*  別名
 keymacro:		ds.l	1			*  キー・マクロ
@@ -5476,6 +5598,8 @@ keymap:			ds.b	128*3
 .even
 keymacromap:		ds.l	128*3
 
+irandom_struct:		ds.b	IRANDOM_STRUCT_HEADER_SIZE+(2*RND_POOLSIZE)
+
 **  シェル毎のデータ
 
 .xdef pid
@@ -5484,9 +5608,8 @@ keymacromap:		ds.l	128*3
 .xdef linecutbuf
 
 pid:			ds.l	1
-argv0p:			ds.l	1
+arg_script:		ds.l	1
 arg_command:		ds.l	1
-flag_e_size:		ds.l	1
 i_am_login_shell:	ds.b	1
 input_is_tty:		ds.b	1
 interactive_mode:	ds.b	1
@@ -5496,6 +5619,7 @@ flag_e:			ds.b	1
 flags:			ds.b	1
 interrupted:		ds.b	1
 last_congetbuf:		ds.b	1+256
+.even
 user_command_parameter:	ds.b	1+MAXLINELEN+1		*  ユーザ・コマンドへの引数
 linecutbuf:		ds.b	MAXLINELEN+1		*  行カット・バッファ
 

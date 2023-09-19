@@ -236,7 +236,7 @@ start_read_loop:
 		subq.l	#1,d0
 		move.l	d0,loop_top_eventno(a5)
 		tst.w	loop_level(a5)
-		beq	success_return
+		bne	success_return
 
 		st	keep_loop(a5)
 		sf	loop_fail(a5)
@@ -423,7 +423,7 @@ msg_too_many_loops:		dc.b	'while/foreach のネストが深過ぎます',0
 msg_not_in_while_or_foreach:	dc.b	'while/foreach は開始していません',0
 msg_bad_varname:		dc.b	'変数名が無効です',0
 msg_word_not_parened:		dc.b	'単語並びが()で囲われていません',0
-msg_cannot_while_foreach:	dc.b	'while/'
+msg_cannot_while_foreach:	dc.b	' while/'
 msg_cannot_foreach:		dc.b	'foreach を実行できません',0
 
 .end

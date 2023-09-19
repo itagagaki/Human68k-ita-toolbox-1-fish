@@ -20,66 +20,77 @@
 *
 *  以下に例を示します．
 *
-*	start:					*  start : 実行開始アドレス
-*			bra.s	start1		*  2Byte
-*			dc.b	'#HUPAIR',0	*  実行開始アドレス+2 にこのデータを
-*						*  置いて，HUPAIR適合コマンドである
-*						*  ことを親プロセスに示す．
+*		.TEXT
+*
+*	start:				*  start : 実行開始アドレス
+*		bra.s	start1		*  2 Byte
+*		dc.b	'#HUPAIR',0	*  実行開始アドレス+2 にこのデータを置くことにより，
+*					*  HUPAIR適合コマンドであることを親プロセスに示す．
 *	start1:
-*			lea	stack(a6),a7
-*			lea	1(a2),a0	*  A0 : コマンドラインの文字列のアドレス
-*			bsr	DecodeHUPAIR	*  デコードする
+*		movea.l	a0,a5		*  A5 := プログラムのメモリ管理ポインタのアドレス
+*		lea	stack_bottom,a7
+*		movea.l	a7,a1		*  A1 := 引数並びを格納するエリアの先頭アドレス
+*		lea	1(a2),a0	*  A0 := コマンドラインの文字列の先頭アドレス
+*		bsr	strlen		*  D0.L に A0 が示す文字列の長さを求め，
+*		add.l	a1,d0		*    格納エリアの容量を
+*		cmp.l	8(a5),d0	*    チェックする．
+*		bhs	insufficient_memory
 *
-*			*  ここで，A0 は引数並びの先頭アドレス，
-*			*  D0.W は引数の数である．A0 からのアド
-*			*  レスには，$00 で終端された文字列
-*			*  （1つの引数）が D0.W が示す数だけ，
-*			*  隙間無く続いている．
+*		bsr	DecodeHUPAIR	*  デコードする．
 *
-*			*  たとえば，引数を 1行に 1つずつ表示するには，
+*		*  ここで，D0.W は引数の数．A1 が示すエリアには，D0.W が示す個数だけ，
+*		*  単一の引数（$00で終端された文字列）が隙間無く並んでいる．
 *
-*			move.w	d0,d1
-*			bra	print_args_continue
+*		*  たとえば，引数を 1行に 1つずつ表示するには，
+*
+*		move.w	d0,d1
+*		bra	print_args_continue
 *
 *	print_args_loop:
-*			*
-*			*  引数を 1つ表示する
-*			*
-*			move.l	a0,-(a7)
-*			DOS	_PRINT
-*			addq.l	#4,a7
-*			move.w	#$0d,-(a7)
-*			DOS	_PUTCHAR
-*			move.w	#$0a,(a7)
-*			DOS	_PUTCHAR
-*			addq.l	#2,a7
-*			*
-*			*  ポインタを次の引数に進める
-*			*
+*		*
+*		*  引数を 1つ表示する
+*		*
+*		move.l	a1,-(a7)
+*		DOS	_PRINT
+*		addq.l	#4,a7
+*		move.w	#$0d,-(a7)
+*		DOS	_PUTCHAR
+*		move.w	#$0a,(a7)
+*		DOS	_PUTCHAR
+*		addq.l	#2,a7
+*		*
+*		*  ポインタを次の引数に進める
+*		*
 *	skip_1_arg:
-*			tst.b	(a0)+
-*			bne	skip_1_arg
-*			*
-*			*  引数の数だけ繰り返す
-*			*
+*		tst.b	(a1)+
+*		bne	skip_1_arg
+*		*
+*		*  引数の数だけ繰り返す
+*		*
 *	print_args_continue:
-*			dbra	d1,print_args_loop
-*				.
-*				.
-*				.
+*		dbra	d1,print_args_loop
+*			.
+*			.
+*			.
+*
+*		.BSS
+*		.ds.b	STACKSIZE
+*		.EVEN
+*	stack_bottom:
+*
 *		.END	start
 *
 *****************************************************************
-* DecodeHUPAIR - コマンドラインを HUPAIR に従ってデコードして
-*                引数並びを得る
+* DecodeHUPAIR - HUPAIRに従ってコマンドラインをデコードし，引数
+*                並びを得る
 *
 * CALL
-*      A0     引数並びが HUPAIR に従ってエンコードされている
-*             文字列の先頭アドレス
-*             （コマンド・ラインの先頭アドレス＋１）
+*      A0     HUPAIRに従ってエンコードされた引数の先頭アドレス
+*             （コマンド・ラインの先頭アドレス + 1）
+*
+*      A1     デコードした引数並びを書き込むエリアの先頭アドレス
 *
 * RETURN
-*      A0     デコードされた引数並びの先頭アドレス
 *      D0.W   引数の数（無符号）
 *      CCR    TST.W D0
 *
@@ -87,20 +98,21 @@
 *      16 Bytes
 *
 * DESCRIPTION
-*      A0レジスタが指すアドレスから始まり $00コードで終端され
-*      ている文字列を HUPAIR に従ってデコードして引数並びを得
-*      る．ここで得られる引数並びの構造は，$00コードで終端さ
-*      れた文字列（引数）が順番に隙間無く並んでいるものである．
+*      A0レジスタが指すアドレスから始まる文字列（source）を
+*      HUPAIR に従ってデコードして引数並びを得，A1レジスタが指す
+*      アドレスから始まるエリア（destination）に格納する．
 *
-*      リターン時の A0レジスタは引数並びの先頭アドレスを指し
-*      ているであるが，これは呼び出し時の A0レジスタの値と同
-*      じである．すなわち，元の文字列は失われる．
+*      destination には，戻り値D0.Wが示す個数だけ，単一の引数
+*      （$00で終端された文字列）が順番に隙間無く並ぶ．
+*
+*      destination には source の長さだけの容量が必要である．
 *
 * AUTHOR
 *      板垣 史彦
 *
 * REVISION
 *      12 Mar. 1991   板垣 史彦         作成
+*      07 Oct. 1991   板垣 史彦         sourceとdestinationを分離
 *****************************************************************
 
 	.TEXT
@@ -110,11 +122,10 @@
 DecodeHUPAIR:
 		movem.l	d1-d2/a0-a1,-(a7)
 		clr.w	d0
-		movea.l	a0,a1
 		moveq	#0,d2
 global_loop:
 skip_loop:
-		move.b	(a1)+,d1
+		move.b	(a0)+,d1
 		cmp.b	#' ',d1
 		beq	skip_loop
 
@@ -142,14 +153,14 @@ not_in_quote:
 		cmp.b	#' ',d1
 		beq	terminate
 dup_one:
-		move.b	d1,(a0)+
+		move.b	d1,(a1)+
 		beq	done
 dup_continue:
-		move.b	(a1)+,d1
+		move.b	(a0)+,d1
 		bra	dup_loop
 
 terminate:
-		clr.b	(a0)+
+		clr.b	(a1)+
 		bra	global_loop
 
 done:

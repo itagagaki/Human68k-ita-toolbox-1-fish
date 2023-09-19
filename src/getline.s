@@ -699,10 +699,7 @@ x_search_char_ok:
 *  beginning-of-line
 ********************************
 x_bol:
-		movea.l	line_top(a6),a0
-		move.w	point(a6),d0
-		bsr	backward_cursor_x
-		clr.w	point(a6)
+		bsr	moveto_bol
 		bra	getline_x_2
 ********************************
 *  end-of-line
@@ -769,11 +766,10 @@ x_kill_for_word:
 		moveq	#1,d7
 		bra	x_kill_or_copy_region_2
 ********************************
-*  kill-to-bol
+*  kill-whole-line
 ********************************
-x_kill_bol:
-		moveq	#0,d4
-		bra	x_kill_eol_1
+x_kill_whole_line:
+		bsr	moveto_bol
 ********************************
 *  kill-to-eol
 ********************************
@@ -782,6 +778,12 @@ x_kill_eol:
 x_kill_eol_1:
 		moveq	#1,d7
 		bra	x_kill_or_copy_region_1
+********************************
+*  kill-to-bol
+********************************
+x_kill_bol:
+		moveq	#0,d4
+		bra	x_kill_eol_1
 ********************************
 *  kill-region
 ********************************
@@ -846,20 +848,31 @@ x_yank:
 		bsr	strlen
 		move.l	d0,d2
 		movea.l	a0,a1
+x_copy:
 		bsr	open_columns
-		bcs	x_yank_over
+		bcs	x_over
 
 		move.l	d2,d0
 		move.l	a0,-(a7)
 		bsr	memmovi
 		movea.l	(a7)+,a0
 		bsr	post_insert_job
-x_yank_done:
 		bra	getline_x_1
 
-x_yank_over:
+x_over:
 		bsr	beep
-		bra	x_yank_done
+		bra	getline_x_1
+********************************
+*  copy-prev-word
+********************************
+x_copy_prev_word:
+		move.w	point(a6),-(a7)
+		bsr	backward_word
+		move.w	point(a6),d0
+		move.w	(a7)+,point(a6)
+		movea.l	line_top(a6),a1
+		lea	(a1,d0.w),a1
+		bra	x_copy
 ********************************
 *  upcase-char
 ********************************
@@ -2281,6 +2294,13 @@ forward_cursor_d3:
 		move.l	d3,d0
 		bra	forward_cursor
 *****************************************************************
+moveto_bol:
+		movea.l	line_top(a6),a0
+		move.w	point(a6),d0
+		bsr	backward_cursor_x
+		clr.w	point(a6)
+		rts
+*****************************************************************
 move_cursor_to_eol:
 		movem.l	d0/a0,-(a7)
 		movea.l	line_top(a6),a0
@@ -3029,6 +3049,7 @@ key_function_jump_table:
 		dc.l	x_kill_for_word
 		dc.l	x_kill_bol
 		dc.l	x_kill_eol
+		dc.l	x_kill_whole_line
 		dc.l	x_kill_region
 		dc.l	x_copy_region
 		dc.l	x_yank
@@ -3044,6 +3065,7 @@ key_function_jump_table:
 		dc.l	x_down_history
 		dc.l	x_complete
 		dc.l	x_list
+		dc.l	x_copy_prev_word
 
 word_fignore:		dc.b	'fignore',0
 word_matchbeep:		dc.b	'matchbeep',0

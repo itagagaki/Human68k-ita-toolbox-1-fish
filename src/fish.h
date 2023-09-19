@@ -22,4 +22,6 @@ MAXLOOPLEVEL	equ	31			*  while/foreach のネストの最大回数  0以上65535以下  cshは
 MAXSWITCHLEVEL	equ	65535			*  switch のネストの最深  0以上65535以下  cshは無制限？
 MAXLABELLEN	equ	31			*  goto/onintrラベルの有効先頭文字数
 MAXFUNCNAMELEN	equ	31			*  関数名の最大長
+
+RND_POOLSIZE	equ	61			*  乱数プールサイズ
 
