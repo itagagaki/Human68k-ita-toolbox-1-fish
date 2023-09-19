@@ -20,4 +20,5 @@ MAXFUNCNAMELEN	equ	31			*  関数名の最大長
 DSTACKSIZE	equ	128			*  ディレクトリ・スタックの大きさ
 
 RND_POOLSIZE	equ	61			*  乱数プールサイズ
-
+
+V9		equ	0

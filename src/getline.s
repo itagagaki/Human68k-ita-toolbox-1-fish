@@ -1750,7 +1750,7 @@ PROP_COMPLETION  = 9
 *  list
 ********************************
 x_list:
-.if 0
+.if V9
 		moveq	#FLAGX_LIST,d7
 		bra	x_filec_or_list
 .endif
@@ -1764,7 +1764,7 @@ x_list_raw:
 *  complete
 ********************************
 x_complete:
-.if 0
+.if V9
 		moveq	#FLAGX_COMPL,d7
 		bra	x_filec_or_list
 .endif
@@ -3348,6 +3348,7 @@ complete_file_1:
 complete_file_2:
 		clr.l	filec_files_path_ptr(a4)	*  0,1,2
 complete_file_3:					*  0,1,2,3
+		clr.w	filec_fignore(a4)
 		btst.b	#FLAGBIT_LIST,filec_flag(a4)
 		bne	complete_file_fignore_ok
 

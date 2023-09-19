@@ -182,7 +182,7 @@ PDB_stackPtr	equ	$f8
 .xref cmd_breaksw
 .xref cmd_cd
 .xref cmd_cdd
-.if 0
+.if V9
 .xref cmd_complete
 .endif
 .xref cmd_continue
@@ -212,7 +212,7 @@ PDB_stackPtr	equ	$f8
 .xref cmd_srand
 .xref cmd_time
 .xref cmd_unalias
-.if 0
+.if V9
 .xref cmd_uncomplete
 .endif
 .xref cmd_undefun
@@ -5898,7 +5898,7 @@ fish_author:	dc.b	'”ÂŠ_ Žj•F ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'8',0		*  minor version
-		dc.b	'0',0		*  patch level
+		dc.b	'1',0		*  patch level
 
 .even
 statement_table:
@@ -6010,7 +6010,7 @@ builtin_table:
 		dc.l	word_chdir
 		dc.l	cmd_cd
 		dc.b	0,0
-.if 0
+.if V9
 		dc.l	word_complete
 		dc.l	cmd_complete
 		dc.b	1,0
@@ -6126,7 +6126,7 @@ builtin_table:
 		dc.l	word_unalias
 		dc.l	cmd_unalias
 		dc.b	1,0
-.if 0
+.if V9
 		dc.l	word_uncomplete
 		dc.l	cmd_uncomplete
 		dc.b	1,0
