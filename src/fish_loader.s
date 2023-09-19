@@ -22,7 +22,7 @@ header_top:
 header_dataP:	dc.l	0		* $f0(PDB) : 自分のデータのアドレス
 header_codeP:	dc.l	0		* $f4(PDB) : 自分のコードのアドレス
 header_stackP:	dc.l	0		* $f8(PDB) : 自分のスタックのアドレス
-header_id:	dc.b	"FISH - Fumihiko Itagaki's shell - Version  0.1  Patchlevel 1 ",0
+header_id:	dc.b	"FISH - Fumihiko Itagaki's shell - Version  0.2  Patchlevel 1 ",0
 *****************************************************************
 		dc.b	'Copyright(C)1991 by Itagaki Fumihiko',0
 

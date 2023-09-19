@@ -2,6 +2,7 @@
 * Itagaki Fumihiko 29-Jul-90  Create.
 * Itagaki Fumihiko 16-Aug-91  'complete' で、'.' で始まるエントリ
 *                             （"." と ".." を除く）を補完するようにした．
+* Itagaki Fumihiko 29-Aug-91  addsuffix, autolist, recexact
 
 .include doscall.h
 .include chrcode.h
@@ -62,6 +63,7 @@
 .xref too_long_line
 .xref command_table
 .xref word_nomatch
+.xref word_exact
 .xref word_prompt
 .xref word_prompt2
 .xref dos_allfile
@@ -1212,7 +1214,9 @@ filec_comlen = filec_minlen-2
 filec_numentry = filec_comlen-2
 filec_listflag = filec_numentry-1
 filec_condition = filec_listflag-1
-filec_pad = filec_condition-0
+filec_suffix = filec_condition-1
+filec_exact_suffix = filec_suffix-1
+filec_pad = filec_exact_suffix-0
 
 x_filec_or_list:
 		link	a4,#filec_pad
@@ -1261,7 +1265,6 @@ filec_find_word_done:
 		clr.b	(a0)
 
 		clr.w	filec_numentry(a4)
-filec_correct:
 		moveq	#0,d0
 		tst.b	filec_listflag(a4)
 		bne	filec_no_fignore
@@ -1293,6 +1296,7 @@ filec_no_fignore:
 		move.w	d0,filec_patlen(a4)
 		lea	command_table,a0
 		bsr	filec_reset
+		move.b	#' ',filec_suffix(a4)
 filec_builtin_loop:
 		tst.b	(a0)
 		beq	filec_find_done
@@ -1304,6 +1308,8 @@ filec_builtin_loop:
 
 		bsr	filec_enter
 		bcs	filec_error
+
+		bsr	test_exactmatch
 filec_builtin_next:
 		lea	14(a0),a0
 		bra	filec_builtin_loop
@@ -1397,17 +1403,21 @@ filec_file_ok:
 		bsr	filec_enter
 		bcs	filec_error
 
-		tst.b	filec_listflag(a4)
-		beq	filec_file_next
+		move.b	#' ',filec_suffix(a4)
+		btst.b	#4,filec_dir_buf+21(a4)		*  directory?
+		beq	filec_file_matched
 
-		btst.b	#4,filec_dir_buf+21(a4)
-		beq	filec_file_next
+		move.b	#'/',filec_suffix(a4)
+		tst.b	filec_listflag(a4)
+		beq	filec_file_matched
 
 		subq.w	#1,filec_buffer_free(a4)
 		bcs	filec_error
 
 		move.b	#'/',-1(a3)
 		clr.b	(a3)+
+filec_file_matched:
+		bsr	test_exactmatch
 filec_file_next:
 		pea	filec_dir_buf(a4)
 		DOS	_NFILES
@@ -1429,6 +1439,7 @@ filec_username:
 		bsr	strlen
 		move.w	d0,filec_patlen(a4)
 		bsr	filec_reset
+		move.b	#'/',filec_suffix(a4)
 
 pwd_buf = -(((PW_SIZE+1)+1)>>1<<1)
 
@@ -1447,13 +1458,17 @@ filec_username_loop:
 		bne	filec_username_loop
 
 		bsr	filec_enter
-		bcc	filec_username_loop
+		bcs	filec_username_over
 
-		moveq	#0,d0
-		bra	filec_username_done
+		bsr	test_exactmatch
+		bra	filec_username_loop
 
 filec_username_done0:
 		moveq	#-1,d0
+		bra	filec_username_done
+
+filec_username_over:
+		moveq	#0,d0
 filec_username_done:
 		unlk	a6
 		move.l	d0,-(a7)
@@ -1495,29 +1510,52 @@ filec_find_done:
 		movea.l	(a7)+,a0
 		bsr	post_insert_job
 		cmp.w	#1,filec_numentry(a4)
-		beq	filec_done
+		beq	filec_match
 
-		tst.b	flag_recexact(a5)
+		tst.b	filec_exact_suffix(a4)
 		beq	filec_ambiguous
 
-		move.w	filec_patlen(a4),d0
-		add.w	filec_comlen(a4),d0
-		cmp.w	filec_minlen(a4),d0
-		bne	filec_ambiguous
-filec_notuniq:
+		*  not unique exact match
+		*  set matchbeep=notuniq であるときにのみベルを鳴らす
+
 		bsr	find_matchbeep
-		beq	filec_done			*  正しい
-		bpl	filec_done
+		beq	filec_notunique_nobeep
+		bpl	filec_match
 
 		lea	word_notunique,a1
 		bsr	strcmp
-		bne	filec_done
-filec_beep:
-filec_error:
+		bne	filec_notunique_nobeep
+
 		bsr	beep
-filec_done:
-		unlk	a4
-		bra	getline_x_1
+filec_notunique_nobeep:
+		move.b	filec_exact_suffix(a4),d0
+		move.b	d0,filec_suffix(a4)
+filec_match:
+		lea	word_addsuffix,a0		*  シェル変数 addsuffix が
+		bsr	find_shellvar			*  セットされて
+		beq	filec_done			*  いなければおしまい
+
+		tst.l	d2				*  1文字も挿入しなかったならば
+		beq	filec_addsuffix			*  サフィックスを追加する
+
+		*  $@addsuffix[1] == exact でなければサフィックスを追加する
+
+		addq.l	#2,a0
+		tst.w	(a0)+
+		beq	filec_addsuffix
+
+		bsr	strfor1
+		lea	word_exact,a1
+		bsr	strcmp
+		beq	filec_done
+filec_addsuffix:
+		moveq	#1,d2
+		bsr	open_columns
+		bcs	filec_error
+
+		move.b	filec_suffix(a4),(a0)
+		bsr	post_insert_job
+		bra	filec_done
 
 
 filec_nomatch:
@@ -1535,8 +1573,13 @@ filec_nomatch:
 
 		lea	word_notunique,a1
 		bsr	strcmp
-		beq	filec_beep
-		bra	filec_done
+		bne	filec_done
+filec_beep:
+filec_error:
+		bsr	beep
+filec_done:
+		unlk	a4
+		bra	getline_x_1
 
 
 filec_ambiguous:
@@ -1667,6 +1710,7 @@ filec_reset:
 		move.w	#$ffff,filec_minlen(a4)
 		lea	tmpargs,a3
 		move.w	#MAXWORDLISTSIZE,filec_buffer_free(a4)
+		clr.b	filec_exact_suffix(a4)
 		rts
 ****************
 filec_enter:
@@ -1751,8 +1795,20 @@ filec_enter_error:
 		moveq	#0,d0
 		subq.w	#1,d0
 		bra	filec_entry_return
+****************
+test_exactmatch:
+		tst.b	flag_recexact(a5)
+		beq	test_exactmatch_return
 
+		move.w	filec_patlen(a4),d0
+		tst.b	(a0,d0.w)
+		bne	test_exactmatch_return
 
+		move.b	filec_suffix(a4),d0
+		move.b	d0,filec_exact_suffix(a4)
+test_exactmatch_return:
+		rts
+****************
 find_matchbeep:
 		lea	word_matchbeep,a0
 		bsr	find_shellvar
@@ -2928,6 +2984,7 @@ word_fignore:		dc.b	'fignore',0
 word_matchbeep:		dc.b	'matchbeep',0
 word_ambiguous:		dc.b	'ambiguous',0
 word_notunique:		dc.b	'notunique',0
+word_addsuffix:		dc.b	'addsuffix',0
 
 filec_separators:	dc.b	'"',"'",'`^'
 word_separators:	dc.b	' ',HT,LF,VT,FS,CR

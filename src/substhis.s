@@ -65,11 +65,14 @@ find_history_loop:
 		beq	find_history_done
 
 		cmp.l	HIST_EVENTNO(a0),d0		*  ƒCƒxƒ“ƒg”Ô†‚ğ”äŠr‚·‚é
-		bhs	find_history_done
+		beq	find_history_done
+		bhi	find_history_fail
 
 		movea.l	HIST_PREV(a0),a0
 		bra	find_history_loop
 
+find_history_fail:
+		suba.l	a0,a0
 find_history_done:
 		cmpa.l	#0,a0
 		rts

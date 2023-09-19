@@ -90,6 +90,7 @@ clear_flagvars_done:
 
 .xdef word_echo
 .xdef word_nomatch
+.xdef word_exact
 .xdef word_verbose
 
 .even
@@ -128,7 +129,8 @@ word_echo:	dc.b	'echo',0,0,0,0,0,0
 word_nomatch:	dc.b	'nomatch',0
 		dc.w	flag_nonomatch
 
-		dc.b	'recexact',0,0
+		dc.b	'rec'
+word_exact:	dc.b	'exact',0,0
 		dc.w	flag_recexact
 
 		dc.b	'usegets',0,0,0
