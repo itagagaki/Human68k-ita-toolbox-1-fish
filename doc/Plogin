@@ -1,0 +1,24 @@
+#  ŒÂlŠÂ‹«ƒtƒ@ƒCƒ‹ ~/%login ‚ÌƒTƒ“ƒvƒ‹
+#  Copyright(C)1991 by Itagaki Fumihiko
+
+echo ''
+echo "fish  version $FISH_VERSION[1].$FISH_VERSION[2] patchlevel $FISH_VERSION[3]"
+echo "  by $FISH_AUTHOR"
+echo "$FISH_COPYRIGHT"
+echo ''
+
+setenv include  A:/usr/include
+setenv lib      A:/usr/lib
+setenv TODAYTBL A:/usr/lib/Calendar
+
+set path=(~~ . A:/usr/local/bin ~/newbin A:/usr/pds A:/bin A:/usr/bin A:/usr/bin/SX)
+set savehist=30
+set ignoreeof
+
+key 25 ''
+key 26 ''
+key 27 ''
+key 28 ''
+
+yow
+

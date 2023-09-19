@@ -1,0 +1,71 @@
+#  個人環境ファイル ~/%fishrc のサンプル
+#  Copyright(C)1991 by Itagaki Fumihiko
+
+set history=30
+set cdpath=~
+set prompt='%\!% '
+set fignore=(.o '.$$$')
+set forceio noclobber
+
+alias a alias
+a calc '(@ reg=(\!*) && echo - $reg)'
+a copy '(set noglob a=(\!*);command /c copy $a:s./.\\.g)'	#  cp が完成するまでの措置
+a del  '(set noglob a=(\!*);command /c del  $a:s./.\\.g)'	#  rm が完成するまでの措置
+a dir  '(set noglob a=(\!*);command /c dir  $a:s./.\\.g)'	#  ls が完成するまでの措置
+a ren  '(set noglob a=(\!*);command /c ren  $a:s./.\\.g)'	#  mv が完成するまでの措置
+a ed MuED -N
+a h history
+a lhv lhv -s
+a ls ls -F
+a mount subst \!:2 \!:1
+a ps process
+
+bind ^A beginning-of-line
+bind ^B backward-char
+bind ^C abort
+bind ^D delete-forward-char
+bind ^E end-of-line
+bind ^F forward-char
+bind ^G error
+bind ^H delete-backward-char
+bind ^I complete
+bind ^K kill-to-eol
+bind ^L redraw
+bind ^M accept-line
+bind ^N down-history
+bind ^P up-history
+bind ^Q quoted-insert
+bind ^S search-character
+bind ^T transpose-chars
+bind ^U kill-to-bol
+bind ^W kill-region
+bind ^X prefix-2
+bind ^Y yank
+bind ^Z eof
+bind ^[ prefix-1
+bind ^^ upcase-char
+bind ^_ downcase-char
+
+bind -1 ^H  kill-backward-word
+bind -1 ^L  clear-and-redraw
+bind -1 ' ' set-mark
+bind -1 '?' list
+bind -1 b   backward-word
+bind -1 B   backward-word
+bind -1 d   kill-forward-word
+bind -1 D   kill-forward-word
+bind -1 f   forward-word
+bind -1 F   forward-word
+bind -1 l   downcase-word
+bind -1 L   downcase-word
+bind -1 t   transpose-words
+bind -1 T   transpose-words
+bind -1 u   upcase-word
+bind -1 U   upcase-word
+bind -1 w   copy-region
+bind -1 W   copy-region
+
+bind -2 ^L downcase-region
+bind -2 ^U upcase-region
+bind -2 ^X exchange-point-and-mark
+
