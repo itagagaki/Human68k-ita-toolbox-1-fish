@@ -1,13 +1,12 @@
 * b_exit.s
 * This contains built-in command 'exit'.
 *
-* Itagaki Fumihiko 27-Aug-90  Create.
+* Itagaki Fumihiko 03-Nov-91  Create.
 
+.xref exit_shell_status
+.xref exit_shell_d0
 .xref expression
-.xref just_set_status
 .xref too_many_args
-
-.xref exitflag
 
 .text
 
@@ -22,10 +21,11 @@
 
 cmd_exit:
 		move.w	d0,d7
-		moveq	#0,d0
-		tst.w	d7
-		beq	success_return
+		bne	exit_expression
 
+		jmp	exit_shell_status
+
+exit_expression:
 		bsr	expression
 		bne	cmd_exit_return		* D0 != 0
 
@@ -33,10 +33,8 @@ cmd_exit:
 		bne	too_many_args
 
 		move.l	d1,d0
-		bsr	just_set_status
-success_return:
-		st	exitflag(a5)
-		moveq	#0,d0
+		jmp	exit_shell_d0
+
 cmd_exit_return:
 		rts
 

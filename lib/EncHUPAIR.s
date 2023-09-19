@@ -71,6 +71,7 @@
 *
 *		* とすれば良い．
 *
+*
 *	.DATA
 *	.EVEN
 *	nwords_1:	dc.w	2
@@ -83,7 +84,10 @@
 *			dc.b	'arg4',0
 *			dc.b	'arg5',0
 *
+*	hupair_
+*
 *	.BSS
+*			ds.b	8		*  ここには 'HUPAIR>',0 が書き込まれる．
 *	cmdline:	ds.b	CMDLINE_SIZE
 *
 *****************************************************************
@@ -132,6 +136,7 @@
 *
 * REVISION
 *      12 Mar. 1991   板垣 史彦         作成
+*       2 Nov. 1991   板垣 史彦         クオート範囲を最長とする
 *****************************************************************
 
 	.TEXT
@@ -139,56 +144,70 @@
 
 EncodeHUPAIR:
 		movem.l	d1-d3/a1-a2,-(a7)
-		move.w	d0,d2
-		bra	encode_start
+		moveq	#0,d2
+		move.w	d0,d2			*  D2.L : バッファの残り容量
+encode_continue:
+		dbra	d1,encode_loop
+encode_return:
+		move.l	d2,d0
+		movem.l	(a7)+,d1-d3/a1-a2
+		rts
 
 encode_loop:
-		subq.w	#1,d2
-		bcs	encode_over
+		subq.l	#1,d2
+		bcs	encode_return
 
-		move.b	#' ',(a0)+
+		move.b	#' ',(a0)+		*  １文字のスペースを置いて、続く単語を区切る
 
-		moveq	#0,d3		* D3 : 現在のクオートの状態
-		move.b	(a1),d0
-		beq	begin_quote
+		move.b	(a1),d0			*  単語が空なら
+		beq	begin_quote		*  クオートする
 encode_one_loop:
-		move.b	(a1),d0
-		tst.b	d3
-		bne	quoted
+		*  先読みしてクオートすべき文字を探す
+		movea.l	a1,a2
+		sf	d3			*  D3.B : 空白文字を見つけたことを覚えるフラグ
+prescan:
+		move.b	(a2)+,d0
+		beq	prescan_done		*  → 先読み終了
 
-		tst.b	d0
-		beq	encode_continue
+		cmp.b	#'"',d0			*  " を見つけたら
+		beq	begin_quote		*  ' でクオートを開始する
 
-		cmp.b	#'"',d0
-		beq	begin_quote
-
-		cmp.b	#"'",d0
-		beq	begin_quote
+		cmp.b	#"'",d0			*  ' を見つけたら
+		beq	begin_quote		*  " でクオートを開始する
 
 		cmp.b	#' ',d0
-		beq	quote_white_space
+		beq	found_white_space	*  → 空白文字を見つけた
 
 		cmp.b	#$09,d0
-		blo	dup
+		blo	prescan
 
 		cmp.b	#$0d,d0
-		bhi	dup
-quote_white_space:
-		movea.l	a1,a2
-find_quote_character:
-		move.b	(a2)+,d0
-		beq	begin_quote
+		bhi	prescan
+found_white_space:
+	*  空白文字を見つけた
+		st	d3			*  空白文字を見つけたことを覚えておいて
+		bra	prescan			*  先読みを続ける
 
-		cmp.b	#'"',d0
-		beq	begin_quote
+prescan_done:
+	*  先読み終了
+		tst.b	d3			*  空白文字があったならば
+		bne	begin_quote		*  " でクオートを開始する
 
-		cmp.b	#"'",d0
-		beq	begin_quote
+	*  もうクオートすべき文字は無いので、単語の残りを一気にコピーする。
+		subq.l	#1,a2
+		move.l	a2,d0
+		sub.l	a1,d0			*  D0.L : コピーするバイト数
+		sub.l	d0,d2
+		bcs	encode_return
+dup_loop:
+		move.b	(a1)+,d0
+		beq	encode_continue
 
-		bra	find_quote_character
+		move.b	d0,(a0)+
+		bra	dup_loop
 
 begin_quote:
-		*  D0 が " でなければ " で、さもなくば ' でクオートを開始する
+	*  D0.B が " ならば ' で、そうでなければ " でクオートを開始する
 		moveq	#'"',d3
 		cmp.b	d0,d3
 		bne	insert_quote_char
@@ -196,43 +215,29 @@ begin_quote:
 		moveq	#"'",d3
 insert_quote_char:
 		move.b	d3,d0
-		bra	insert
+		bra	quoted_insert
 
-close_quote:
-		move.b	d3,d0
-		moveq	#0,d3
-		bra	insert
+quoted_loop:
+		move.b	(a1),d0
+		beq	close_quote		*  単語の終わりならクオートを閉じる
 
-quoted:
-		tst.b	d0
-		beq	close_quote
+		cmp.b	d3,d0			*  クオート文字が現われたなら
+		beq	close_quote		*  クオートを一旦閉じる
 
-		cmp.b	d3,d0
-		beq	close_quote
-dup:
 		addq.l	#1,a1
-insert:
-		subq.w	#1,d2
-		bcs	encode_over
+quoted_insert:
+		subq.l	#1,d2
+		bcs	encode_return
 
 		move.b	d0,(a0)+
+		bra	quoted_loop
+
+close_quote:
+		subq.l	#1,d2
+		bcs	encode_return
+
+		move.b	d3,(a0)+
 		bra	encode_one_loop
-
-encode_continue:
-		addq.l	#1,a1
-encode_start:
-		dbra	d1,encode_loop
-
-		moveq	#0,d0
-		move.w	d2,d0
-encode_return:
-		movem.l	(a7)+,d1-d3/a1-a2
-		tst.l	d0
-		rts
-
-encode_over:
-		moveq	#-1,d0
-		bra	encode_return
 *****************************************************************
 * SetHUPAIR - コマンドラインを完成する
 *
@@ -266,11 +271,16 @@ encode_over:
 *      EncodeHUPAIR の繰り返しを終えた後に呼び出してコマンド
 *      ラインを完成させるものである．
 *
+*      A1レジスタで与えられるコマンドラインの前には8バイトの
+*      余白がなければならない．この8バイトの余白には 'HUPAIR>',0
+*      が書き込まれる．
+*
 * AUTHOR
 *      板垣 史彦
 *
 * REVISION
 *      11 Aug. 1991   板垣 史彦         作成
+*      24 Nov. 1991   板垣 史彦         'HUPAIR>',0 をセット
 *****************************************************************
 
 	.TEXT
@@ -298,6 +308,15 @@ set_noarg:
 		clr.b	1(a1)
 set_length:
 		move.b	d1,(a1)
+		subq.l	#8,a1
+		move.b	#'#',(a1)+
+		move.b	#'H',(a1)+
+		move.b	#'U',(a1)+
+		move.b	#'P',(a1)+
+		move.b	#'A',(a1)+
+		move.b	#'I',(a1)+
+		move.b	#'R',(a1)+
+		clr.b	(a1)+
 		tst.l	d0
 		rts
 

@@ -142,7 +142,7 @@ export_build_path_loop:
 		bsr	is_builtin_dir
 		beq	export_build_path_ignore_this
 
-		cmpa.l	#0,a4
+		move.l	a4,d0
 		beq	not_notexportpath
 
 		exg	a0,a1

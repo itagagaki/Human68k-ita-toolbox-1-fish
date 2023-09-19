@@ -45,7 +45,7 @@ is_not_subst_separator:
 		cmp.w	#$100,d0
 		bhi	is_not_subst_separator_return	* NE
 
-		bsr	isspace
+		jsr	isspace
 		beq	is_not_subst_separator_return	* EQ
 
 		bsr	iscsym
@@ -127,7 +127,7 @@ modify_loop:
 		exg	a0,a3
 		move.b	d0,d6
 		lea	str_modifier_rhtedf,a0
-		bsr	jstrchr
+		jsr	jstrchr
 		bne	modify_pathname
 
 		cmp.w	#'s',d0
@@ -164,16 +164,16 @@ bad_modifier:
 		bne	modify_loop
 
 		lea	msg_bad_modifier,a0
-		bsr	eputs
+		jsr	eputs
 		cmp.w	#$100,d0
 		blo	bad_modifier_1
 
 		move.w	d0,-(a7)
 		lsr.w	#8,d0
-		bsr	ecputc
+		jsr	ecputc
 		move.w	(a7)+,d0
 bad_modifier_1:
-		bsr	ecputc
+		jsr	ecputc
 		bsr	eput_newline
 modify_error:
 		bset	#MODIFYSTATBIT_ERROR,d5
@@ -307,7 +307,7 @@ modify_redo_subst_get_option_ok:
 		lea	prev_rhs(a5),a2
 		lea	prev_lhs(a5),a1
 		movea.l	a1,a0
-		bsr	strlen
+		jsr	strlen
 		move.l	d0,d1
 		beq	no_prev_sub
 
@@ -390,17 +390,17 @@ modify_subst_get_option_done:
 
 		exg	a0,a1
 		bsr	hide_escape
-		bsr	strlen
+		jsr	strlen
 		exg	a0,a1
 		move.l	d0,d1				* D1.L : åüçıï∂éöóÒÇÃí∑Ç≥
 		lea	prev_search(a5),a0
-		bsr	strcpy
+		jsr	strcpy
 		bra	modify_lhs_ok
 
 modify_search_prev:
 		lea	prev_search(a5),a1
 		exg	a0,a1
-		bsr	strlen
+		jsr	strlen
 		exg	a0,a1
 		move.l	d0,d1
 		beq	modify_no_prev_search		* No prev search
@@ -418,10 +418,10 @@ modify_lhs_ok:
 		lea	prev_rhs(a5),a2
 modify_rhs_ok:
 		lea	prev_lhs(a5),a0
-		bsr	strcpy
+		jsr	strcpy
 		exg	a1,a2
 		lea	prev_rhs(a5),a0
-		bsr	strcpy
+		jsr	strcpy
 		exg	a1,a2
 modify_subst_start:
 		cmp.l	#-1,number(a6)
@@ -454,7 +454,7 @@ modify_subst_count_replace:
 		beq	modify_subst_count_replace_done
 modify_subst_count_replace_char:
 		addq.l	#1,d2
-		bsr	issjis
+		jsr	issjis
 		bne	modify_subst_count_replace
 
 		move.b	(a2)+,d0
@@ -531,7 +531,7 @@ modify_subst_store_loop:
 		beq	modify_subst_store_done
 modify_subst_store_char:
 		move.b	d0,(a0)+
-		bsr	issjis
+		jsr	issjis
 		bne	modify_subst_store_continue
 
 		move.b	(a2)+,d0
@@ -600,7 +600,7 @@ modify_subst_errorp:
 		btst	#MODIFYSTATBIT_ERROR,d5
 		bne	modify_subst_done
 
-		bsr	enputs
+		jsr	enputs
 		bset	#MODIFYSTATBIT_ERROR,d5
 		bra	modify_subst_done
 
@@ -661,7 +661,7 @@ modify_subst_search_fail:
 
 modify_subst_search_tail:
 		move.w	d0,-(a7)
-		bsr	strbot
+		jsr	strbot
 		move.w	(a7)+,d0
 modify_subst_search_return:
 		move.l	(a7)+,d2
@@ -761,7 +761,7 @@ scan_subst_str_return:
 ****************************************************************
 get_subst_number_option:
 		move.w	d1,-(a7)
-		bsr	atou
+		jsr	atou
 		bne	bad_number_opt
 
 		tst.l	d1

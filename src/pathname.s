@@ -92,7 +92,7 @@ split_pathname_1:
 		bsr	strlen
 		move.l	d0,d3			*  D3.L : サフィックス部の長さ（‘.’を含む）
 		move.l	a3,d2
-		sub.l	a2,d2			*  D2.L : サフィックス部の長さ（サフィックス部は含まない）
+		sub.l	a2,d2			*  D2.L : ファイル部の長さ（サフィックス部は含まない）
 split_pathname_return:
 		movem.l	(a7)+,d0/a0		*  D0 と A0 を取り戻す
 		rts

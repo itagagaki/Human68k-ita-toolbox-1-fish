@@ -30,6 +30,7 @@
 
 .xref tmpline
 
+.xref dstack
 .xref tmpfd
 
 .text
@@ -304,9 +305,21 @@ expand_tilde:
 ****************
 ****************
 maybe_directory_stack:
+		cmpi.b	#'-',(a0)
+		beq	maybe_directory_stack_bottom
+
 		bsr	atou
 		bmi	expand_tilde_go
 
+		bra	maybe_directory_stack_check_slash
+
+maybe_directory_stack_bottom:
+		addq.l	#1,a0
+		movea.l	dstack(a5),a2
+		moveq	#0,d1
+		move.w	8(a2),d1		*  D1.L : ディレクトリ・スタックの要素数
+		moveq	#0,d0
+maybe_directory_stack_check_slash:
 		move.l	d0,d4
 		bsr	check_slash
 		bne	expand_tilde_go

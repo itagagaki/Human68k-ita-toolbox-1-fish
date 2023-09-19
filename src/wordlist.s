@@ -381,31 +381,32 @@ close_paren_found:
 
 sort_wordlist:
 		movem.l	d0-d2/a0-a3,-(a7)
-		move.w	d0,d1
+		move.w	d0,d1				*  D1.W : 要素数
 		movea.l	a0,a2
 		bsr	strforn
-		exg	a0,a2
+		exg	a0,a2				*  A0:最初の要素  A2:最後の要素の次
 sort_wordlist_loop2:
 		cmp.w	#2,d1
 		blo	sort_wordlist_done
 
+		*  A0 以降の最小の単語のアドレスを A1 に得る
+		movea.l	a0,a3
 		subq.w	#1,d1
 		move.w	d1,d2
-		subq.w	#1,d2
-		movea.l	a0,a3
-		movea.l	a0,a1
+		bra	sort_wordlist_loop1_start
+
 sort_wordlist_loop1:
 		bsr	strfor1
 		bsr	strcmp
 		bhs	sort_wordlist_loop1_continue
-
+sort_wordlist_loop1_start:
 		movea.l	a0,a1
 sort_wordlist_loop1_continue:
 		dbra	d2,sort_wordlist_loop1
 
 		movea.l	a3,a0
-		cmpa.l	a0,a1
-		beq	sort_wordlist_loop2_continue
+		cmpa.l	a0,a1				*  先頭の単語が最小なら
+		beq	sort_wordlist_loop2_continue	*  交換しない
 
 		bsr	rotate
 sort_wordlist_loop2_continue:
@@ -414,6 +415,87 @@ sort_wordlist_loop2_continue:
 
 sort_wordlist_done:
 		movem.l	(a7)+,d0-d2/a0-a3
+		rts
+****************************************************************
+* uniq_wordlist - 単語の並びの中で隣接している重複単語を削除する
+*
+* CALL
+*      A0     単語並び
+*      D0.W   単語数
+*
+* RETURN
+*      D0.L   下位ワードは単語数．上位は破壊
+*****************************************************************
+.xdef uniq_wordlist
+
+uniq_wordlist:
+		movem.l	d1-d2/a0-a2,-(a7)
+		moveq	#0,d2
+		movea.l	a0,a1				*  A1 : 比較する単語のアドレス
+		move.w	d0,d1				*  D1.W : A1以降の単語数
+uniq_wordlist_loop1:
+		cmp.w	#2,d1
+		blo	uniq_wordlist_done
+
+		bsr	strfor1
+		subq.w	#1,d1
+		addq.w	#1,d2
+		bsr	strcmp
+		bne	uniq_wordlist_continue
+
+		subq.w	#2,d1
+		bcs	uniq_wordlist_return
+
+		movea.l	a0,a2
+uniq_wordlist_loop2:
+		bsr	strfor1
+		bsr	strcmp
+		dbne	d1,uniq_wordlist_loop2
+		beq	uniq_wordlist_return
+
+		addq.w	#1,d1
+		move.w	d1,d0
+		movea.l	a0,a1
+		movea.l	a2,a0
+		bsr	copy_wordlist
+uniq_wordlist_continue:
+		movea.l	a0,a1
+		bra	uniq_wordlist_loop1
+
+uniq_wordlist_done:
+		add.w	d1,d2
+uniq_wordlist_return:
+		move.w	d2,d0
+		movem.l	(a7)+,d1-d2/a0-a2
+		rts
+****************************************************************
+* is_all_same_word - 単語の並びの中の単語がすべて同じであるかどうかを調べる
+*
+* CALL
+*      A0     単語並び
+*      D0.W   単語数
+*
+* RETURN
+*      D0.L   すべて同じならば 0
+*      CCR    TST.L D0
+*****************************************************************
+.xdef is_all_same_word
+
+is_all_same_word:
+		movem.l	d1/a0-a1,-(a7)
+		move.w	d0,d1
+		moveq	#0,d0
+		subq.w	#2,d1
+		bcs	is_all_same_word_return
+
+		movea.l	a0,a1
+is_all_same_word_loop:
+		bsr	strfor1
+		bsr	strcmp
+		dbne	d1,is_all_same_word_loop
+is_all_same_word_return:
+		movem.l	(a7)+,d1/a0-a1
+		tst.l	d0
 		rts
 ****************************************************************
 * wordlistlen - 語並びの長さ

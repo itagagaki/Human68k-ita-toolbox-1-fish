@@ -28,7 +28,6 @@
 .xref history_top
 .xref history_bot
 .xref current_eventno
-.xref flag_ampm
 
 .text
 
@@ -228,18 +227,18 @@ prhist_1line:
 		move.l	d5,d0
 		lsr.l	#8,d0
 		lsr.l	#8,d0
-		and.l	#%11111,d0				*  ［時］を
+		and.l	#%11111,d0				*  時を
 		bsr	printfi					*  出力する
 		moveq	#':',d0					*  ':' を
 		jsr	(a1)					*  出力する
 		move.l	d5,d0
 		lsr.l	#8,d0
-		and.l	#%111111,d0				*  ［分］を
+		and.l	#%111111,d0				*  分を
 		bsr	printfi					*  出力する
 		moveq	#':',d0					*  ':' を
 		jsr	(a1)					*  出力する
 		move.l	d5,d0
-		and.l	#%111111,d0				*  ［秒］を
+		and.l	#%111111,d0				*  秒を
 		bsr	printfi					*  出力する
 		move.l	a0,-(a7)
 		lea	space2,a0				*  スペースを 2つ
@@ -308,6 +307,7 @@ parse_history_value_return_bad:
 		moveq	#-1,d0
 		rts
 ****************************************************************
+.if 0
 hour_ampm:
 		tst.b	flag_ampm(a5)
 		beq	hour_ok
@@ -321,6 +321,7 @@ hour_pm:
 		bset	#31,d0
 hour_ok:
 		rts
+.endif
 ****************************************************************
 .data
 

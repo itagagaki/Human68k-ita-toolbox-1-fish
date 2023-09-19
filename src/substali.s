@@ -121,8 +121,8 @@ dup_a_word_return:
 
 subst_alias:
 		movem.l	d3-d7/a0-a2,-(a7)
-		moveq	#0,d7				* D7.B : 「置換した」フラグ
-		move.w	d0,d5				* D5.W : ソース単語数
+		moveq	#0,d7				*  D7.B : 「置換した」フラグ
+		move.w	d0,d5				*  D5.W : ソース単語数
 		beq	subst_alias_done
 subst_alias_loop:
 	*
@@ -130,13 +130,13 @@ subst_alias_loop:
 	*
 		bsr	count_command_word
 		tst.w	d2
-		beq	expand_command_done		* コマンドの単語数が 0 ならば置換しない
+		beq	expand_command_done		*  コマンドの単語数が 0 ならば置換しない
 
 		cmpi.b	#'(',(a0)
 		bne	subst_alias_1
 
 		tst.b	1(a0)
-		beq	dup_args			* サブシェルならば置換しない
+		beq	dup_args			*  サブシェルならば置換しない
 subst_alias_1:
 		cmpi.b	#'\',(a0)			*  コマンド名が '\' を含むなら
 		beq	dup_args			*  別名置換しない
@@ -164,7 +164,7 @@ subst_alias_1:
 		*      D4.W   実コマンドの単語数
 		*
 		bset	#0,d7				* 「置換した」フラグを立てる
-		moveq	#0,d6				* D6 : 「!置換した」フラグ
+		moveq	#0,d6				*  D6 : 「!置換した」フラグ
 	*
 	*  別名と実名が同名でなければ、更に置換されることを許すために
 	*  先に加えた '\' を削除する

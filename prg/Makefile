@@ -8,7 +8,7 @@ LK	= \usr\pds\hlk.x -p ${@|basename}.map
 LIB	= \bin\LIB.X
 BIND	= \bin\BIND.X
 INSTALL = copy
-STRIP   = -A:\bin\STRIP.X -s
+STRIP   = A:\usr\pds\strip.x
 TOUCH   = A:\bin\TOUCH.X
 CP      = copy
 RM      = -\usr\local\bin\rm -f
@@ -25,7 +25,7 @@ FILES	= main.o state.l builtin1.l builtin2.l subst.l var.l misc.l string.l dir_i
 
 OBJS_BUILTIN1 = b_alias.o b_alloc.o b_bind.o b_dirs.o b_echo.o b_eval.o \
                 b_exit.o b_glob.o b_goto.o b_history.o b_logout.o \
-                b_printf.o b_repeat.o b_setenv.o
+                b_printf.o b_repeat.o b_return.o b_setenv.o
 
 OBJS_BUILTIN2 = b_set.o b_shift.o b_source.o b_srand.o b_time.o b_unset.o \
                 b_unsetenv.o b_which.o

@@ -44,6 +44,8 @@
 * RETURN
 *      D0.L   文字（バイト）数
 ****************************************************************
+.xdef compile_esch
+
 compile_esch:
 		movem.l	a0-a1,-(a7)
 		movea.l	a0,a1
@@ -101,67 +103,41 @@ compile_esch_done:
 		sub.l	a0,d0
 		rts
 ****************************************************************
-*  Name
-*       printf - print with formatting
+* preparse_fmtout - 書式制御文字列の%の次から変換文字までを評価する
 *
-*  Synopsis
-*       printf [ -2 ] [ - ] format [ word | ( expression ) ] ...
+* CALL
+*      D0.B   0ならば最小フィールド幅と精度に‘*’形式を認めない
+*      D7.L   下位：書式制御文字列のA0からの残りバイト数
+*             上位：引数の数（D0.B != 0 のときのみ）
+*      A3     書式制御文字列の、%の次のアドレス
+*      A4     引数の先頭アドレス（D0.B != 0 のときのみ）
+*
+* RETURN
+*      D0.L   最下位バイト：変換操作記号．上位は破壊
+*      D1.L   フラグ（bit0:'-', bit1:'+', bit2:' '）
+*      D2.B   最下位バイト：pad文字．上位は0
+*      D3.L   最小フィールド幅．省略=0
+*      D4.L   精度．省略=0
+*      D5.B   $00:精度指定なし，$FF:精度指定あり
+*      D6.B   $00:#フラグなし，$FF:#フラグあり
+*      D7.L   下位：書式制御文字列のA0からの残りバイト数
+*             上位：残り引数の数（D0.B != 0 のときのみ）
+*      A3     書式制御文字列の、変換記号の次のアドレス
+*      A4     引数の先頭アドレス（D0.B != 0 のときのみ）
+*      CCR    NZならアボート．このときMIならば書式不完全，PLならば引数が不足
 ****************************************************************
-.xdef cmd_printf
+.xdef preparse_fmtout
 
-cmd_printf:
-		lea	putc(pc),a1
-decode_opt_loop1:
-		movea.l	a0,a3
-		subq.w	#1,d0
-		bcs	decode_opt_done
+allow_asterisk = -1
+pad = allow_asterisk-1
 
-		cmpi.b	#'-',(a0)+
-		bne	decode_opt_done
-
-		move.b	(a0)+,d7
-		beq	decode_opt_done0
-decode_opt_loop2:
-		cmp.b	#'2',d7
-		bne	decode_opt_done
-
-		lea	eputc(pc),a1
-		move.b	(a0)+,d7
-		bne	decode_opt_loop2
-		bra	decode_opt_loop1
-
-decode_opt_done:
-		movea.l	a3,a0
-		addq.w	#1,d0
-decode_opt_done0:
-		move.w	d0,d7
-		beq	too_few_args
-
-		movea.l	a0,a3				*  A3 : format
-		bsr	strfor1
-		movea.l	a0,a4				*  A4 : args
-		movea.l	a3,a0
-		bsr	strip_quotes
-		bsr	compile_esch
-		subq.w	#1,d7
-		swap	d7				*  upper D7 : 残りの引数の数
-		move.w	d0,d7				*  lower D7 : format の長さ
-********************************
-printf_loop:
-		subq.w	#1,d7
-		bcs	printf_done
-
-		move.b	(a3)+,d0
-		cmp.b	#'%',d0
-		beq	printf_fmtout
-
-		jsr	(a1)
-		bra	printf_loop
-
-printf_fmtout:
+preparse_fmtout:
+		link	a6,#pad
+		move.b	d0,allow_asterisk(a6)
 		moveq	#0,d1				*  D1.L : flags - 右詰め, 正数に符号なし
 		moveq	#' ',d2				*  D2.B : pad character - ' '
 		moveq	#0,d3				*  D3.L : minimum field width
+		moveq	#0,d4				*  D4.L : 精度
 		sf	d5				*  D5.B : 精度指定の有無
 		sf	d6				*  D6.B : #フラグの有無
 	*
@@ -169,7 +145,7 @@ printf_fmtout:
 	*
 fmtout_flag_loop:
 		subq.w	#1,d7
-		bcs	printf_done
+		bcs	preparse_abort
 
 		move.b	(a3)+,d0
 		cmp.b	#'-',d0
@@ -210,15 +186,18 @@ fmtout_flag_ok:
 	*
 	*  optional minimum field width
 	*
+		tst.b	allow_asterisk(a6)
+		beq	not_asterisk_width
+
 		cmp.b	#'*',d0
 		bne	not_asterisk_width
 
 		swap	d7
 		tst.w	d7
-		beq	too_few_args
+		beq	preparse_too_few_args
 
 		bsr	fmtout_expression
-		bne	printf_return
+		bne	preparse_abort
 
 		swap	d7
 		move.l	d0,d3
@@ -228,9 +207,9 @@ not_asterisk_width:
 		bsr	isdigit
 		bne	fmtout_no_width
 
-		exg	d1,d3
 		lea	-1(a3),a0
-		bsr	atou				*  ［オーバーフローは面倒だから無視！］
+		exg	d1,d3
+		bsr	atou
 		exg	d1,d3
 		move.l	a0,d0
 		sub.l	a3,d0
@@ -243,7 +222,7 @@ test_width:
 		moveq	#0,d3
 test_width_ok:
 		subq.w	#1,d7
-		bcs	printf_done
+		bcs	preparse_abort
 
 		move.b	(a3)+,d0
 fmtout_no_width:
@@ -253,22 +232,24 @@ fmtout_no_width:
 		cmp.b	#'.',d0
 		bne	precision_ok
 
-		moveq	#0,d4				*  D4.L : precision
 		st	d5
 
 		subq.w	#1,d7
-		bcs	printf_done
+		bcs	preparse_abort
 
 		move.b	(a3)+,d0
+		tst.b	allow_asterisk(a6)
+		beq	precision_not_asterisk
+
 		cmp.b	#'*',d0
 		bne	precision_not_asterisk
 
 		swap	d7
 		tst.w	d7
-		beq	too_few_args
+		beq	preparse_too_few_args
 
 		bsr	fmtout_expression
-		bne	printf_return
+		bne	preparse_abort
 
 		swap	d7
 		move.l	d0,d4
@@ -278,14 +259,14 @@ precision_not_asterisk:
 		bsr	isdigit
 		bne	precision_ok
 
-		exg	d1,d4
 		lea	-1(a3),a0
-		bsr	atou				*  ［オーバーフローは面倒だから無視！］
+		exg	d1,d4
+		bsr	atou
 		exg	d1,d4
 		move.l	a0,d0
 		sub.l	a3,d0
 		sub.w	d0,d7
-		movea.l	a0,a3
+		movea.l	a3,a0
 test_precision:
 		tst.l	d4
 		bpl	test_precision_ok
@@ -293,13 +274,98 @@ test_precision:
 		moveq	#0,d4
 test_precision_ok:
 		subq.w	#1,d7
-		bcs	printf_done
+		bcs	preparse_abort
 
 		move.b	(a3)+,d0
 precision_ok:
-	*
-	*  conversion operator
-	*
+		cmp.b	d0,d0
+preparse_return:
+		unlk	a6
+		rts
+
+preparse_too_few_args:
+		bsr	too_few_args
+		bra	preparse_return
+
+preparse_abort:
+		moveq	#-1,d0
+		bra	preparse_return
+****************
+fmtout_expression:
+		movem.l	d1,-(a7)
+		exg	a0,a4
+		bsr	expression
+		exg	a0,a4
+		exg	d0,d1
+		movem.l	(a7)+,d1
+		rts
+****************************************************************
+*  Name
+*       printf - print with formatting
+*
+*  Synopsis
+*       printf [ -2 ] [ - ] format [ word | ( expression ) ] ...
+****************************************************************
+.xdef cmd_printf
+
+cmd_printf:
+		lea	putc(pc),a1
+decode_opt_loop1:
+		subq.w	#1,d0
+		bcs	too_few_args
+
+		movea.l	a0,a3
+		cmpi.b	#'-',(a0)+
+		bne	decode_opt_done
+
+		tst.b	(a0)+
+		beq	decode_opt_done0
+
+		subq.l	#1,a0
+decode_opt_loop2:
+		move.b	(a0)+,d7
+		beq	decode_opt_loop1
+
+		cmp.b	#'2',d7
+		bne	decode_opt_done
+
+		lea	eputc(pc),a1
+		bra	decode_opt_loop2
+
+decode_opt_done:
+		movea.l	a3,a0
+		addq.w	#1,d0
+decode_opt_done0:
+		move.w	d0,d7
+		beq	too_few_args
+
+		movea.l	a0,a3				*  A3 : format
+		bsr	strfor1
+		movea.l	a0,a4				*  A4 : args
+		movea.l	a3,a0
+		bsr	strip_quotes
+		bsr	compile_esch
+		subq.w	#1,d7
+		swap	d7				*  upper D7 : 残りの引数の数
+		move.w	d0,d7				*  lower D7 : format の長さ
+********************************
+printf_loop:
+		subq.w	#1,d7
+		bcs	printf_done
+
+		move.b	(a3)+,d0
+		cmp.b	#'%',d0
+		beq	printf_fmtout
+
+		jsr	(a1)
+		bra	printf_loop
+
+printf_fmtout:
+		st	d0				*  最小フィールド幅，精度に‘*’形式あり
+		bsr	preparse_fmtout
+		bmi	printf_done
+		bne	printf_return
+
 		swap	d7
 		cmp.b	#'%',d0
 		beq	fmtout_character_d0
@@ -416,15 +482,6 @@ do_fmtout_string:
 fmtout_string_bad:
 		lea	msg_badly_placed_paren,a0
 		bra	command_error
-****************
-fmtout_expression:
-		movem.l	d1,-(a7)
-		exg	a0,a4
-		bsr	expression
-		exg	a0,a4
-		exg	d0,d1
-		movem.l	(a7)+,d1
-		rts
 
 printf_done:
 		moveq	#0,d0

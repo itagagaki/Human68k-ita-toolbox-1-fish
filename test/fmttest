@@ -1,9 +1,9 @@
 #! /home/fish/prg/fish.x
 
-printf '     \%|%5d|%5o|%5x|%5s|%5c|%5%|\n' 45 45 45 zap 0x2a
-printf '    \%0|%05d|%05o|%05x|%05s|%05c|%05%|\n' 45 45 45 zap 0x2a
-printf '    \%#|%#5d|%#5o|%#5x|%#5s|%#5c|%#5%|\n' 45 45 45 zap 0x2a
-printf '   \%#0|%#05d|%#05o|%#05x|%#05s|%#05c|%#05%|\n' 45 45 45 zap 0x2a
+printf '     \%%|%5d|%5o|%5x|%5s|%5c|%5%|\n' 45 45 45 zap 0x2a
+printf '    \%%0|%05d|%05o|%05x|%05s|%05c|%05%|\n' 45 45 45 zap 0x2a
+printf '    \%%#|%#5d|%#5o|%#5x|%#5s|%#5c|%#5%|\n' 45 45 45 zap 0x2a
+printf '   \%%#0|%#05d|%#05o|%#05x|%#05s|%#05c|%#05%|\n' 45 45 45 zap 0x2a
 
 printf '    \% |% 5d|% 5o|% 5x|% 5s|% 5c|% 5%|\n' 45 45 45 zap 0x2a
 printf '   \% 0|% 05d|% 05o|% 05x|% 05s|% 05c|% 05%|\n' 45 45 45 zap 0x2a

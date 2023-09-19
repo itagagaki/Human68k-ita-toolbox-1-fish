@@ -31,7 +31,7 @@ qstrchr_loop:
 		move.b	(a0)+,d0
 		beq	qstrchr_break
 
-		bsr	issjis
+		jsr	issjis
 		beq	qstrchr_skip_one
 
 		tst.b	d2
@@ -62,7 +62,7 @@ qstrchr_1:
 		move.b	(a0)+,d0
 		beq	qstrchr_break
 
-		bsr	issjis
+		jsr	issjis
 		bne	qstrchr_loop
 qstrchr_skip_one:
 		move.b	(a0)+,d0

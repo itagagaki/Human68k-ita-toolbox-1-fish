@@ -24,7 +24,7 @@ skip_varname:
 		bsr	iscsymf
 		beq	loop
 
-		bsr	issjis
+		jsr	issjis
 		bne	done
 loop_sjis:
 		move.b	(a0)+,d0
@@ -34,7 +34,7 @@ loop:
 		bsr	iscsym
 		beq	loop
 
-		bsr	issjis
+		jsr	issjis
 		beq	loop_sjis
 done:
 		subq.l	#1,a0

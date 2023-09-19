@@ -183,6 +183,7 @@ PDB_stackPtr	equ	$f8
 .xref cmd_pwd
 .xref cmd_rehash
 .xref cmd_repeat
+.xref cmd_return
 .xref cmd_set
 .xref cmd_setenv
 .xref cmd_shift
@@ -324,7 +325,8 @@ init_env_done:
 		sf	not_execute(a5)			*  -n
 		sf	exit_on_error(a5)		*  -e
 		sf	flag_t(a5)			*  -t
-		clr.b	flags(a5)			*  VXvxfscb
+		sf	d6				*  -c
+		clr.b	flags(a5)			*  --------VXvxfshb
 		clr.l	d7				*  *------------------------------l
 		movea.l	PDB_argPtr(a4),a0
 		addq.l	#1,a0
@@ -341,7 +343,7 @@ parse_args_loop:
 		tst.w	d5
 		beq	done_flag_argument_parsing
 
-		btst.b	#0,flags(a5)			* -b
+		btst.b	#0,flags(a5)			*  -b
 		bne	done_flag_argument_parsing
 
 		cmpi.b	#'-',(a0)
@@ -361,8 +363,8 @@ parse_one_arg_loop:
 		beq	set_flag
 
 		moveq	#1,d1
-		cmp.b	#'c',d0			*  -c : 引数のコマンドを実行して終了する
-		beq	set_flag_c
+		cmp.b	#'h',d0			*  -h : 高速な起動 .. 履歴を読み込まない
+		beq	set_flag
 
 		moveq	#2,d1
 		cmp.b	#'s',d0			*  -s : コマンドは標準入力から読み取る
@@ -370,7 +372,7 @@ parse_one_arg_loop:
 
 		moveq	#3,d1
 		cmp.b	#'f',d0			*  -f : 高速な起動 .. 環境ファイルを実行しない
-		beq	set_flag_c
+		beq	flag_f_found
 
 		moveq	#4,d1
 		cmp.b	#'x',d0			*  -x : echoをsetする
@@ -387,6 +389,9 @@ parse_one_arg_loop:
 		moveq	#7,d1
 		cmp.b	#'V',d0			*  -V : ~/%fishrc を実行する前に verbose を set する
 		beq	set_flag
+
+		cmp.b	#'c',d0			*  -c : 引数のコマンドを実行して終了する
+		beq	flag_c_found
 
 		cmp.b	#'e',d0			*  -e : エラーで終了する
 		beq	flag_e_found
@@ -409,10 +414,10 @@ flag_parse_sjis:
 		tst.b	(a0)+
 		bne	parse_one_arg_loop
 parse_one_arg_done:
-		btst	#1,flags(a5)				*  -c
+		tst.b	d6
 		beq	parse_args_loop
 
-		bclr	#1,flags(a5)				*  -c
+		sf	d6
 		move.l	#-1,arg_command(a5)
 		tst.w	d5
 		beq	parse_args_loop
@@ -422,15 +427,15 @@ parse_one_arg_done:
 		subq.w	#1,d5
 		bra	parse_args_loop
 
-set_flag_c:
+flag_f_found:
 		bset	#31,d7
 set_flag:
-		bset	d1,flags(a5)
+		bset.b	d1,flags(a5)
 		bra	parse_one_arg_loop
 
 flag_i_found:
 		st	interactive_mode(a5)
-		bset	#2,flags(a5)				*  -s
+		bset.b	#2,flags(a5)				*  -s
 		bra	parse_one_arg_loop
 
 flag_n_found:
@@ -441,6 +446,10 @@ flag_e_found:
 
 flag_t_found:
 		st	flag_t(a5)
+		bra	set_not_login
+
+flag_c_found:
+		st	d6
 set_not_login:
 		bset	#31,d7
 		bra	parse_one_arg_loop
@@ -475,7 +484,6 @@ set_i_am_login_shell:
 flags_ok:
 	**
 	**  ログインシェルならば $HOME に chdir する
-	**  ［暫定］（/bin/login がやるべき）
 	**
 		tst.b	i_am_login_shell(a5)
 		beq	chdir_home_done
@@ -506,7 +514,7 @@ chdir_home_done:
 		tst.b	flag_t(a5)			*  -t
 		bne	set_argv
 
-		btst	#2,flags(a5)			*  -s
+		btst.b	#2,flags(a5)			*  -s
 		bne	set_argv
 
 		tst.l	arg_command(a5)			*  -c
@@ -652,11 +660,17 @@ set_shell_done:
 		*
 		*  misc. static variables
 		*
-		lea	initial_vars_stdin_mode,a2
-		tst.l	arg_script(a5)
-		beq	set_initial_vars
-
 		lea	initial_vars_script_mode,a2
+		tst.l	arg_script(a5)
+		bne	set_initial_vars
+
+		tst.l	arg_command(a5)			* -c
+		bne	set_initial_vars
+
+		tst.b	flag_t(a5)			* -t
+		bne	set_initial_vars
+
+		lea	initial_vars_stdin_mode,a2
 set_initial_vars:
 		tst.l	(a2)
 		beq	set_initial_vars_done
@@ -695,18 +709,18 @@ set_initial_vars_done:
 
 **  -V と -X を処理する
 
-		btst	#7,flags(a5)			* -V
+		btst.b	#7,flags(a5)			* -V
 		beq	preset_verbose_done
 
 		bsr	set_verbose
 preset_verbose_done:
-		btst	#6,flags(a5)			* -X
+		btst.b	#6,flags(a5)			* -X
 		beq	preset_echo_done
 
 		bsr	set_echo
 preset_echo_done:
 **  -f が指定されていなければ $SYSROOT/etc/fishrc と ~/%fishrc を source する
-		btst	#3,flags(a5)			* -f
+		btst.b	#3,flags(a5)			* -f
 		bne	fishrc_done
 
 		lea	etc_fishrc,a1
@@ -727,9 +741,12 @@ fishrc_done:
 		lea	dot_login,a1
 		bsr	run_home_source_if_any
 home_login_done:
-**  -f が指定されていなければ ~/%history を source -h する
+**  -f も -h も指定されていなければ ~/%history を source -h する
 
-		btst	#3,flags(a5)			* -f
+		btst.b	#3,flags(a5)			* -f
+		bne	load_history_done
+
+		btst.b	#1,flags(a5)			* -h
 		bne	load_history_done
 
 		lea	dot_history,a1
@@ -745,12 +762,12 @@ home_login_done:
 load_history_done:
 **  -v と -x を処理する
 
-		btst	#5,flags(a5)			* -v
+		btst.b	#5,flags(a5)			* -v
 		beq	set_verbose_done
 
 		bsr	set_verbose
 set_verbose_done:
-		btst	#4,flags(a5)			* -x
+		btst.b	#4,flags(a5)			* -x
 		beq	start_run
 
 		bsr	set_echo
@@ -882,13 +899,13 @@ init_bss:
 		clr.b	prev_search(a5)
 		clr.b	prev_lhs(a5)
 		clr.b	prev_rhs(a5)
-		sf	funcdef_status(a5)
-		sf	if_status(a5)
-		clr.w	if_level(a5)
-		clr.b	switch_status(a5)
-		clr.w	switch_level(a5)
-		clr.b	loop_status(a5)
-
+		sf	in_prompt(a5)
+		bsr	clear_each_source_bss
+		movem.l	(a7)+,d0-d1/a0
+		rts
+*****************************************************************
+clear_each_source_bss:
+		movem.l	d0/a0,-(a7)
 		lea	loop_stack(a5),a0
 		moveq	#MAXLOOPLEVEL,d0
 clear_loop_stack:
@@ -896,11 +913,15 @@ clear_loop_stack:
 		lea	LOOPINFOSIZE(a0),a0
 		dbra	d0,clear_loop_stack
 
-		bsr	clear_in_history
-		movem.l	(a7)+,d0-d1/a0
-		rts
-*****************************************************************
-clear_in_history:
+		movem.l	(a7)+,d0/a0
+		clr.b	loop_status(a5)
+clear_line_status:
+		sf	funcdef_status(a5)
+		sf	if_status(a5)
+		clr.w	if_level(a5)
+		clr.b	switch_status(a5)
+		clr.w	switch_level(a5)
+
 		clr.l	in_history_ptr(a5)
 		sf	keep_loop(a5)
 		rts
@@ -1175,28 +1196,21 @@ free_argbuf_loop:
 		beq	run_source_loop
 
 		bsr	source_goto_onintr
-		sf	funcdef_status(a5)
-		sf	if_status(a5)
-		clr.w	if_level(a5)
-		clr.b	switch_status(a5)
-		clr.w	switch_level(a5)
+		bsr	clear_line_status
 		bra	run_source_loop
 
 stop_source:
 		movea.l	current_source(a5),a0
-		movea.l	SOURCE_PARENT_STACKP(a0),a7
+		movea.l	SOURCE_PARENT_STACKP(a0),a7	*  sourceループ開始時のスタックポインタ
 		bsr	close_source
 		tst.l	current_source(a5)
 		bne	stop_source
 
-		move.l	a7,stackp(a5)
+		move.l	(a7)+,stackp(a5)
 stop_running:
-		bsr	clear_in_history
-		sf	funcdef_status(a5)
-		sf	if_status(a5)
-		clr.w	if_level(a5)
-		clr.b	switch_status(a5)
-		clr.w	switch_level(a5)
+		movea.l	stackp(a5),a7
+
+		bsr	clear_line_status
 		bsr	abort_loops
 
 		tst.b	doing_logout
@@ -1211,6 +1225,8 @@ longjmp_mainjmp:
 		movea.l	mainjmp(a5),a0
 		jmp	(a0)
 ****************
+.xdef exit_shell_status
+.xdef exit_shell_d0
 .xdef logout
 
 abort_because_of_insufficient_memory:
@@ -1641,15 +1657,20 @@ close_source:
 
 		movem.l	d0-d1/a0-a2,-(a7)
 		movea.l	current_source(a5),a2
+		lea	SOURCE_HEADER_SIZE(a2),a1
+		adda.w	SOURCE_ARGV0_SIZE(a2),a1	*  正しい
 		move.w	SOURCE_PUSHARGC(a2),d0
 		bmi	close_source_1
 
-		lea	SOURCE_HEADER_SIZE(a2),a1
-		adda.w	SOURCE_ARGV0_SIZE(a2),a1		*  正しい
 		lea	word_argv,a0
 		sf	d1
 		bsr	set_shellvar
 close_source_1:
+		adda.w	SOURCE_PUSHARGV_SIZE(a2),a1	*  正しい
+		lea	each_source_bss_top(a5),a0
+		move.l	#EACH_SOURCE_BSS_SIZE,d0
+		bsr	memmovi
+
 		move.l	SOURCE_PARENT(a2),current_source(a5)
 		move.l	a2,-(a7)
 		DOS	_MFREE
@@ -1690,7 +1711,7 @@ load_source:
 		bmi	load_source_fail_1
 
 		add.l	d3,d0
-		add.l	#SOURCE_HEADER_SIZE,d0		*  D0.L : ファイルの長さ+sourceヘッダのサイズ
+		add.l	#SOURCE_HEADER_SIZE+EACH_SOURCE_BSS_SIZE,d0	*  D0.L : スクリプト名の長さ+ファイルの長さ+sourceヘッダのサイズ+保存BSSのサイズ
 		move.l	d0,-(a7)
 		move.w	#2,-(a7)			*  MD=2 : 上位から探して割り当てる
 		DOS	_MALLOC2
@@ -1700,20 +1721,28 @@ load_source:
 
 		movea.l	d0,a2				*  A2 : バッファの先頭アドレス
 		move.w	d3,SOURCE_ARGV0_SIZE(a2)
+		clr.w	SOURCE_PUSHARGV_SIZE(a2)
+		move.w	#$ffff,SOURCE_PUSHARGC(a2)
+
 		move.l	a0,-(a7)
 		movea.l	a0,a1
 		lea	SOURCE_HEADER_SIZE(a2),a0
+		*  スクリプト名を転送
 		move.l	d3,d0
+		bsr	memmovi
+		*  BSSを保存
+		lea	each_source_bss_top(a5),a1
+		move.l	#EACH_SOURCE_BSS_SIZE,d0
 		bsr	memmovi
 		movea.l	a0,a3
 		movea.l	(a7)+,a0
+
 		move.l	a3,SOURCE_TOP(a2)
 		move.l	a3,SOURCE_POINTER(a2)
 		clr.l	SOURCE_LINENO(a2)
 		move.l	a3,SOURCE_BOT(a2)
 		add.l	d1,SOURCE_BOT(a2)
 		clr.l	SOURCE_ONINTR_POINTER(a2)
-		move.w	#$ffff,SOURCE_PUSHARGC(a2)
 		bclr.b	#SOURCE_FLAGBIT_NOALIAS,SOURCE_FLAGS(a2)
 		bclr.b	#SOURCE_FLAGBIT_NOCOMMENT,SOURCE_FLAGS(a2)
 		move.l	current_source(a5),SOURCE_PARENT(a2)
@@ -1764,9 +1793,9 @@ cannot_load_unseekable:
 		bsr	enputs1
 		bra	load_source_done
 
-load_source_fail_1:
-		bsr	close_source
 load_source_fail_2:
+		bsr	close_source
+load_source_fail_1:
 		bsr	pre_perror
 		lea	msg_read_fail,a0
 		bsr	enputs1
@@ -1810,19 +1839,23 @@ make_home_filename_fail:
 run_home_source_if_any:
 		lea	pathname_buf,a0
 		bsr	make_home_filename
-		bmi	run_source_return
+		bmi	run_source_if_any_return
 run_source_if_any:
 		moveq	#0,d0
 		bsr	tfopen
-		bmi	run_source_return
+		bmi	run_source_if_any_return
 
 		bsr	LoadRun_source
 		tst.l	d0
-		bpl	run_source_return
+		bpl	run_source_if_any_return
 
-		lea	word_exit,a0
+		lea	word_return,a0
 		moveq	#1,d0
 		bra	verbose
+
+run_source_if_any_return:
+		rts
+
 
 OpenLoadRun_source:
 		cmpi.b	#'-',(a0)
@@ -1835,6 +1868,7 @@ OpenLoadRun_source:
 		moveq	#0,d0				*  stdin
 		bra	LoadRun_source
 
+
 OpenLoadRun_source_file:
 		moveq	#0,d0
 		bsr	tfopen
@@ -1843,22 +1877,24 @@ OpenLoadRun_source_file:
 		bsr	perror
 		bra	shell_error
 
+
 LoadRun_source:
 		bsr	load_source
 		bne	shell_error
 run_source:
+		movea.l	current_source(a5),a2
 		move.l	stackp(a5),-(a7)
-		movea.l	current_source(a5),a0
-		move.l	a7,SOURCE_PARENT_STACKP(a0)
-		lea	SOURCE_STACK_BOTTOM(a0),a7
+		move.l	a7,SOURCE_PARENT_STACKP(a2)
+		lea	SOURCE_STACK_BOTTOM(a2),a7
 		move.l	a7,stackp(a5)
+		bsr	clear_each_source_bss
 		sf	exitflag(a5)
 run_source_loop:
 		bsr	do_line_getline
-		tst.l	d0				* EOF?
+		tst.l	d0				*  EOF?
 		bmi	run_source_eof
 
-		tst.b	exitflag(a5)			* exit?
+		tst.b	exitflag(a5)			*  exit?
 		beq	run_source_loop
 
 		sf	exitflag(a5)
@@ -1868,13 +1904,10 @@ run_source_eof:
 		bsr	check_end
 		bne	shell_error
 run_source_done:
-		movea.l	current_source(a5),a0
-		movea.l	SOURCE_PARENT_STACKP(a0),a7
+		movea.l	current_source(a5),a2
+		movea.l	SOURCE_PARENT_STACKP(a2),a7
 		move.l	(a7)+,stackp(a5)
-		bsr	close_source
-run_source_return:
-check_end_ok:
-		rts
+		bra	close_source
 *****************************************************************
 * source_function - 関数を現在のシェルで実行する
 *
@@ -1898,7 +1931,7 @@ source_function:
 		addq.l	#1,d0
 		move.l	d0,d3				*  D3.L : 関数名のサイズ
 
-		moveq	#0,d4				*  D4.W : pushする argv のサイズ
+		moveq	#0,d4				*  D4.L : pushする argv のサイズ
 		moveq	#0,d5				*  D5.W : pushする argv の単語数
 		lea	word_argv,a0
 		bsr	find_shellvar
@@ -1908,17 +1941,20 @@ source_function:
 		movea.l	a0,a4				*  A4 : pushする argv
 		move.w	d0,d5				*  D5.W : pushする argv の単語数
 		bsr	wordlistlen
-		move.w	d0,d4				*  D4.W : pushする argv のサイズ
+		move.w	d0,d4				*  D4,L : pushする argv のサイズ
 source_function_1:
 		move.l	#SOURCE_HEADER_SIZE,d0
 		add.l	d3,d0
 		add.l	d4,d0
+		add.l	#EACH_SOURCE_BSS_SIZE,d0
 		bsr	xmalloc
 		beq	source_function_no_memory
 
 		movea.l	d0,a2				*  A2 : sourceヘッダの先頭アドレス
 		move.w	d3,SOURCE_ARGV0_SIZE(a2)
+		move.w	d4,SOURCE_PUSHARGV_SIZE(a2)
 		lea	SOURCE_HEADER_SIZE(a2),a0
+
 		move.l	a1,-(a7)
 		lea	FUNC_NAME(a3),a1
 		move.l	d3,d0
@@ -1930,7 +1966,11 @@ source_function_1:
 		move.l	d4,d0
 		bsr	memmovi
 source_function_2:
+		lea	each_source_bss_top(a5),a1
+		move.l	#EACH_SOURCE_BSS_SIZE,d0
+		bsr	memmovi
 		movea.l	(a7)+,a1
+
 		move.l	FUNC_SIZE(a3),d1		*  D1.L : 関数の長さ
 		clr.l	SOURCE_LINENO(a2)
 		lea	FUNC_HEADER_SIZE(a3),a0		*  A0 : 関数本体の先頭アドレス
@@ -3281,7 +3321,8 @@ timer_exec_start_low = -4
 timer_exec_start_high = timer_exec_start_low-4
 timer_exec_finish_low = timer_exec_start_high-4
 timer_exec_finish_high = timer_exec_finish_low-4
-timer_ok = timer_exec_finish_high-1
+script_fd = timer_exec_finish_high-2
+timer_ok = script_fd-1
 time_always = timer_ok-1
 recursed = time_always-1
 arg_is_huge = recursed-1
@@ -3432,6 +3473,7 @@ function_will_recurse:
 not_function:
 		lea	command_pathname(a5),a0
 		moveq	#0,d0
+		suba.l	a4,a4
 		bsr	search_command			* 検索する
 		cmp.l	#-1,d0
 		beq	command_not_found
@@ -3543,6 +3585,7 @@ simple_command_user_command:
 		*  実際に起動するバイナリ・コマンド・ファイルのパス名と
 		*  パラメータ行を決定する
 		*
+		move.w	#-1,script_fd(a6)
 		lea	user_command_parameter(a5),a3	*  A3 : パラメータ行の先頭
 		move.w	#MAXLINELEN,d3			*  D3.W : パラメータ行の最大文字数
 
@@ -3556,30 +3599,25 @@ do_exec_script:
 		lea	command_pathname(a5),a0		*  コマンド・ファイルを
 		moveq	#0,d0				*  読み込みモードで
 		bsr	tfopen				*  オープンする
-		move.l	d0,d1
 		bmi	cannot_exec			*  オープンできない .. 実行不可
 
 		move.l	d0,tmpfd(a5)
-		bsr	fgetc
-		cmp.b	#'#',d0				*  先頭が # でなければ
-		bne	cannot_exec_script		*  実行不可
+		move.w	d0,script_fd(a6)
+		move.l	d0,d1
+		bsr	check_executable_script
+		bne	cannot_exec			*  実行不可
 
-		move.w	d1,d0
-		bsr	fgetc
 		cmp.b	#'$',d0				*  # の次の文字が $ ならば
-		beq	do_fish_script			*  fish で実行
-
-		cmp.b	#'!',d0				*  # の次の文字が ! でもなければ
-		bne	cannot_exec_script		*  実行不可
+		beq	do_fish_script_0		*  fish で実行
 
 		*  スクリプト・シェルのパス名を読み取る
 
 		move.w	d1,d0
 		bsr	fskip_space
-		bmi	do_fish_script
+		bmi	do_fish_script_1
 
 		cmp.b	#LF,d0
-		beq	do_fish_script
+		beq	do_fish_script_2
 
 		move.w	d0,-(a7)
 		lea	command_pathname(a5),a1		*  コマンドのパス名を
@@ -3589,7 +3627,7 @@ do_exec_script:
 		move.w	#MAXPATH,d2
 get_shell_loop:
 		subq.w	#1,d2
-		bcs	explicit_shell_too_long
+		bcs	shell_too_long
 
 		move.b	d0,(a1)+
 		move.w	d1,d0
@@ -3603,55 +3641,50 @@ get_shell_done:
 
 		*  シェルに渡す引数を読み取る
 
-		lea	congetbuf+2,a0			* ［暫定］
-		clr.b	(a0)
 		tst.l	d0
-		bmi	get_shellarg_done
+		bmi	do_script_noarg
 
 		cmp.b	#LF,d0
-		beq	get_shellarg_done
+		beq	do_script_2
 
 		move.w	d1,d0
 		bsr	fskip_space
-		bmi	get_shellarg_done
+		bmi	do_script_noarg
 
 		cmp.b	#LF,d0
-		beq	get_shellarg_done
-
-		move.b	d0,(a0)+
-		move.w	d1,d0
-		move.w	#254,d1
-		bsr	fgets
-		cmp.l	#1,d0
-		beq	hugearg_error_script
-get_shellarg_done:
-		bsr	close_tmpfd
-
-		lea	congetbuf+2,a0		* ［暫定］
-		bsr	strlen
-		tst.w	d0
 		beq	do_script_2
 
-		subq.w	#1,d3
-		bcs	simple_command_too_long_line
+		lea	tmpargs,a0
+		move.b	#' ',(a0)+
+		move.b	d0,(a0)+
+		move.w	d1,d0
+		move.w	#MAXWORDLISTSIZE-3,d1
+		bsr	fgets
+		bmi	do_script_noarg
+		bne	hugearg_error
 
+		lea	tmpargs,a0
+		bsr	strlen
 		sub.w	d0,d3
 		bcs	simple_command_too_long_line
 
 		movea.l	a0,a1
 		movea.l	a3,a0
-		move.b	#' ',(a0)+
 		bsr	memmovi
 		movea.l	a0,a3
 		bra	do_script_2
-****************
-explicit_shell_too_long:
-		bsr	close_tmpfd
-		bra	shell_too_long
-****************
-do_fish_script:
-		bsr	close_tmpfd
 
+do_script_noarg:
+		bsr	close_script_fd
+		bra	do_script_2
+****************
+do_fish_script_0:
+		move.w	d1,d0
+		bsr	fskip_space
+		bpl	do_fish_script_2
+do_fish_script_1:
+		bsr	close_script_fd
+do_fish_script_2:
 		lea	command_pathname(a5),a1		* コマンドのパス名を
 		lea	pathname_buf,a0			* 一時領域に
 		bsr	strcpy				* コピーしておく
@@ -3723,6 +3756,8 @@ do_binary_command:
 		beq	exec_failure
 
 		move.l	d0,user_command_env(a5)
+
+		bsr	close_script_fd
 
 		bsr	remember_misc_environments
 
@@ -3935,6 +3970,12 @@ simple_command_return:
 		rts
 
 
+close_script_fd:
+		bsr	close_tmpfd
+		move.w	#-1,script_fd(a6)
+		rts
+
+
 shell_not_found:
 		moveq	#ENOFILE,d0
 		lea	command_pathname(a5),a0
@@ -3952,8 +3993,6 @@ exec_failure:
 		lea	msg_exec_failure,a1
 		bra	simple_command_errorp
 
-cannot_exec_script:
-		bsr	close_tmpfd
 cannot_exec:
 		lea	msg_cannot_exec,a1
 		bra	simple_command_errorp
@@ -3966,8 +4005,6 @@ shell_too_long:
 		lea	msg_shell_too_long,a0
 		bra	print_shell_error
 
-hugearg_error_script:
-		bsr	close_tmpfd
 hugearg_error:
 		lea	msg_too_long_arg_for_program,a0
 		bra	print_shell_error
@@ -4307,6 +4344,52 @@ find_from_table_return:
 		movem.l	(a7)+,d0/a1
 		rts
 *****************************************************************
+.xdef check_executable_suffix
+
+check_executable_suffix:
+		movem.l	d1/a1,-(a7)
+		moveq	#1,d1
+		bsr	suffix
+		beq	check_executable_suffix_done
+
+		lea	ext_table,a1
+check_executable_suffix_loop:
+		addq.l	#1,d1
+		tst.b	(a1)
+		beq	check_executable_suffix_done
+
+		bsr	stricmp
+		beq	check_executable_suffix_done
+
+		exg	a0,a1
+		bsr	strfor1
+		exg	a0,a1
+		bra	check_executable_suffix_loop
+
+check_executable_suffix_done:
+		move.l	d1,d0
+		movem.l	(a7)+,d1/a1
+		rts
+*****************************************************************
+.xdef check_executable_script
+
+check_executable_script:
+		movem.l	d1,-(a7)
+		move.w	d0,d1
+		bsr	fgetc
+		cmp.b	#'#',d0				*  先頭が # でなければ
+		bne	check_executable_script_return	*  実行不可
+
+		move.w	d1,d0
+		bsr	fgetc				*  # の次の文字が
+		cmp.b	#'$',d0				*  $ ならばFISHで実行
+		beq	check_executable_script_return
+
+		cmp.b	#'!',d0				*  ! でもなければ実行不可
+check_executable_script_return:
+		movem.l	(a7)+,d1
+		rts
+*****************************************************************
 * find_command_file - コマンドを検索する
 *
 * CALL
@@ -4337,7 +4420,7 @@ statbuf = -STATBUFSIZE
 
 find_command_file:
 		link	a6,#statbuf
-		movem.l	d1-d4/a0-a2,-(a7)
+		movem.l	d1-d3/a0-a2,-(a7)
 		move.b	d0,d3
 		bsr	builtin_dir_match
 		beq	find_disk_command
@@ -4383,34 +4466,16 @@ find_command_file_static:
 		moveq	#-1,d1
 find_more_loop:
 		lea	statbuf+ST_NAME(a6),a0
-		moveq	#1,d4
-		bsr	suffix
-		beq	check_extention_done
-
-		lea	ext_table,a1
-check_extention_loop:
-		addq.l	#1,d4
-		tst.b	(a1)
-		beq	check_extention_done
-
-		bsr	stricmp
-		beq	check_extention_done
-
-		exg	a0,a1
-		bsr	strfor1
-		exg	a0,a1
-		bra	check_extention_loop
-
-check_extention_done:
+		bsr	check_executable_suffix
 		btst.b	#MODEBIT_DIR,statbuf+ST_MODE(a6)	*  ディレクトリか？
 		beq	check_executable_done
 
-		moveq	#7,d4
+		moveq	#7,d0
 check_executable_done:
-		cmp.l	d1,d4
+		cmp.l	d1,d0
 		bhs	find_more_next
 
-		move.l	d4,d1
+		move.l	d0,d1
 		tst.b	d3
 		bne	command_file_found
 
@@ -4441,7 +4506,7 @@ command_file_found:
 command_file_not_executable:
 		moveq	#0,d0
 find_command_file_done:
-		movem.l	(a7)+,d1-d4/a0-a2
+		movem.l	(a7)+,d1-d3/a0-a2
 		unlk	a6
 		rts
 *****************************************************************
@@ -4454,7 +4519,9 @@ find_command_file_done:
 *             検索されたコマンド・パス名は同じアドレスに格納される
 *             MAXPATH+1 必要
 *
-*      D0.B   0 以外だと、$path 中のメタ・ディレクトリを無視する
+*      A4     コールバック
+*
+*      D0.B   bit 0: $path 中のメタ・ディレクトリ（~~）を無視する
 *
 * RETURN
 *      D0.L
@@ -4478,8 +4545,9 @@ exp_command_name = -auto_pathname
 
 search_command:
 		link	a6,#exp_command_name
-		movem.l	d1-d4/a0-a3,-(a7)
-		move.b	d0,d4				*  D4 : 「仮想ディレクトリ無視」フラグ
+		move.l	a0,-(a7)
+		movem.l	d1-d4/a1-a3,-(a7)
+		move.b	d0,d4				*  D4 : フラグ
 
 		bsr	contains_dos_wildcard		*  Human のワイルドカードを含んで
 		bne	search_command_not_found	*  いるならば無効
@@ -4515,17 +4583,22 @@ search_command_ext_ok:
 	*
 	*  ドライブ＋ディレクトリ部がある .. このまま検索する
 	*
-		movea.l	a0,a2				*  A2 : arg
+		movea.l	a0,a2
 		movea.l	a2,a1
-		lea	exp_command_name(a6),a0		*  A0 : buffer
+		lea	exp_command_name(a6),a0
 		bsr	strcpy
 		move.b	d3,d0
 		bsr	find_command_file
 		cmp.l	#-1,d0
-		beq	search_command_return
+		beq	search_command_not_found
 
 		movea.l	a0,a1
-		bra	search_command_found
+		cmpa.l	#0,a4
+		beq	search_command_found
+
+		movem.l	(a7),d1-d4/a1-a3
+		jsr	(a4)
+		bra	search_command_return
 
 search_command_in_pathlist:
 	*
@@ -4564,10 +4637,10 @@ search_command_in_pathlist_loop:
 		*  それでも，相対パス（仮想ディレクトリを除く）である場合には探す
 
 		bsr	isfullpath
-		beq	search_command_in_pathlist_next		*  絶対パスである
+		beq	search_command_in_pathlist_next	*  絶対パスである
 
 		bsr	is_builtin_dir
-		beq	search_command_in_pathlist_next		*  仮想ディレクトリである
+		beq	search_command_in_pathlist_next	*  仮想ディレクトリである
 
 		bra	search_command_tryone
 
@@ -4575,7 +4648,7 @@ search_command_hash_hit:
 		bsr	is_builtin_dir
 		bne	search_command_tryone
 
-		tst.b	d4
+		btst	#0,d4
 		bne	search_command_in_pathlist_next
 search_command_tryone:
 		cmpi.b	#'.',(a0)
@@ -4609,7 +4682,24 @@ search_command_tryone_find:
 		tst.l	d0
 		beq	search_command_in_pathlist_continue
 
-		bra	search_command_found
+		cmpa.l	#0,a4
+		beq	search_command_found
+
+		exg	a0,a1
+		movea.l	a7,a3
+		movem.l	d1-d4/a0-a2,-(a7)
+		movem.l	(a3),d1-d4/a1-a3
+		jsr	(a4)
+		movem.l	(a7)+,d1-d4/a0-a2
+		exg	a0,a1
+		bra	search_command_in_pathlist_continue
+
+search_command_found:
+		movea.l	a2,a0
+		move.l	d0,-(a7)
+		bsr	strcpy
+		move.l	(a7)+,d0
+		bra	search_command_return
 
 search_command_in_pathlist_next:
 		bsr	strfor1
@@ -4618,16 +4708,10 @@ search_command_in_pathlist_continue:
 search_command_not_found:
 		moveq	#-1,d0
 search_command_return:
-		movem.l	(a7)+,d1-d4/a0-a3
+		movem.l	(a7)+,d1-d4/a1-a3
+		movea.l	(a7)+,a0
 		unlk	a6
 		rts
-
-search_command_found:
-		movea.l	a2,a0
-		move.l	d0,-(a7)
-		bsr	strcpy
-		move.l	(a7)+,d0
-		bra	search_command_return
 *****************************************************************
 * expand_a_word - 1つの単語をコマンド置換、ファイル名展開して 1つの単語を得る
 *
@@ -4831,6 +4915,7 @@ close_tmpfd_done:
 *****************************************************************
 .data
 
+.xdef statement_table
 .xdef builtin_table
 
 .xdef str_nul
@@ -4851,6 +4936,7 @@ close_tmpfd_done:
 .xdef word_cdpath
 .xdef word_history
 .xdef word_home
+.xdef word_function
 .xdef word_path
 .xdef word_prompt
 .xdef word_prompt2
@@ -4870,7 +4956,7 @@ fish_copyright:	dc.b	'Copyright(C)1991 by Itagaki Fumihiko',0
 fish_author:	dc.b	'板垣 史彦 ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
-		dc.b	'5',0		*  minor version
+		dc.b	'6',0		*  minor version
 		dc.b	'0',0		*  patch level
 
 .even
@@ -5043,6 +5129,10 @@ builtin_table:
 		dc.l	cmd_repeat
 		dc.b	1+2,0
 
+		dc.l	word_return
+		dc.l	cmd_return
+		dc.b	1+2,0
+
 		dc.l	word_set
 		dc.l	cmd_set
 		dc.b	1+2,0
@@ -5131,6 +5221,7 @@ word_pushd:		dc.b	'pushd',0
 word_pwd:		dc.b	'pwd',0
 word_rehash:		dc.b	'rehash',0
 word_repeat:		dc.b	'repeat',0
+word_return:		dc.b	'return',0
 word_unset:		dc.b	'un'
 word_set:		dc.b	'set',0
 word_unsetenv:		dc.b	'un'
@@ -5186,7 +5277,7 @@ ext_asta:		dc.b	'.*',0
 str_dot:
 str_current_dir:	dc.b	'.',0
 str_builtin_dir:	dc.b	'~~',0
-init_prompt:		dc.b	'%'	* "% "
+init_prompt:		dc.b	'%%'	* "% "
 str_space:		dc.b	' ',0
 init_prompt2:		dc.b	'? '
 init_env:
@@ -5305,7 +5396,7 @@ dummy:			ds.b	1
 save_sourceptr:			ds.l	1
 congetbuf:			ds.b	2+256
 argment_pathname:		ds.b	MAXPATH+1	* ユーザ・コマンドへの引数を書いたファイル名
-tmpword1:			ds.b	MAXWORDLEN*2+1	* x_complete, glob, cmd_undefun, state_case, cmd_unalias
+tmpword1:			ds.b	MAXWORDLEN*2+1	* x_complete, glob, cmd_undefun, state_case, cmd_unalias, state_function
 tmpword2:			ds.b	MAXWORDLEN*2+1	* x_complete, globsub
 tmpargs:			ds.b	MAXWORDLISTSIZE
 pathname_buf:			ds.b	MAXPATH+1
@@ -5355,7 +5446,6 @@ bsstop:
 .xdef exitflag
 .xdef histchar1
 .xdef histchar2
-.xdef flag_ampm
 .xdef flag_autolist
 .xdef flag_ciglob
 .xdef flag_cifilec
@@ -5367,7 +5457,9 @@ bsstop:
 .xdef flag_noclobber
 .xdef flag_noglob
 .xdef flag_nonomatch
+.xdef flag_nonullcommandc
 .xdef flag_recexact
+.xdef flag_recunexec
 .xdef flag_usegets
 .xdef flag_verbose
 .xdef funcname
@@ -5384,6 +5476,7 @@ bsstop:
 .xdef keep_loop
 .xdef loop_fail
 .xdef not_execute
+.xdef in_prompt
 .xdef keymap
 .xdef keymacromap
 .xdef irandom_struct
@@ -5396,7 +5489,6 @@ histchar1:		ds.w	1
 histchar2:		ds.w	1
 hash_flag:		ds.b	1
 hash_table:		ds.b	1024
-flag_ampm:		ds.b	1
 flag_autolist:		ds.b	1
 flag_ciglob:		ds.b	1
 flag_cifilec:		ds.b	1
@@ -5408,7 +5500,9 @@ flag_nobeep:		ds.b	1
 flag_noclobber:		ds.b	1
 flag_noglob:		ds.b	1
 flag_nonomatch:		ds.b	1
+flag_nonullcommandc:	ds.b	1
 flag_recexact:		ds.b	1
+flag_recunexec:		ds.b	1
 flag_usegets:		ds.b	1
 flag_verbose:		ds.b	1
 exitflag:		ds.b	1
@@ -5463,18 +5557,9 @@ save_stderr:		ds.l	1
 undup_input:		ds.l	1
 undup_output:		ds.l	1
 tmpfd:			ds.l	1
-in_history_ptr:		ds.l	1
-loop_top_eventno:	ds.l	1
-funcdef_topptr:		ds.l	1
-funcdef_size:		ds.l	1
 shell_timer_high:	ds.l	1
 shell_timer_low:	ds.l	1
 argc:			ds.w	1
-if_level:		ds.w	1
-switch_level:		ds.w	1
-loop_level:		ds.w	1
-forward_loop_level:	ds.w	1
-loop_stack:		ds.b	(LOOPINFOSIZE)*(MAXLOOPLEVEL+1)
 irandom_struct:		ds.b	IRANDOM_STRUCT_HEADER_SIZE+(2*RND_POOLSIZE)
 pipe1_delete:		ds.b	1
 pipe2_delete:		ds.b	1
@@ -5482,12 +5567,6 @@ pipe_flip_flop:		ds.b	1
 prev_search:		ds.b	MAXSEARCHLEN+1
 prev_lhs:		ds.b	MAXSEARCHLEN+1
 prev_rhs:		ds.b	MAXSUBSTLEN+1
-funcdef_status:		ds.b	1
-loop_status:		ds.b	1
-if_status:		ds.b	1
-switch_status:		ds.b	1
-keep_loop:		ds.b	1
-loop_fail:		ds.b	1
 pipe1_name:		ds.b	MAXPATH+1
 pipe2_name:		ds.b	MAXPATH+1
 save_cwd:		ds.b	MAXPATH+1
@@ -5498,11 +5577,33 @@ simple_args:		ds.b	MAXWORDLISTSIZE		*  DoSimpleCommand の入力
 tmpword01:		ds.b	MAXWORDLEN+1		*  expand_a_word
 tmpword02:		ds.b	MAXWORDLEN+1		*  expand_a_word
 command_pathname:	ds.b	MAXPATH+1
-switch_string:		ds.b	MAXWORDLEN+1
-funcname:		ds.b	MAXFUNCNAMELEN+1
 not_execute:		ds.b	1
+in_prompt:		ds.b	1
 
 .even
+each_source_bss_top:
+in_history_ptr:		ds.l	1
+loop_top_eventno:	ds.l	1
+funcdef_topptr:		ds.l	1
+funcdef_size:		ds.l	1
+if_level:		ds.w	1
+switch_level:		ds.w	1
+loop_level:		ds.w	1
+forward_loop_level:	ds.w	1
+loop_stack:		ds.b	(LOOPINFOSIZE)*(MAXLOOPLEVEL+1)
+loop_status:		ds.b	1
+funcdef_status:		ds.b	1
+if_status:		ds.b	1
+switch_status:		ds.b	1
+keep_loop:		ds.b	1
+loop_fail:		ds.b	1
+funcname:		ds.b	MAXFUNCNAMELEN+1
+switch_string:		ds.b	MAXWORDLEN+1
+each_source_bss_bottom:
+EACH_SOURCE_BSS_SIZE	equ	each_source_bss_bottom-each_source_bss_top
+
+.even
+			ds.b	8
 user_command_parameter:	ds.b	1+MAXLINELEN+1		*  ユーザ・コマンドへの引数
 linecutbuf:		ds.b	MAXLINELEN+1		*  行カット・バッファ
 

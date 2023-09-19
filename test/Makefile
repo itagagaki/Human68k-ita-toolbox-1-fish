@@ -1,5 +1,5 @@
 INCLUDE = ../include
-EXTLIBS = ../lib/italib/ita.l
+EXTLIBS = ../lib/ita.l
 
 %.o : %.s
 	has -i $(INCLUDE) $<

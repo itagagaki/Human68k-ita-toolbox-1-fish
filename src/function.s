@@ -32,6 +32,7 @@
 .xref xmalloc
 .xref free
 .xref subst_var
+.xref strip_quotes
 .xref find_history
 .xref pre_perror
 .xref too_few_args
@@ -390,9 +391,9 @@ no_paren:
 		bne	syntax_error
 
 		movea.l	a2,a0
-		lea	funcname(a5),a1
+		lea	tmpword1,a1
 		moveq	#1,d0
-		move.l	#MAXFUNCNAMELEN+1,d1
+		move.l	#MAXWORDLEN+1,d1
 		bsr	subst_var
 		bpl	funcname_expand_done
 
@@ -403,13 +404,22 @@ no_paren:
 		cmp.l	#-1,d0
 		beq	ambiguous
 
+funcname_too_long:
 		bsr	pre_perror
 		lea	msg_too_long_funcname,a0
 		bra	enputs1
 
 funcname_expand_done:
-		lea	funcname(a5),a1
-		movea.l	a1,a0
+		lea	tmpword1,a0
+		bsr	strip_quotes
+		bsr	strlen
+		cmp.l	#MAXFUNCNAMELEN,d0
+		bhi	funcname_too_long
+
+		movea.l	a0,a1
+		lea	funcname(a5),a0
+		bsr	strcpy
+		movea.l	a0,a1
 		bsr	skip_varname
 		tst.b	(a0)
 		bne	bad_funcname

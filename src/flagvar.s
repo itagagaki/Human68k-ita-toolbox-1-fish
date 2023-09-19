@@ -4,7 +4,6 @@
 .xref strcmp
 
 .xref flag_autolist
-.xref flag_ampm
 .xref flag_ciglob
 .xref flag_cifilec
 .xref flag_echo
@@ -15,7 +14,9 @@
 .xref flag_noclobber
 .xref flag_noglob
 .xref flag_nonomatch
+.xref flag_nonullcommandc
 .xref flag_recexact
+.xref flag_recunexec
 .xref flag_usegets
 .xref flag_verbose
 
@@ -95,9 +96,6 @@ clear_flagvars_done:
 
 .even
 flagvar_table:
-		dc.l	word_ampm
-		dc.w	flag_ampm
-
 		dc.l	word_autolist
 		dc.w	flag_autolist
 
@@ -131,8 +129,14 @@ flagvar_table:
 		dc.l	word_nonomatch
 		dc.w	flag_nonomatch
 
+		dc.l	word_nonullcommandc
+		dc.w	flag_nonullcommandc
+
 		dc.l	word_recexact
 		dc.w	flag_recexact
+
+		dc.l	word_recunexec
+		dc.w	flag_recunexec
 
 		dc.l	word_usegets
 		dc.w	flag_usegets
@@ -142,7 +146,6 @@ flagvar_table:
 
 		dc.l	0
 
-word_ampm:		dc.b	'ampm',0
 word_autolist:		dc.b	'autolist',0
 word_ciglob:		dc.b	'ciglob',0
 word_cifilec:		dc.b	'cifilec',0
@@ -156,8 +159,10 @@ word_noglob:		dc.b	'no'
 word_glob:		dc.b	'glob',0
 word_nonomatch:		dc.b	'no'
 word_nomatch:		dc.b	'nomatch',0
+word_nonullcommandc:	dc.b	'nonullcommandc',0
 word_recexact:		dc.b	'rec'
 word_exact:		dc.b	'exact',0
+word_recunexec:		dc.b	'recunexec',0
 word_usegets:		dc.b	'usegets',0
 word_verbose:		dc.b	'verbose',0
 ****************************************************************
