@@ -1,15 +1,15 @@
 #! A:/bin/MAKE.X -f
 #  Makefile for fish.x
 
-#AS	= \bin\AS.X -i $(INCLUDE)
-AS	= \usr\pds\HAS.X -l -i $(INCLUDE)
-#LK	= \bin\LK.X -p -i
-LK	= \usr\pds\hlk.x -p ${@|basename}.map
-LIB	= \bin\LIB.X
-BIND	= \bin\BIND.X
+#AS	= \bin\AS -i $(INCLUDE)
+AS	= \usr\pds\HAS -l -i $(INCLUDE)
+#LK	= \bin\LK -p -i
+LK	= \usr\pds\hlk -p ${@|basename}.map
+LIB	= \bin\LIB
+BIND	= \bin\BIND
 INSTALL = copy
-STRIP   = A:\usr\pds\strip.x
-TOUCH   = A:\bin\TOUCH.X
+STRIP   = \usr\pds\strip
+TOUCH   = \bin\TOUCH
 CP      = copy
 RM      = -\usr\local\bin\rm -f
 

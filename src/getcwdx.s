@@ -40,15 +40,13 @@ getcwdx:
 *      A0     ディレクトリ名
 *
 * RETURN
-*      D0.L   最下位バイトは、~で書き換えたならば非0
-*             上位バイトは不定
-*
+*      D0.L   ~で書き換えたならば 1，さもなくば 0．
 *      CCR    TST.B D0
 *
 * DESCRIPTION
 *      A0 の指す領域を直接書き換える
 *      元よりも長くはならないから大丈夫
-*      なお、ディレクトリ名のディレクトリの区切りは / でなければならない
+*      ディレクトリ名のディレクトリの区切りは / でなければならない
 ****************************************************************
 .xdef abbrev_directory
 
@@ -71,15 +69,13 @@ return:
 *      A0     ディレクトリ名
 *
 * RETURN
-*      D0.L   最下位バイトは、~で書き換えたならば非0
-*             上位バイトは不定
+*      D0.L   $home下ならば、~に続くべき部分までのオフセット
+*             そうでなければ 0
 *
-*      CCR    TST.B D0
+*      CCR    TST.L D0
 *
-* DESCRIPTION
-*      A0 の指す領域を直接書き換える
-*      元よりも長くはならないから大丈夫
-*      なお、ディレクトリ名のディレクトリの区切りは / でなければならない
+* NOTE
+*      ディレクトリ名のディレクトリの区切りは / でなければならない
 ****************************************************************
 .xdef is_under_home
 
@@ -108,9 +104,8 @@ is_under_home:
 		cmp.b	d1,d0			*  比較
 		bne	is_under_home_return	*  一致しない
 
-		movea.l	a2,a1
-		addq.l	#3,a1			*  A1 : ディレクトリ名の @:/ の次のアドレス
-		addq.l	#3,a0			*  A0 : $home[1] の @:/ の次のアドレス
+		lea	2(a2),a1		*  A1 : ディレクトリ名の @: の次のアドレス
+		addq.l	#2,a0			*  A0 : $home[1] の @: の次のアドレス
 is_under_home_compare_loop:
 		move.b	(a0)+,d0
 		beq	is_under_home_check_bottom
@@ -161,7 +156,7 @@ is_under_home_check_bottom:
 		beq	is_under_home_true
 
 		cmp.b	#'\',d0
-		bne	is_under_home
+		bne	is_under_home_return
 is_under_home_true:
 		move.l	a1,d2
 		sub.l	a2,d2

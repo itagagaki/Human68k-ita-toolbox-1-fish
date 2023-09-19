@@ -1947,8 +1947,12 @@ source_function_1:
 		add.l	d3,d0
 		add.l	d4,d0
 		add.l	#EACH_SOURCE_BSS_SIZE,d0
-		bsr	xmalloc
-		beq	source_function_no_memory
+		move.l	d0,-(a7)
+		move.w	#2,-(a7)			*  MD=2 : ãˆÊ‚©‚ç’T‚µ‚ÄŠ„‚è“–‚Ä‚é
+		DOS	_MALLOC2
+		addq.l	#6,a7
+		tst.l	d0
+		bmi	source_function_no_memory
 
 		movea.l	d0,a2				*  A2 : sourceƒwƒbƒ_‚Ìæ“ªƒAƒhƒŒƒX
 		move.w	d3,SOURCE_ARGV0_SIZE(a2)
@@ -4957,7 +4961,7 @@ fish_author:	dc.b	'”ÂŠ_ j•F ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'6',0		*  minor version
-		dc.b	'0',0		*  patch level
+		dc.b	'2',0		*  patch level
 
 .even
 statement_table:

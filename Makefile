@@ -1,8 +1,8 @@
 #! A:/bin/MAKE.X -f
 #  Makefile for Human68k ITA TOOLBOX #1 - FISH
 
-BACKUP    = A:\bin\COPYALL.X -t
-ARCHIVE   = A:\usr\pds\LHA.x a
+BACKUP    = A:\bin\COPYALL -t
+ARCHIVE   = A:\usr\pds\LHA a
 RM        = -\usr\local\bin\rm -f
 
 TOP       = A:\home\fish
@@ -10,13 +10,13 @@ DESTDIR   = A:\bin
 BACKUPDIR1 = B:\fish
 BACKUPDIR2 = C:\fish
 
-ARCHIVE_NAME  = FISH060.Lzh
+ARCHIVE_NAME  = FISH061.Lzh
 
 ARCHIVE_FILES = \
 	$(TOP)\doc\MANIFEST \
 	$(TOP)\doc\README \
 	$(TOP)\doc\NOTICE \
-	A:\home\newbin\DIRECTORY \
+	A:\home\DIRECTORY \
 	$(TOP)\doc\CHANGES \
 	$(TOP)\doc\FAQ \
 	$(TOP)\doc\FISH.DOC \
