@@ -1,0 +1,181 @@
+Title Title Title Title Title Title Title Title Title Title Title Title Title 
+le Title Title Title Title Title Title Title Title Title Title Title Title Tit
+Titl　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　tle 
+le T　　　　　　　　　　　ＭＡＬＬＯＣ　ＭＦＲＥＥ　　　　　　　　　　　　 Tit
+Titl　　　　　　　　　　　　　　for ｆｉｓｈ．ｘ　　　　　　　　　　　　　tle 
+le T　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　 Tit
+Titl　　　　　　　　　　　　　　９２／４／１６　　　　　　　　　　　　　　tle 
+le T　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　 Tit
+Title Title Title Title Title Title Title Title Title Title Title Title Title 
+le Title Title Title Title Title Title Title Title Title Title Title Title Tit
+
+
+　fish.x の下請け用、allocate_memory_reg_saved free_memory_reg_saved 及び、
+ksh.x の下請け用 malloc と free です。
+
+　local BBS を使う（fish.x 専用）場合
+
+allocate_memory:
+allocate_memory_reg_saved:
+free_memory:
+free_memory_reg_saved:
+free_all_memory:
+free_all_memory_reg_saved:
+dumpout_memory:
+dumpout_memory_reg_saved:
+
+のアセンブララベルが使えます。
+
+　local BBS を使わず、ただひとつの lake chain を利用する（ksh.x 専用）場合
+
+C 言語の関数
+
+extern void *malloc(int size);
+extern int free(void *ptr);
+
+が使えます。
+
+　これらを利用する為には、ライブラリ Extmalloc.a をリンクして下さい。
+
+　それぞれの説明に移ります。
+
+
+
+allocate_memory:
+	入力レジスタ
+		d0	必要なメモリーサイズ
+		a5	loca BSS へのポインタ
+	出力レジスタ
+		d0	確保されたメモリーのアドレス
+	破壊レジスタ
+		d1,d2,d3,d4,d5,d7,a0,a1,a2,a4,a6
+
+	確保できるメモリーのひとつあたりの最大サイズには制限は有りません。その
+	実現方法は、0x4000 以下のサイズは従来の方法で、それ以上のサイズは、そ
+	のメモリーエリア単独で一つの特殊な lake を構成させる（従来から lake 自
+	身は、どんなサイズでも OK だった）わけです。0x4000 バイト以下の場合は、
+	４Ｋバイト単位で REALLOC を使って、ＯＳからメモリーを確保します。最初
+	は、十数バイトからはじめるので、（ＯＳの）サイズの小さいフリーエリアか
+	ら最終的にはそのサイズいっぱいになるまで、成長し続けることになります。
+	メモリーが足りない等のエラーが発生したら、エラーコード -1 をレジスタ
+	d0 にいれて返って来ます。
+
+allocate_memory_reg_saved:
+	入出力に関係ないレジスタを保存する以外は、allocate_memory とおなじです。
+
+
+free_memory:
+	入力レジスタ
+		d0	確保されたメモリーのアドレス
+		a5	loca BSS へのポインタ
+	出力レジスタ
+		d0	エラーコード
+	破壊レジスタ
+		d7,a1,a2,a4,a6
+
+	上述のメモリー確保ルーチンで確保したメモリーを開放する為のルーチンです。
+	エラーコードは -1 のみで、重大なエラーが発生した事を示します。プログラ
+	ミング上の不具合の可能性があるので、プログラムを続行するべきではありま
+	せん。
+
+
+free_memory_reg_saved:
+	入出力に関係ないレジスタを保存する以外は、free_memory とおなじです。
+
+
+free_all_memory:
+	入力レジスタ
+		a5	loca BSS へのポインタ
+	出力レジスタ
+		d0	エラーコード
+	破壊レジスタ
+		d7,a1,a4,a6
+
+	上述のメモリー確保ルーチンで確保したメモリーを総べて開放する為のルーチ
+	ンです。エラーコードは -1 のみで、重大なエラーが発生した事を示します。
+	プログラミング上の不具合の可能性があるので、プログラムを続行するべきで
+	はありません。
+
+
+free_all_memory_reg_saved:
+	入出力に関係ないレジスタを保存する以外は、free_all_memory とおなじです。
+
+
+おまけに、process.x みたいにメモリーの確保状況を標準出力に出すサブルーチンを加
+えておきます。デバッグ用に用意しました。
+
+dumpout_memory:
+	入力レジスタ
+		a5	loca BSS へのポインタ
+	出力レジスタ
+		無し
+	破壊レジスタ
+		d0,d1,d2,a0,a1,a2,a4,a6
+
+dumpout_memory_reg_saved:
+	入出力に関係ないレジスタを保存する以外は、dumpout_memory とおなじです。
+
+
+
+
+　Ｃインターフェース用に、_malloc _free も用意しました。それぞれ allocate_memory
+free_memory のＣ版です。
+
+extern void *malloc(int size);
+extern int free(void *ptr);
+
+というインターフェースになります。これらも、local BBS へのポインタをお互いに
+共有して、全体でひとつの lake chain をサポートします。
+
+
+－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－
+
+ｈｉｓｔｏｒｙ
+
+ｖｅｒ０．０１
+
+　allocate_memory_reg_saved のセーブレジスタに d2 を追加しました。
+
+　a5 を local BBS area へのポインタに開放し、lake_top を a5 relative にしまし
+た。
+
+　大きいサイズ（0x4000 バイト以上）のメモリーは、それ自信だけで lake を構成す
+るようにし、実現可能としました。
+
+　MFREE に関しては、大きいサイズは、そのまま直ぐにＯＳに返し、小さいサイズに関
+しては、従来通り、ＯＳには返さない方法を取りました。
+
+ｖｅｒ０．０２
+
+　すべてのサイズについて、無駄な（４Ｋbytes 単位で）エリアをＯＳに返します。空
+になった湖も即座に返還します。
+
+ｖｅｒ０．０３
+
+　FREEALL をサポート
+
+ｖｅｒ０．０４
+
+　C インターフェースをサポート
+
+ｖｅｒ０．１０
+
+　2 バイトしか確保出来なかった場合は、エラーとする
+
+ｖｅｒ０．１１
+
+　忘れた
+
+
+ｖｅｒ０．１２
+
+　ksh.x にも対応化
+
+ｖｅｒ０．１３
+
+　C ライブラリの名前付け間違い修正 mfree -> free
+
+
+　　　　　　　　　　　　　　Ｎifty-Ｓerve   NAH00720   Ｅｘｔ
+　　　　　　　　　　　　　　Ｅ-Ｍail  kawamoto@miln.mei.co.jp
+　　　　　　　　　　　　　　　　　　　　　　　川本琢二

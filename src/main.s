@@ -4051,6 +4051,7 @@ do_script_with_explicit_shell:
 		blo	do_binary_command		*  3 : .X は実行可
 		beq	cannot_exec			*  4 : .BAT は実行不可
 test_interpreter_magic:
+		movea.l	a1,a0
 		bsr	test_command_file
 		bne	do_binary_command		*  .X 以外はシステム任せ
 do_x_type:
@@ -5571,7 +5572,7 @@ fish_author:	dc.b	'板垣 史彦 ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'7',0		*  minor version
-		dc.b	'2',0		*  patch level
+		dc.b	'3',0		*  patch level
 
 .even
 statement_table:

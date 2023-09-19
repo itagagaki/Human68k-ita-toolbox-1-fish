@@ -267,12 +267,6 @@ getline_comment_cut_done:
 		tst.b	d3
 		beq	getline_done
 
-		cmpa.l	a4,a0
-		beq	getline_newline_not_escaped
-
-		cmpi.b	#'\',-1(a0)
-		bne	getline_newline_not_escaped
-
 		movea.l	a4,a3
 getline_cont_check_loop:
 		cmpa.l	a0,a3
@@ -2492,10 +2486,9 @@ filec_command_test_executable:
 		btst	#MODEBIT_DIR,d0
 		bne	filec_file_sub_command_dir
 
-		move.l	d0,d2
 		bsr	filec_file_test_executable
-		beq	filec_file_sub_regular
-		bra	filec_file_sub_next
+		bne	filec_file_sub_next
+		bra	filec_file_sub_regular
 
 filec_file_sub_command_dir:
 		move.l	a0,-(a7)
@@ -2520,52 +2513,68 @@ filec_file_sub_normal:
 		btst	#MODEBIT_DIR,d2
 		bne	filec_file_sub_normal_dir
 
-		moveq	#0,d3
 		btst	#MODEBIT_LNK,d2
-		beq	filec_file_sub_normal_nonlink
-
-		tst.b	flag_listlinks(a5)
-		bne	filec_file_sub_listlinks
-
+		bne	filec_file_sub_normal_link
+** regular
+		moveq	#-1,d0
 		tst.b	filec_command(a4)
-		beq	filec_file_sub_link_points_nondir
-filec_file_sub_listlinks:
-		moveq	#'&',d3				*  '&' : bad link
-		bsr	filec_check_mode
-		bmi	filec_file_matched_regular
-
-		moveq	#'>',d3				*  '>' : linked to directory
-		btst	#MODEBIT_DIR,d0
-		bne	filec_file_matched_dir
-
-		moveq	#'&',d3				*  '&' : bad link
-		btst	#MODEBIT_VOL,d0
-		bne	filec_file_matched_regular
-
-		moveq	#'@',d3				*  '@' : linked to non-directory
-		tst.b	filec_command(a4)
-		beq	filec_file_matched_regular
-
-		move.l	d0,d2
-filec_file_sub_check_exec:
-		bsr	filec_file_test_executable
-		bne	filec_file_sub_next
-filec_file_sub_normal_executable:
-		tst.b	d3
-		bne	filec_file_matched_regular
-
-		moveq	#'*',d3
-		bra	filec_file_matched_regular
-
-filec_file_sub_normal_nonlink:
-		tst.b	filec_command(a4)
-		bne	filec_file_sub_check_exec
+		bne	filec_file_sub_regular_check_exec
 
 		move.b	flag_listexec(a5),d0
 		beq	filec_file_sub_regular
-
+filec_file_sub_regular_check_exec:
+		moveq	#'*',d3
 		bsr	filec_file_test_executable_1
-		beq	filec_file_sub_normal_executable
+		beq	filec_file_matched_regular
+
+		tst.b	filec_command(a4)
+		beq	filec_file_sub_regular
+
+		bra	filec_file_sub_next
+** link
+filec_file_sub_normal_link:
+		moveq	#'@',d3
+		bsr	filec_check_mode
+		bmi	filec_file_bad_link
+
+		btst	#MODEBIT_DIR,d0
+		bne	filec_file_link_to_dir
+
+		btst	#MODEBIT_VOL,d0
+		bne	filec_file_bad_link
+
+		tst.b	filec_command(a4)
+		beq	filec_file_link_to_regular_ok
+
+		bsr	filec_file_test_executable
+		bne	filec_file_sub_next
+filec_file_link_to_regular_ok:
+		bra	filec_file_matched_regular
+
+filec_file_link_to_dir:
+		tst.b	flag_listlinks(a5)
+		beq	filec_file_link_to_dir_ok
+
+		moveq	#'>',d3
+filec_file_link_to_dir_ok:
+		bra	filec_file_matched_dir
+
+filec_file_bad_link:
+		tst.b	filec_command(a4)
+		bne	filec_file_sub_next
+
+		tst.b	flag_listlinks(a5)
+		beq	filec_file_matched_dir
+
+		moveq	#'&',d3
+		bra	filec_file_matched_regular
+** dir
+filec_file_sub_normal_dir:
+		moveq	#'/',d3
+filec_file_matched_dir:
+		move.b	#'/',filec_suffix(a4)
+		bra	filec_file_matched
+*
 filec_file_sub_regular:
 		moveq	#' ',d3
 filec_file_matched_regular:
@@ -2578,16 +2587,6 @@ filec_file_sub_next:
 		DOS	_KEYSNS				*  To allow interrupt
 		bsr	filec_nfiles
 		bra	filec_file_sub_loop
-*
-filec_file_sub_link_points_nondir:
-		moveq	#'@',d3
-		bra	filec_file_matched_regular
-*
-filec_file_sub_normal_dir:
-		moveq	#'/',d3
-filec_file_matched_dir:
-		move.b	#'/',filec_suffix(a4)
-		bra	filec_file_matched
 *
 filec_file_sub_done:
 		moveq	#0,d0
@@ -2634,6 +2633,7 @@ filec_check_mode_return:
 		rts
 ****************
 filec_file_test_executable:
+		move.l	d0,d2
 		moveq	#-1,d0
 filec_file_test_executable_1:
 		move.l	d3,-(a7)

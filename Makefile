@@ -2,6 +2,7 @@
 #  Makefile for Human68k ITA TOOLBOX #1 - FISH
 
 BACKUP    = A:\bin\COPYALL -d -t
+BACKUP_R  = A:\bin\COPYALL -t
 ARCHIVE   = A:\usr\pds\LHA a
 RM        = -A:\usr\local\bin\rm -f
 
@@ -54,13 +55,13 @@ clobber::
 backup::
 	@$(BACKUP) $(TOP)\Makefile $(BACKUPDIR)
 	@$(BACKUP) $(TOP)\src\*.* $(BACKUPDIR)\src
+	@$(BACKUP) $(TOP)\include\*.* $(BACKUPDIR)\include
 	@$(BACKUP) $(TOP)\prg\Makefile $(BACKUPDIR)\prg
 	@$(BACKUP) $(TOP)\prg\fish.x $(BACKUPDIR)\prg
 	@$(BACKUP) $(TOP)\prg\fishg.x $(BACKUPDIR)\prg
 	@$(BACKUP) $(TOP)\lib\Makefile $(BACKUPDIR)\lib
 	@$(BACKUP) $(TOP)\lib\*.s $(BACKUPDIR)\lib
-	@$(BACKUP) $(TOP)\extlib\*.Lzh $(BACKUPDIR)\extlib
-	@$(BACKUP) $(TOP)\include\*.* $(BACKUPDIR)\include
+	@$(BACKUP_R) $(TOP)\extlib\*.* $(BACKUPDIR)\extlib
 
 backup_doc::
 	@$(BACKUP) $(TOP)\doc\*.* $(BACKUPDIR)\doc
