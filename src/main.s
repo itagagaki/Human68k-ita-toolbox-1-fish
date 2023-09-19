@@ -354,6 +354,8 @@ init_env_done:
 		movea.l	a0,a1
 parse_fishconfig_loop:
 		move.b	(a1)+,d0
+		beq	parse_fishconfig_done
+
 		bsr	issjis
 		beq	parse_fishconfig_ignore_next
 
@@ -5569,7 +5571,7 @@ fish_author:	dc.b	'”ÂŠ_ Žj•F ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'7',0		*  minor version
-		dc.b	'1',0		*  patch level
+		dc.b	'2',0		*  patch level
 
 .even
 statement_table:
