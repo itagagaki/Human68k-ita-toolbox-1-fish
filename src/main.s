@@ -4015,9 +4015,12 @@ too_long_indirect_flag:
 
 command_not_found:
 		lea	msg_no_command,a1
+		bra	simple_command_errorpp
+
 simple_command_errorp:
-		bsr	reset_io
 		lea	program_pathname(a5),a0
+simple_command_errorpp:
+		bsr	reset_io
 		bsr	pre_perror
 		movea.l	a1,a0
 		bra	print_shell_error
@@ -4959,7 +4962,7 @@ fish_author:	dc.b	'”ÂŠ_ Žj•F ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'6',0		*  minor version
-		dc.b	'3',0		*  patch level
+		dc.b	'4',0		*  patch level
 
 .even
 statement_table:

@@ -1,0 +1,57 @@
+FISH 0.6 patch 4 ‚Å‚·B
+
+patch 3 ‚Ì enbug ‚ð debug ‚µ‚Ü‚µ‚½B
+
+fish.x 0.6.3 ‚É‘Î‚µ‚Ä bup ‚µ‚Ä‚­‚¾‚³‚¢B
+
+’ˆÓ F ŒÃ‚¢ fish.x ‚ªƒvƒƒZƒX‚Æ‚µ‚ÄŽc‚Á‚Ä‚¢‚éó‘Ô‚ÅV‚µ‚¢ fish.x ‚ð‹N
+@@@@“®‚µ‚Ä‚àŒø‰Ê‚Í‚ ‚è‚Ü‚¹‚ñBˆê’U fish.x ‚ð‚·‚×‚ÄI—¹‚³‚¹‚Ä‚©‚çV
+@@@@‚µ‚¢ fish.x ‚ð‹N“®‚µ‚Ä‚­‚¾‚³‚¢B
+
+
+       ^^                      o ‡˜__˜˜‡                ”ÂŠ_ Žj•F    
+  ^^                         ‡ ˜˜     |˜˜            Itagaki Fumihiko
+         ^^                ‡˜ ˜| Z^Z |˜˜           ita@hudson.co.jp
+_ _ __  _ _  _  +_ _ _    ˜˜ ˜ ;   T  ;˜ ˜     NIFTY-Serve: QGB02101
+ -_ _- _ - -_ -- _ _+    ˜ ˜ ˜  ;.""".;  ˜ ˜      ASCII-pcs: pcs35383
+- __ -_- +_ - -- -__-       ˜ ˜   ;;;;;   ˜ ˜         PC-VAN: GNM14305
+_+ __-_ - -_ - -- -_       ˜ ˜            ˜              “ì‹ž: 176     
+
+<<< FISH06p4.Lzh (use mic/ish) [ 38 lines ] >>>
+!!C5!*9Q!5"XRo*RG}<JbI+rXYRc!("HrnDUh_!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!U]<i
+!!C5!*9Q!5"XRo*RG}<JbI+rXYRc!("HrnDUh_!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!U]<i
+!!C5!*9Q!5"XRo*RG}<JbI+rXYRc!("HrnDUh_!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!U]<i
+%|š†¢}Þ‰›@}œDBu@@šHÌ|L»ËPÖéYgT‹Í¨ÑS|²F~nBÐÅ.æŒZ}ß–t°¿f£=ÞUye^W[’ëF<Ž½ãR|P¨3N
+&cw¦L´Úp“q¯§?y7@E~å¯a©Š”ÁLjM¨ÀµH¾\æÔqyÅ@c@Öc¡()=žÜz}åÌk‘ëu²°è{jBO³µ‰Gl.ØàžÛ§5Í
+'ÇHØÐ»A«s}/™é9ÛèKA:eb•cÀ;/{ei®œÚeµ_Lm~1‘½—y:Ð»/bKznâEAŠöµÂ'ÐÒÃÎxÖK]ÙeS¹7+4è_z/
+)R³ŽO[kÞÒÀPÍž—aÞÔé‘uUSLO=stÓ[»”Ž½ªå¶–YmbžjQÏ0~¨É9m5ågŒÂº<év²‘l6™Æ[¾çmL©P(Â6ÍGh
++sg{àÍcŠßHÞ{K2,\•çCÊËÀ42itE.08Žf¬“•<:‹á3bäÂ64LJV)äh+d'«Ø²w;Xšž¼p¿>mj³²;Cue¬«°
+,jT›òb¶tOy–…¾åÈÓÏš²'¢C¤¯ºâÐ—º‘¥A{±)r_¡‹B–žÃ’A£YæX¹p”nKÄR¢éÅ~¡Ì›F{BÈ™´’\»“×Îk
+?Ïã‰Z‰e‰^Ï<KÕàð{«Kg@mP4éžR›€|âëµi•zÛzt;0”Ü^C¤P£TN,[c[©¸/x'_TÍÏÜÎÕ)>n=é@/·ŠÉÓ
+/LÉr\QSQA¿}{[Q=O“Xµ81OzÃÝ]Þr¦2ÛDJ’WieÌI¼ÃG6BZ@@Ò@@âÙ¡±Y|žX¶ÒsàŽiÖ¡LqrŸY³LÓVßt
+2H’{6åêO-¼¦Šâ^Q³bCXL’BLFKLÞXA}IdºQL@yÐ_¢’zZ“ÅæÆXËÛGŠçÎ¨ÄÊ¨zJT+Ãµ¬(+‰­R]Ý~ÃnS
+4Ú¥”Ò¼16°²nà»DIÑWJÐÉ-N³Û·•¾tlÝ¢™ZTåå6È¬3Ôl10²/EÈJqÐ;«'Í8’³]P²PdÔÞ“¨*-UM8_KÖ²
+5¦ãÏëké\P²àç–ÚÜycã†m’÷k£jÄvÔÔ¨m—Œ5my¦§UÂm=2‹U¢l;d’»(¯ã[^ŠŽIRÕZÏ]k6ÄÀ³É™Ir?/4º
+6©®]Ñ£¨-n£¯D²LÛÛ_éØèB}R”¬Ì´YW¹ÔË±_Wµ'‘¶×h@E±ámGy\¼ÊvoQ±Õœª¨uE·.:A›}?o§ŽjÔ_
+7¥0@BBZ^{·C¸¢ÕŒ•Œî¯·M¬'ŠÂS×v'*8mºç¾éC¶©ÊUu¶^nÓ¸^ÍXig(ª™Ÿ¿Fç<jhOÇ‘™‘uau£8f(
+8_FL@Ý}Wc]Ç+‹ç­\Xc<ÇX0½‰D-[y)—‘~Û¡Ì£vÆFX/?Ðæ³â[äŠ‹»Bà’¯v¸Á·[«RË.·XÎœ°ÏËpk‹~|
+9hÃ¨:šQŠ„‹ØrFqÏ§<WÖ¿8~ååé[Ï¶š•NŽ³¬¥x·Å¹¡CGÓ¡+'9™ÄDY[EºÛ™Üj;‰îÃÛâF0¹žî´5¯šƒk
+:YßC¢BVLofJŒsšwJ£XÆÛ5¨z1Ñ:0¢šQ:p2åØ¨šÎÐHw@SE?ÊwF/·I^ŒòesÔŠÙB[aBHÇÒZK¹Ž}æZ'¹
+;S{X½£Ï}Æ¶ph=ªš–DÕkUQOˆ^*'Ò«¤-EÃ»äBjÅäÆFÎç^™¸h¦]¡«\T®ÛwxWxHi»Ó‡ß.­ÙÕè²Š¦sÍ¨
+<Nå\cHyÙ>¤ãa3VÞFz¥D”‡àÔ­äJ¢¨V=ä«B1'?Â³âbÕ‹–xéìckÈY¢’­9{ŒI+´µ±qÅŠ“l«½á±‹õ‹l<Z.
+=¤/Nj*Ûå…«@ŠÅf±{¿-ËØgN<º4)¹p¦2kiÇHä´eÁ³©³-³3ÔËÓ±´Ž]»Á@sjL{eášq'h©ÞRßÍ‰ÂaŽl1'Ö
+>ÁÒAç¡áŽ÷VÒeQ©ËÅZtNeÕG‹ÛÈ9É}º<}‘°ÉŸ¶âä¦¦­¶Z*L¸s¼ã©â–PWIµ‰WqvtÊ¸ØÙb)¦µÖÚ¾Ñ­x^
+AÖ/uÃ[ÎäÙ­“Z:¤¹Õ¾Žf}XVË:kååTSv,7L›LºP*qåa]›…Öy—’ÙrÌ©NéØrŒslçÆQÂ8u—Šâ”FZ½nÐRvoÝ
+BÃm¿»Ày'²b¼à±)Sàˆº×_Tqw7‘òÈ+1ÔkvZ/£”‘¯wÑ<ÑÓn5œœ8ÝgÖËWÆÍu‘·n0ÜâÚÒéBÏ·¾ôM°W¥ÈJ
+C8)8ÇcLÉ¬à¤é¡<ÏBC«vÜzli›î™÷\L(•NBŽ˜´à·j©FFdhF1Ìãm©Lq_Ø199Ó³m–×G»¾¬v?648~NI
+D{ß—ZÃÒÎ}jV¡tÈÍqF–¾âÇß4”Ôµ°aX–nÖE>'¸-MÅ¿Np§¾vÏEl½çœêÛ³–ª»é†XæÜÇÌÀÙ¹­[áE]t\M\
+EEãÕrB¹ºÙ‘è×nZQqs“bZv·¦­njCÝ+‹ÚÑ±K/äz+>s¼µ}VLÛªoçæ)[·”Ÿè¢\F½åE¼?gäÈ9^QzvH–}ÑÍ
+Fg::ÍŸ|N£rcpMÐÉàõât®=¨Õ¶×ä®IQ®hz6Ö–‰XZÏ?‘°ØEc¿p]mÑRÝßÒe>¸â‹¢¾ÌNkYÂG«—¸«¸.3X
+G;L¤sØ¨Ã‹ÀDIp½z½Y¹ÐÌ¼,ŽX+¬ÏU(–ˆ-7q1±ŒÞAf¥q[.zjpÞÎ«Æ4LápNsŽR±ŸójG×®1Ï6³JXÔRÝ
+HÅokP×‰—Ï+EsÍzÑm·¶GM–s×Zµ*ßwpM£eynÊÀPéÍÒ¤Â]¢™¼ãôÙ›Àpak«v0å¸Y*ÌOâÕ8({CDPq~±_Ö²
+I-40rÉáYÚµÀBIQOÌ›L‘LCkn@Ÿg›iÈ‰k}f=Œø›el¹Œr²ÌcÓÛ§N=2Ú3«zÓ·ÒSquÕyÄ—ÐÃ¯‹NmiÑc¬Y
+KŽk{-i¢–è«3©u¬ØL›z1¨J¨r¢±LYáõ7›„l~Ç¢åÁ^1ŸÔ¾¹£âè8-§8~Ý¦3iÊ?<ÚNÊb™ÆÆ1W\1¾¸YwN
+LÝãA§tžÃÚl>ÚØÍpËsTxÇœE‰@B_£@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@Ù\V
+¡Ë^O–{nodgIä‰tgHÚškœE;¹èÂXkÔÍŠžm’|JÂzqKQhDº‹NdS´½Ì­B85y§É4Š¶–¤©-ª8(œ¹‘m/ÍM¼}²
+£ßžm¥Œ„¦4¿~Œ«n½u¦?£Ï®ÞW{žãc¾:TÆ-LfYHÈ›t«ÐÌ*¡~{¿t¼Ds²{œÎÞG+]çBom].B¥·M~J~sÂ^Ã)
+--- FISH06p4.Lzh (38/38) ---
