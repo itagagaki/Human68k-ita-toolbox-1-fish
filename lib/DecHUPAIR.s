@@ -15,12 +15,12 @@
 *****************************************************************
 *
 *  このモジュールに含まれている サブルーチン DecodeHUPAIR は，
-*  HUPAIR に従ってコマンドライン上にエンコードされた引数並び
-*  をデコードするものです．
+*  HUPAIR に従ってコマンドライン上にエンコードされた引数列を
+*  デコードするものです．
 *
 *  以下に例を示します．
 *
-*		.TEXT
+*		.text
 *
 *	start:				*  start : 実行開始アドレス
 *		bra.s	start1		*  2 Byte
@@ -29,21 +29,22 @@
 *	start1:
 *		movea.l	a0,a5		*  A5 := プログラムのメモリ管理ポインタのアドレス
 *		lea	stack_bottom,a7
-*		movea.l	a7,a1		*  A1 := 引数並びを格納するエリアの先頭アドレス
+*		movea.l	a7,a1		*  A1 := 引数列を格納するエリアの先頭アドレス
 *		lea	1(a2),a0	*  A0 := コマンドラインの文字列の先頭アドレス
 *		bsr	strlen		*  D0.L に A0 が示す文字列の長さを求め，
 *		add.l	a1,d0		*    格納エリアの容量を
+*		bcs	insufficient_memory
 *		cmp.l	8(a5),d0	*    チェックする．
 *		bhs	insufficient_memory
 *
 *		bsr	DecodeHUPAIR	*  デコードする．
 *
-*		*  ここで，D0.W は引数の数．A1 が示すエリアには，D0.W が示す個数だけ，
+*		*  ここで，D0.L は引数の数．A1 が示すエリアには，D0.L が示す個数だけ，
 *		*  単一の引数（$00で終端された文字列）が隙間無く並んでいる．
 *
 *		*  たとえば，引数を 1行に 1つずつ表示するには，
 *
-*		move.w	d0,d1
+*		move.l	d0,d1
 *		bra	print_args_continue
 *
 *	print_args_loop:
@@ -68,60 +69,69 @@
 *		*  引数の数だけ繰り返す
 *		*
 *	print_args_continue:
-*		dbra	d1,print_args_loop
+*               subq.l	#1,d1
+*		bcc	print_args_loop
 *			.
 *			.
 *			.
 *
-*		.BSS
+*		.bss
 *		.ds.b	STACKSIZE
-*		.EVEN
+*		.even
 *	stack_bottom:
 *
 *		.END	start
 *
 *****************************************************************
 * DecodeHUPAIR - HUPAIRに従ってコマンドラインをデコードし，引数
-*                並びを得る
+*                列を得る
 *
 * CALL
 *      A0     HUPAIRに従ってエンコードされた引数の先頭アドレス
-*             （コマンド・ラインの先頭アドレス + 1）
+*             （コマンドラインの先頭アドレス + 1）
 *
-*      A1     デコードした引数並びを書き込むエリアの先頭アドレス
+*      A1     デコードした引数列を書き込むエリアの先頭アドレス
 *
 * RETURN
-*      D0.W   引数の数（無符号）
-*      CCR    TST.W D0
+*      A0     コマンドラインの文字列の最後の $00 の次のアドレス
+*      D0.L   引数の数（無符号）
+*      CCR    TST.L D0
 *
 * STACK
 *      16 Bytes
 *
 * DESCRIPTION
 *      A0レジスタが指すアドレスから始まる文字列（source）を
-*      HUPAIR に従ってデコードして引数並びを得，A1レジスタが指す
+*      HUPAIR に従ってデコードして引数列を得，A1レジスタが指す
 *      アドレスから始まるエリア（destination）に格納する．
 *
-*      destination には，戻り値D0.Wが示す個数だけ，単一の引数
+*      destination には，戻り値D0.Lが示す個数だけ，単一の引数
 *      （$00で終端された文字列）が順番に隙間無く並ぶ．
 *
-*      destination には source の長さだけの容量が必要である．
+*      destination には最大 source の長さだけの容量が必要である．
+*
+*      もしコマンドラインの先頭-8からの8バイトが '#HUPAIR',0
+*      であるならば，リターン時の A0 が指しているアドレスには
+*      arg0 がある．ただしこのサブルーチンでは '#HUPAIR',0 は
+*      チェックしない．
 *
 * AUTHOR
 *      板垣 史彦
 *
 * REVISION
 *      12 Mar. 1991   板垣 史彦         作成
-*      07 Oct. 1991   板垣 史彦         sourceとdestinationを分離
+*       7 Oct. 1991   板垣 史彦         sourceとdestinationを分離
+*       3 Jan. 1992   板垣 史彦         A0を戻り置として加える
+*                                       戻り置 D0.W を D0.L に変更
 *****************************************************************
 
-	.TEXT
+	.text
 
-	.XDEF	DecodeHUPAIR
+	.xdef	DecodeHUPAIR
 
 DecodeHUPAIR:
-		movem.l	d1-d2/a0-a1,-(a7)
-		clr.w	d0
+		movem.l	d1-d2/a1,-(a7)
+		moveq	#0,d0
 		moveq	#0,d2
 global_loop:
 skip_loop:
@@ -132,7 +142,7 @@ skip_loop:
 		tst.b	d1
 		beq	done
 
-		addq.w	#1,d0
+		addq.l	#1,d0				*  オーバーフローは有り得ない
 dup_loop:
 		tst.b	d2
 		beq	not_in_quote
@@ -164,10 +174,10 @@ terminate:
 		bra	global_loop
 
 done:
-		movem.l	(a7)+,d1-d2/a0-a1
-		tst.w	d0
+		movem.l	(a7)+,d1-d2/a1
+		tst.l	d0
 		rts
 *****************************************************************
 
-	.END
+	.end
 

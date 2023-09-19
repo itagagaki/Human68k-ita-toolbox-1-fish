@@ -153,16 +153,17 @@ not_function:
 		cmp.w	#MAXPATH,d0
 		bhi	not_a_file
 
-		lea	command_name(a6),a0
-		bsr	strcpy
 		moveq	#0,d0
 		move.b	d2,d0
 		lsr.b	#1,d0				*  bit 0 : ~~–³Ž‹ƒtƒ‰ƒO
-		suba.l	a4,a4
 		btst	#2,d2
 		bne	search_all_path
 
+		lea	command_name(a6),a0
+		suba.l	a4,a4
+		exg	a0,a1
 		bsr	search_command
+		exg	a0,a1
 		cmp.l	#-1,d0
 		beq	not_a_file
 
@@ -170,6 +171,7 @@ not_function:
 		bra	continue
 
 search_all_path:
+		movea.l	a1,a0
 		lea	answer_path(pc),a4
 		bsr	search_command
 not_a_file:

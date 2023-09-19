@@ -338,9 +338,9 @@ init_env_done:
 		movea.l	d0,a1
 		bsr	DecodeHUPAIR
 		movea.l	a1,a0				*  A0   : 引数ポインタ
-		move.w	d0,d5				*  D5.W : 引数カウンタ
+		move.l	d0,d5				*  D5.L : 引数カウンタ
 parse_args_loop:
-		tst.w	d5
+		tst.l	d5
 		beq	done_flag_argument_parsing
 
 		btst.b	#0,flags(a5)			*  -b
@@ -349,7 +349,7 @@ parse_args_loop:
 		cmpi.b	#'-',(a0)
 		bne	done_flag_argument_parsing
 
-		subq.w	#1,d5
+		subq.l	#1,d5
 		addq.l	#1,a0
 parse_one_arg_loop:
 		move.b	(a0)+,d0
@@ -419,12 +419,12 @@ parse_one_arg_done:
 
 		sf	d6
 		move.l	#-1,arg_command(a5)
-		tst.w	d5
+		tst.l	d5
 		beq	parse_args_loop
 
 		move.l	a0,arg_command(a5)
 		bsr	strfor1
-		subq.w	#1,d5
+		subq.l	#1,d5
 		bra	parse_args_loop
 
 flag_f_found:
@@ -465,7 +465,7 @@ done_flag_argument_parsing:
 		btst	#31,d7				*  -ctnef があったならば
 		bne	flags_ok			*  ログイン・シェルにならない
 
-		tst.w	d5				*  フラグ以外の引数が残っていれば
+		tst.l	d5				*  フラグ以外の引数が残っていれば
 		bne	flags_ok			*  ログイン・シェルにならない
 
 		btst	#0,d7				*  -l が指定されているならば
@@ -508,7 +508,7 @@ chdir_home_done:
 	**
 		movea.l	arg_script(a5),a0
 		clr.l	arg_script(a5)
-		move.w	d5,d0
+		move.l	d5,d0
 		beq	set_argv
 
 		tst.b	flag_t(a5)			*  -t
@@ -522,9 +522,9 @@ chdir_home_done:
 
 		move.l	a0,arg_script(a5)
 		bsr	strfor1
-		subq.w	#1,d5
+		subq.l	#1,d5
 set_argv:
-		move.w	d5,d0
+		move.l	d5,d0
 		movea.l	a0,a1
 		lea	word_argv,a0
 		sf	d1				*  export しない
@@ -3400,7 +3400,7 @@ start_do_simple_command:
 	*  コマンド名を展開する
 	*
 		lea	simple_args(a5),a0
-		lea	command_pathname(a5),a1
+		lea	program_name(a5),a1
 		move.l	#MAXPATH,d1
 		bsr	expand_a_word
 		bpl	command_name_ok
@@ -3426,7 +3426,7 @@ start_do_simple_command:
 		bra	print_shell_error
 
 command_name_ok:
-		lea	command_pathname(a5),a0
+		lea	program_name(a5),a0
 		lea	function_root(a5),a2
 		bsr	find_function
 		beq	not_function
@@ -3475,7 +3475,8 @@ function_will_recurse:
 		bra	simple_command_done_0
 
 not_function:
-		lea	command_pathname(a5),a0
+		lea	program_name(a5),a0
+		lea	program_pathname(a5),a1
 		moveq	#0,d0
 		suba.l	a4,a4
 		bsr	search_command			* 検索する
@@ -3591,7 +3592,7 @@ simple_command_user_command:
 		*
 		move.w	#-1,script_fd(a6)
 		lea	user_command_parameter(a5),a3	*  A3 : パラメータ行の先頭
-		move.w	#MAXLINELEN,d3			*  D3.W : パラメータ行の最大文字数
+		move.l	#MAXLINELEN,d3			*  D3.L : パラメータ行の最大文字数
 
 		cmp.l	#1,d2				*  1 : 拡張子無し
 		beq	do_exec_script
@@ -3600,7 +3601,7 @@ simple_command_user_command:
 		blo	do_binary_command		*  2, 3, 4 : .R, .Z, .X
 		beq	do_BAT_command			*  5 : .BAT
 do_exec_script:
-		lea	command_pathname(a5),a0		*  コマンド・ファイルを
+		lea	program_pathname(a5),a0		*  コマンド・ファイルを
 		moveq	#0,d0				*  読み込みモードで
 		bsr	tfopen				*  オープンする
 		bmi	cannot_exec			*  オープンできない .. 実行不可
@@ -3623,17 +3624,13 @@ do_exec_script:
 		cmp.b	#LF,d0
 		beq	do_fish_script_2
 
-		move.w	d0,-(a7)
-		lea	command_pathname(a5),a1		*  コマンドのパス名を
-		lea	pathname_buf,a0			*  一時領域に
-		bsr	strcpy				*  コピーしておく
-		move.w	(a7)+,d0
+		lea	program_name(a5),a0
 		move.w	#MAXPATH,d2
 get_shell_loop:
 		subq.w	#1,d2
 		bcs	shell_too_long
 
-		move.b	d0,(a1)+
+		move.b	d0,(a0)+
 		move.w	d1,d0
 		bsr	fgetc
 		bmi	get_shell_done
@@ -3641,7 +3638,7 @@ get_shell_loop:
 		bsr	isspace
 		bne	get_shell_loop
 get_shell_done:
-		clr.b	(a1)
+		clr.b	(a0)
 
 		*  シェルに渡す引数を読み取る
 
@@ -3664,12 +3661,12 @@ get_shell_done:
 		move.w	d1,d0
 		move.w	#MAXWORDLISTSIZE-3,d1
 		bsr	fgets
-		bmi	do_script_noarg
-		bne	hugearg_error
-
+		beq	script_arg_ok
+		bpl	hugearg_error
+script_arg_ok:
 		lea	tmpargs,a0
 		bsr	strlen
-		sub.w	d0,d3
+		sub.l	d0,d3
 		bcs	simple_command_too_long_line
 
 		movea.l	a0,a1
@@ -3689,20 +3686,15 @@ do_fish_script_0:
 do_fish_script_1:
 		bsr	close_script_fd
 do_fish_script_2:
-		lea	command_pathname(a5),a1		* コマンドのパス名を
-		lea	pathname_buf,a0			* 一時領域に
-		bsr	strcpy				* コピーしておく
 		lea	word_shell,a0
 		bra	do_script_1
 ****************
 do_BAT_command:
-		lea	command_pathname(a5),a1
-		lea	pathname_buf,a0			*  pathname_buf に
-		bsr	strcpy				*  コピーして
+		lea	program_pathname(a5),a0		*  スクリプトのパス名の
 		bsr	sltobsl				*  \ を / に変える
 		lea	word_batshell,a0
 do_script_1:
-		clr.b	command_pathname(a5)
+		clr.b	program_name(a5)
 		bsr	find_shellvar
 		beq	do_script_2
 
@@ -3714,46 +3706,50 @@ do_script_1:
 		bhi	shell_too_long
 
 		movea.l	a0,a1
-		lea	command_pathname(a5),a0
+		lea	program_name(a5),a0
 		bsr	strcpy
 do_script_2:
-		lea	command_pathname(a5),a0
+		lea	program_pathname(a5),a1		*  スクリプトのパス名を
+		moveq	#1,d1
+		movea.l	a3,a0
+		move.l	d3,d0
+		bsr	EncodeHUPAIR			*  コマンドラインにエンコードする
+		bmi	simple_command_too_long_line
+
+		movea.l	a0,a3
+		move.l	d0,d3
+		*
+		movea.l	a1,a0				*  A0 : program_pathname に
+		lea	program_name(a5),a1		*  program_name（シェルのパス名）を
+		bsr	strcpy				*  コピーする
 		lea	tmpstatbuf,a1
-		bsr	stat
+		bsr	stat				*  シェルは存在するか？
 		move.b	tmpstatbuf+ST_MODE,d1
 		tst.l	d0
 		bmi	shell_not_found
 
-		btst	#MODEBIT_VOL,d1			*  ボリューム・ラベル
+		btst	#MODEBIT_VOL,d1			*  ボリューム・ラベルではないか？
 		bne	shell_not_found
 
-		btst	#MODEBIT_DIR,d1			*  ディレクトリ
+		btst	#MODEBIT_DIR,d1			*  ディレクトリではないか？
 		bne	cannot_exec
-
-		lea	pathname_buf,a1
-		moveq	#1,d1
-		movea.l	a3,a0
-		move.w	d3,d0
-		bsr	EncodeHUPAIR
-		bmi	simple_command_too_long_line
-
-		movea.l	a0,a3
-		move.w	d0,d3
 ****************
 do_binary_command:
 		lea	simple_args(a5),a1
+		moveq	#0,d1
 		move.w	argc(a5),d1
 		movea.l	a3,a0
-		move.w	d3,d0
+		move.l	d3,d0
 		bsr	EncodeHUPAIR
 		bmi	simple_command_too_long_line
 
 		lea	user_command_parameter(a5),a1	*  A1 : パラメータ行の先頭
-		move.w	#MAXLINELEN,d1			*  D1.W : パラメータ行の最大文字数
+		move.l	#MAXLINELEN,d1			*  D1.L : パラメータ行の最大文字数
+		lea	program_name(a5),a2		*  A2 : argv0
 		bsr	SetHUPAIR
 		bmi	simple_command_too_long_line
 
-		cmp.w	d1,d0
+		cmp.l	d1,d0
 		sne	arg_is_huge(a6)
 
 		bsr	build_user_env
@@ -3768,7 +3764,7 @@ do_binary_command:
 		movem.l	a5-a6,-(a7)
 		move.l	user_command_env(a5),-(a7)	*  環境のアドレス
 		pea	user_command_parameter(a5)	*  パラメータのアドレス
-		pea	command_pathname(a5)		*  起動するコマンドのパス名のアドレス
+		pea	program_pathname(a5)		*  起動するコマンドのパス名のアドレス
 		move.w	#1,-(a7)			*  ファンクション : LOAD
 		sf	in_fish
 		DOS	_EXEC
@@ -3982,7 +3978,7 @@ close_script_fd:
 
 shell_not_found:
 		moveq	#ENOFILE,d0
-		lea	command_pathname(a5),a0
+		lea	program_pathname(a5),a0
 simple_command_perror:
 		bsr	reset_delete_io
 		bsr	perror
@@ -4021,7 +4017,7 @@ command_not_found:
 		lea	msg_no_command,a1
 simple_command_errorp:
 		bsr	reset_io
-		lea	command_pathname(a5),a0
+		lea	program_pathname(a5),a0
 		bsr	pre_perror
 		movea.l	a1,a0
 		bra	print_shell_error
@@ -4133,7 +4129,7 @@ echo_command:
 		beq	not_echo_command
 
 		movem.l	d0/a0,-(a7)
-		lea	command_pathname(a5),a0
+		lea	program_name(a5),a0
 		bsr	ecputs
 		moveq	#' ',d0
 		bsr	eputc
@@ -4517,17 +4513,15 @@ find_command_file_done:
 * search_command - コマンドを検索する
 *
 * CALL
-*      A0     検索するコマンド名
-*             長さは MAXPATH 以下であること
-*
-*             検索されたコマンド・パス名は同じアドレスに格納される
-*             MAXPATH+1 必要
-*
+*      A0     検索するコマンド名．MAXPATHバイト以下であること
+*      A1     コールバックがNULLのとき，検索結果を格納するバッファ．MAXPATH+1バイト必要
 *      A4     コールバック
-*
 *      D0.B   bit 0: $path 中のメタ・ディレクトリ（~~）を無視する
 *
 * RETURN
+*      コールバックがNULLでない場合，戻り値は無い．
+*
+*      コールバックがNULLならば...
 *      D0.L
 *              1: 拡張子無し
 *              2: .R
@@ -4539,6 +4533,8 @@ find_command_file_done:
 *             -1: 見当たらない
 *             上記以外 : 組み込みコマンド表のアドレス+$80000000
 *
+*     (A1)    検索結果が格納される
+*
 * NOTE
 *      拡張子の大文字と小文字は区別しない．
 *      同じ優先順位ならば，後に検索された方が有効となる．
@@ -4547,60 +4543,60 @@ find_command_file_done:
 
 exp_command_name = -auto_pathname
 
+search_command_reglist	reg	d1-d4/a1-a3
+
 search_command:
 		link	a6,#exp_command_name
 		move.l	a0,-(a7)
-		movem.l	d1-d4/a1-a3,-(a7)
-		move.b	d0,d4				*  D4 : フラグ
+		movem.l	search_command_reglist,-(a7)
+		move.b	d0,d4				*  D4.B : フラグ
 
 		bsr	contains_dos_wildcard		*  Human のワイルドカードを含んで
 		bne	search_command_not_found	*  いるならば無効
 
 		bsr	split_pathname
-		cmp.l	#MAXDIR,d1
-		bhi	search_command_not_found
+		cmp.l	#MAXDIR,d1			*  ディレクトリ部が
+		bhi	search_command_not_found	*  長過ぎる
 
 		*** TwentyOne 対応 --ここから--
-		tst.l	d2
-		beq	search_command_no_ext
+		tst.l	d2				*  . で始まって
+		beq	search_command_no_ext		*  いる...Human拡張子は無い
 
-		cmp.l	#1,d3
-		bls	search_command_no_ext
+		cmp.l	#1,d3				*  最後の . からの長さが
+		bls	search_command_no_ext		*  1以下...Human拡張子は無い
 
-		cmp.l	#MAXEXT,d3
-		bls	search_command_ext_ok
+		cmp.l	#MAXEXT,d3			*  最後の . からの長さが
+		bls	search_command_ext_ok		*  Human拡張子に適合
 search_command_no_ext:
-		add.l	d3,d2
-		moveq	#0,d3
+		add.l	d3,d2				*  最後の . からの部分もfile部とし
+		moveq	#0,d3				*  拡張子は無いものとする．
 search_command_ext_ok:
 		*** TwentyOne 対応 --ここまで--
-		cmp.l	#MAXFILE,d2
-		bhi	search_command_not_found
+		cmp.l	#MAXFILE,d2			*  ファイル部が
+		bhi	search_command_not_found	*  長過ぎる
 
-		cmp.l	#MAXEXT,d3
-		bhi	search_command_not_found
+		cmp.l	#MAXEXT,d3			*  拡張子部が
+		bhi	search_command_not_found	*  長過ぎる
 
-		move.b	(a3),d3				*  D3.B : ファイル名に‘.’あり
+		move.b	(a3),d3				*  D3.B : 「ファイル名に‘.’あり」フラグ
 
-		tst.l	d0
+		tst.l	d0				*  ドライブ＋ディレクトリ部があるか？
 		beq	search_command_in_pathlist
 	*
 	*  ドライブ＋ディレクトリ部がある .. このまま検索する
 	*
-		movea.l	a0,a2
-		movea.l	a2,a1
-		lea	exp_command_name(a6),a0
-		bsr	strcpy
-		move.b	d3,d0
-		bsr	find_command_file
+		movea.l	a0,a1				*  パス名を
+		lea	exp_command_name(a6),a0		*  exp_command_name に
+		bsr	strcpy				*  コピーして
+		move.b	d3,d0				*
+		bsr	find_command_file		*  検索する
 		cmp.l	#-1,d0
-		beq	search_command_not_found
+		beq	search_command_not_found	*  見つからなかった
 
-		movea.l	a0,a1
 		cmpa.l	#0,a4
 		beq	search_command_found
 
-		movem.l	(a7),d1-d4/a1-a3
+		movem.l	(a7),search_command_reglist
 		jsr	(a4)
 		bra	search_command_return
 
@@ -4608,6 +4604,7 @@ search_command_in_pathlist:
 	*
 	*  ディレクトリ部がない .. $path に従って検索する
 	*
+							*  A2 : cmdname
 		lea	word_path,a0
 		bsr	find_shellvar
 		beq	search_command_not_found
@@ -4615,10 +4612,9 @@ search_command_in_pathlist:
 		bsr	get_var_value
 		beq	search_command_not_found
 
+		move.l	a0,-(a7)			*  A0 : pathlist
 		subq.w	#1,d0
 		move.w	d0,d1				*  D1.W : $path の要素数 - 1
-		move.l	a0,-(a7)			*  pathlist のアドレスを退避
-
 		moveq	#-1,d2
 		tst.b	hash_flag(a5)
 		beq	search_command_in_pathlist_hash_done
@@ -4638,8 +4634,7 @@ search_command_in_pathlist_loop:
 		bcs	search_command_hash_hit
 
 		*  ハッシュがヒットしていない．
-		*  それでも，相対パス（仮想ディレクトリを除く）である場合には探す
-
+		*  それでも，相対パスである場合には探す
 		bsr	isfullpath
 		beq	search_command_in_pathlist_next	*  絶対パスである
 
@@ -4649,11 +4644,14 @@ search_command_in_pathlist_loop:
 		bra	search_command_tryone
 
 search_command_hash_hit:
-		bsr	is_builtin_dir
-		bne	search_command_tryone
-
+		*  ハッシュがヒットした．
+		*  しかし，仮想ディレクトリを無視するよう指示されている場合，
+		*  それが仮想ディレクトリならば検索しない．
 		btst	#0,d4
-		bne	search_command_in_pathlist_next
+		beq	search_command_tryone
+
+		bsr	is_builtin_dir
+		beq	search_command_in_pathlist_next
 search_command_tryone:
 		cmpi.b	#'.',(a0)
 		bne	search_command_tryone_cat
@@ -4662,24 +4660,21 @@ search_command_tryone:
 		bne	search_command_tryone_cat
 
 		* カレントディレクトリ
-		bsr	strfor1				*  A0:nextpath A1:buffer    A2:arg
-		exg	a0,a1				*  A0:buffer   A1:nextpath  A2:arg
-		exg	a1,a2				*              A1:arg       A2:nextpath
+		bsr	strfor1				*  A0:nextpath A1:buffer    A2:cmdname
+		exg	a0,a1				*  A0:buffer   A1:nextpath
+		exg	a1,a2				*              A1:cmdname   A2:nextpath
 		bsr	strcpy
-		exg	a1,a2				*              A1:nextpath  A2:arg
+		exg	a1,a2				*              A1:nextpath  A2:cmdname
 		bra	search_command_tryone_find
 
 search_command_tryone_cat:
-		exg	a0,a1				*  A0:buffer   A1:currpath  A2:arg
+		exg	a0,a1				*  A0:buffer   A1:currpath  A2:cmdname
 		bsr	cat_pathname			*              A1:nextpath
-		exg	a0,a1				*  A0:nextpath A1:buffer
 		bmi	search_command_in_pathlist_continue
-
-		exg	a0,a1				*  A0:buffer   A1:nextpath
 search_command_tryone_find:
+							*  A0:buffer   A1:nextpath  A2:cmdname
 		move.b	d3,d0
 		bsr	find_command_file
-		exg	a0,a1				*  A0:nextpath A1:buffer
 		cmp.l	#-1,d0
 		beq	search_command_in_pathlist_continue
 
@@ -4689,30 +4684,33 @@ search_command_tryone_find:
 		cmpa.l	#0,a4
 		beq	search_command_found
 
-		exg	a0,a1
 		movea.l	a7,a3
 		movem.l	d1-d4/a0-a2,-(a7)
-		movem.l	(a3),d1-d4/a1-a3
+		movem.l	(a3),search_command_reglist
 		jsr	(a4)
 		movem.l	(a7)+,d1-d4/a0-a2
-		exg	a0,a1
 		bra	search_command_in_pathlist_continue
 
 search_command_found:
-		movea.l	a2,a0
+		movem.l	(a7)+,search_command_reglist
+		exg	a0,a1
 		move.l	d0,-(a7)
 		bsr	strcpy
 		move.l	(a7)+,d0
-		bra	search_command_return
+		exg	a0,a1
+		bra	search_command_return_0
 
 search_command_in_pathlist_next:
 		bsr	strfor1
+		exg	a0,a1
 search_command_in_pathlist_continue:
+		exg	a0,a1
 		dbra	d1,search_command_in_pathlist_loop
 search_command_not_found:
 		moveq	#-1,d0
 search_command_return:
-		movem.l	(a7)+,d1-d4/a1-a3
+		movem.l	(a7)+,search_command_reglist
+search_command_return_0:
 		movea.l	(a7)+,a0
 		unlk	a6
 		rts
@@ -4961,7 +4959,7 @@ fish_author:	dc.b	'板垣 史彦 ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'6',0		*  minor version
-		dc.b	'2',0		*  patch level
+		dc.b	'3',0		*  patch level
 
 .even
 statement_table:
@@ -5580,7 +5578,8 @@ do_line_args:		ds.b	MAXWORDLISTSIZE		*  do_line の入力
 simple_args:		ds.b	MAXWORDLISTSIZE		*  DoSimpleCommand の入力
 tmpword01:		ds.b	MAXWORDLEN+1		*  expand_a_word
 tmpword02:		ds.b	MAXWORDLEN+1		*  expand_a_word
-command_pathname:	ds.b	MAXPATH+1
+program_name:		ds.b	MAXPATH+1
+program_pathname:	ds.b	MAXPATH+1
 not_execute:		ds.b	1
 in_prompt:		ds.b	1
 

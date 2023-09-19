@@ -15,32 +15,32 @@
 *****************************************************************
 *
 *  このモジュールに含まれている 2つのサブルーチン
-*  EncodeHUPAIR と SetHUPAIR は，HUPAIR に従って引数並びをコ
-*  マンドライン上にエンコードするものです．
+*  EncodeHUPAIR と SetHUPAIR は，HUPAIRに従って引数列をコマン
+*  ドライン上にエンコードするものです．
 *
 *  以下に例を示します．
 *
-*		* A0 にコマンドラインの先頭アドレスを，D0.W に
+*		* A0にコマンドラインの先頭アドレスを，D0.Lに
 *		* コマンドラインの容量（バイト数）をセットする．
 *
 *		lea	cmdline,a0
-*		move.w	#CMDLINE_SIZE,d0
+*		move.l	#CMDLINE_SIZE,d0
 *
-*		* A1 にエンコードしたい引数並びの先頭アドレスを，
-*		* D1.W にその単語数をセットして，EncodeHUPAIR
-*		を呼び出す．
+*		* A1 にエンコードしたい引数列の先頭アドレスを，
+*		* D1.L にその単語数をセットして，EncodeHUPAIR
+*		* を呼び出す．
 *
 *		lea	wordlist_1,a1
-*		move.w	nwords_1,d1
+*		move.l	nwords_1,d1
 *		bsr	EncodeHUPAIR
 *		bmi	too_long	*  負が返ったらエラー
 *
 *		* この操作は連続して繰り返し行うことができる．
-*		* つまり，エンコードしたい引数並びは複数の領域
+*		* つまり，エンコードしたい引数列は複数の領域
 *		* に分割されていても良い．
 *
 *		lea	wordlist_2,a1
-*		move.w	nwords_2,d1
+*		move.l	nwords_2,d1
 *		bsr	EncodeHUPAIR
 *		bmi	too_long
 *			.
@@ -50,67 +50,61 @@
 *		* EncodeHUPAIR の繰り返しを終えたら，最後に
 *		* SetHUPAIR を呼び出してコマンドラインを完成さ
 *		* せる．
+*               * ここまでの間，A0 とD0.L を破壊してはならない．
 *
 *		lea	cmdline,a1
-*		move.w	#CMDLINE_SIZE,d1
+*		move.l	#CMDLINE_SIZE,d1
 *		bsr	SetHUPAIR
 *		bmi	too_long	*  負が返ったらエラー
 *
-*		* ここで，D0.W はコマンドラインの文字列の長さ，
-*		* D1.W は実際にコマンドラインの 1バイト目にセッ
+*		* ここで，D0.L はコマンドラインの文字列の長さ，
+*		* D1.L は実際にコマンドラインの 1バイト目にセッ
 *		* トした値である．コマンドラインの文字列が255
 *		* バイトを超えたことを検知するには，
 *
-*		cmp.w	#255,d0
+*		cmp.l	#255,d0
 *		bhi	huge_arg
 *
 *		* あるいは
 *
-*		cmp.w	d1,d0
+*		cmp.l	d1,d0
 *		bne	huge_arg
 *
 *		* とすれば良い．
 *
 *
-*	.DATA
-*	.EVEN
-*	nwords_1:	dc.w	2
+*		.data
+*		.even
+*	nwords_1:	dc.l	2
 *	wordlist_1:	dc.b	'arg1',0
 *			dc.b	'arg2',0
 *
-*	.EVEN
-*	nwords_2:	dc.w	3
+*		.even
+*	nwords_2:	dc.l	3
 *	wordlist_2:	dc.b	'arg3',0
 *			dc.b	'arg4',0
 *			dc.b	'arg5',0
 *
-*	hupair_
-*
-*	.BSS
-*			ds.b	8		*  ここには 'HUPAIR>',0 が書き込まれる．
+*		.bss
+*			ds.b	8		*  ここには '#HUPAIR',0 が書き込まれる．
 *	cmdline:	ds.b	CMDLINE_SIZE
 *
 *****************************************************************
-* EncodeHUPAIR - 引数並びを HUPAIR に従ってバッファにエンコードする
+* EncodeHUPAIR - 引数列をHUPAIRに従ってバッファにエンコードする
 *
 * CALL
 *      A0     バッファのアドレス
-*
-*      D0.W   バッファの容量（バイト数）
-*
-*      A1     エンコードする引数並び
-*
-*      D1.W   エンコードする引数の数（無符号）
+*      D0.L   バッファの容量（バイト数）（符号付き．正数であること）
+*      A1     エンコードする引数列
+*      D1.L   エンコードする引数の数（無符号）
 *
 * RETURN
-*      A0     続いて EncodeHUPAIR または SetHUPAIR を呼び出す際に
-*             渡すべき A0 の値．
-*             （バッファの書き込みポインタ）
+*      A0     続いてEncodeHUPAIRまたはSetHUPAIRを呼び出す際に
+*             渡すべきA0の値（バッファの書き込みポインタ）．
 *
-*      D0.L   正数ならば，下位ワードは続いて EncodeHUPAIR または
-*             SetHUPAIR を 呼び出す際に 渡すべき D0.W の値．
-*             （バッファの残り容量）
-*             負数ならば容量不足を示す．
+*      D0.L   正数ならば，続いてEncodeHUPAIRまたはSetHUPAIRを
+*             呼び出す際に渡すべきD0.Lの値（バッファの残り容量）．
+*             負数ならばエラー（容量不足）．
 *
 *      CCR    TST.L D0
 *
@@ -118,11 +112,11 @@
 *      20 Bytes
 *
 * DESCRIPTION
-*      $00 で終端された文字列が隙間無く並んでいる《引数並び》
-*      をエンコードしてバッファに書き込む．書き込む先頭位置は
-*      呼び出し時に A0レジスタで指定し，その位置からの容量を
-*      D0.Wレジスタで示す．リターン時の A0レジスタと D0.Wレジ
-*      スタの値は，続けて EncodeHUPAIR または SetHUPAIR を呼
+*      $00 で終端された文字列が D1.L個だけ隙間無く並んでいる引
+*      数列をエンコードしてバッファに書き込む．書き込む先頭位
+*      置は呼び出し時に A0レジスタで指定し，その位置からの容量
+*      を D0.Lレジスタで示す．リターン時の A0レジスタと D0.Lレ
+*      ジスタの値は，続けて EncodeHUPAIR または SetHUPAIR を呼
 *      ぶ際に使用される．
 *      リターン時に D0.Lレジスタの値が負数になっているならば，
 *      それはバッファの容量が不足したことを示している．
@@ -137,17 +131,19 @@
 * REVISION
 *      12 Mar. 1991   板垣 史彦         作成
 *       2 Nov. 1991   板垣 史彦         クオート範囲を最長とする
+*       3 Jan. 1992   板垣 史彦         数の制限を除去
 *****************************************************************
 
-	.TEXT
-	.XDEF	EncodeHUPAIR
+	.text
+	.xdef	EncodeHUPAIR
 
 EncodeHUPAIR:
 		movem.l	d1-d3/a1-a2,-(a7)
-		moveq	#0,d2
-		move.w	d0,d2			*  D2.L : バッファの残り容量
+		move.l	d0,d2			*  D2.L : バッファの残り容量
+		bmi	encode_return
 encode_continue:
-		dbra	d1,encode_loop
+		subq.l	#1,d1
+		bcc	encode_loop
 encode_return:
 		move.l	d2,d0
 		movem.l	(a7)+,d1-d3/a1-a2
@@ -155,7 +151,7 @@ encode_return:
 
 encode_loop:
 		subq.l	#1,d2
-		bcs	encode_return
+		bmi	encode_return
 
 		move.b	#' ',(a0)+		*  １文字のスペースを置いて、続く単語を区切る
 
@@ -194,14 +190,12 @@ prescan_done:
 		bne	begin_quote		*  " でクオートを開始する
 
 	*  もうクオートすべき文字は無いので、単語の残りを一気にコピーする。
-		subq.l	#1,a2
-		move.l	a2,d0
-		sub.l	a1,d0			*  D0.L : コピーするバイト数
-		sub.l	d0,d2
-		bcs	encode_return
 dup_loop:
 		move.b	(a1)+,d0
 		beq	encode_continue
+
+		subq.l	#1,d2
+		bmi	encode_return
 
 		move.b	d0,(a0)+
 		bra	dup_loop
@@ -227,14 +221,14 @@ quoted_loop:
 		addq.l	#1,a1
 quoted_insert:
 		subq.l	#1,d2
-		bcs	encode_return
+		bmi	encode_return
 
 		move.b	d0,(a0)+
 		bra	quoted_loop
 
 close_quote:
 		subq.l	#1,d2
-		bcs	encode_return
+		bmi	encode_return
 
 		move.b	d3,(a0)+
 		bra	encode_one_loop
@@ -245,22 +239,25 @@ close_quote:
 *      A0     最後の EncodeHUPAIR 呼び出し後の A0 の値
 *             （バッファの書き込みポインタ）
 *
-*      D0.W   最後の EncodeHUPAIR 呼び出し後の D0.W の値
+*      D0.L   最後の EncodeHUPAIR 呼び出し後の D0.L の値
 *             （バッファの残り容量）
 *
 *      A1     最初の EncodeHUPAIR 呼び出し時に渡した A0 の値
 *             （コマンドラインの先頭アドレス）
 *
-*      D1.W   最初の EncodeHUPAIR 呼び出し時に渡した D0.W の値
+*      D1.L   最初の EncodeHUPAIR 呼び出し時に渡した D0.L の値
 *             （コマンドラインの全容量）
 *
-* RETURN
-*      D0.L   正数ならば，下位ワードはコマンドラインの文字列の
-*             長さ（バイト数）．
-*             負数ならば容量不足を示す．
+*      A2     arg0 の先頭アドレス
 *
-*      D1.W   コマンドラインの 1バイト目にセットした，文字列の
+* RETURN
+*      D0.L   正数ならば，コマンドラインの文字列の長さ（バイト
+*             数）．負数ならば容量不足を示す．
+*
+*      D1.L   コマンドラインの 1バイト目にセットした，文字列の
 *             長さ．ただし D0.L が負数のときには不定．
+*
+*      A0     バッファに arg0 + $00 をセットしたその次のアドレス
 *
 *      CCR    TST.L D0
 *
@@ -271,8 +268,11 @@ close_quote:
 *      EncodeHUPAIR の繰り返しを終えた後に呼び出してコマンド
 *      ラインを完成させるものである．
 *
+*      コマンドラインの後ろには A2レジスタで示される arg0 が
+*      格納される．
+*
 *      A1レジスタで与えられるコマンドラインの前には8バイトの
-*      余白がなければならない．この8バイトの余白には 'HUPAIR>',0
+*      余白がなければならない．この8バイトの余白には '#HUPAIR',0
 *      が書き込まれる．
 *
 * AUTHOR
@@ -280,32 +280,36 @@ close_quote:
 *
 * REVISION
 *      11 Aug. 1991   板垣 史彦         作成
-*      24 Nov. 1991   板垣 史彦         'HUPAIR>',0 をセット
+*      24 Nov. 1991   板垣 史彦         '#HUPAIR',0 をセット
+*       3 Jan. 1992   板垣 史彦         数の制限を除去，arg0 をセット
 *****************************************************************
 
-	.TEXT
-	.XDEF	SetHUPAIR
+	.text
+	.xdef	SetHUPAIR
 
 SetHUPAIR:
-		tst.w	d0
-		beq	set_over
+		movem.l	d2/a2,-(a7)
+		tst.l	d0
+		bmi	set_return
 
-		sub.w	d0,d1
-		moveq	#0,d0
-		move.w	d1,d0
+		sub.l	d0,d1
 		beq	set_noarg
 
-		clr.b	(a0)
-		subq.w	#1,d0
-		move.w	#255,d1
-		cmp.w	d1,d0
+		move.l	d1,d2
+		subq.l	#1,d2
+		move.l	#255,d1
+		cmp.l	d1,d2
 		bhi	set_length
-
-		move.w	d0,d1
-		bra	set_length
+		bra	set_length_d2
 
 set_noarg:
-		clr.b	1(a1)
+		subq.l	#1,d0
+		bmi	set_return
+
+		lea	1(a1),a0
+		moveq	#0,d2
+set_length_d2:
+		move.l	d2,d1
 set_length:
 		move.b	d1,(a1)
 		subq.l	#8,a1
@@ -317,13 +321,23 @@ set_length:
 		move.b	#'I',(a1)+
 		move.b	#'R',(a1)+
 		clr.b	(a1)+
-		tst.l	d0
-		rts
 
-set_over:
-		moveq	#-1,d0
+		subq.l	#1,d0
+		bmi	set_return
+
+		clr.b	(a0)+
+set_arg0_loop:
+		subq.l	#1,d0
+		bmi	set_return
+
+		move.b	(a2)+,(a0)+
+		bne	set_arg0_loop
+
+		move.l	d2,d0
+set_return:
+		movem.l	(a7)+,d2/a2
 		rts
 *****************************************************************
 
-	.END
+	.end
 
