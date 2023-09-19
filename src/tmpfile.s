@@ -9,6 +9,8 @@
 .xref get_shellvar
 .xref strfor1
 .xref cat_pathname
+.xref headtail
+.xref strip_excessive_slashes
 .xref drvchkp
 .xref stat
 .xref strcpy
@@ -50,10 +52,13 @@ tmpname:
 		movea.l	a0,a2
 		bmi	invalid_temp
 
+		*bclr	#31,d0	* D0.L:31 は 0 になっているはず
 		bsr	drvchkp
 		bmi	invalid_temp
 
-		movea.l	a3,a0
+		bsr	strip_excessive_slashes
+		bsr	headtail
+		movea.l	a1,a0
 		bra	put_pid
 
 invalid_temp:
@@ -166,4 +171,3 @@ msg_cannot_create_tmpname:	dc.b	'一時ファイル名を生成できません',0
 msg_invalid_temp:		dc.b	'シェル変数 temp の設定が無効です',0
 
 .end
-

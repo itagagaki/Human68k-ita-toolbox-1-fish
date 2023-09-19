@@ -5,11 +5,11 @@
 .xref tolower
 .xref toupper
 .xref strcpy
-.xref strfor1
 .xref isfullpath
-.xref getcwd
 .xref get_shellvar
 .xref word_home
+
+.xref cwd
 
 .text
 
@@ -29,7 +29,10 @@
 .xdef getcwdx
 
 getcwdx:
-		bsr	getcwd
+		movem.l	d0/a1,-(a7)
+		lea	cwd(a5),a1
+		jsr	strcpy
+		movem.l	(a7)+,d0/a1
 		tst.b	d0
 		beq	return
 ****************************************************************

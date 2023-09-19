@@ -1,10 +1,9 @@
 * setsvar.s
 * Itagaki Fumihiko 24-Oct-90  Create.
 
-.xref issjis
 .xref itoa
+.xref scanchar2
 .xref strcmp
-.xref strpcmp
 .xref strcpy
 .xref stpcpy
 .xref strfor1
@@ -13,11 +12,9 @@
 .xref setvar
 .xref get_var_value
 .xref fish_setenv
-.xref flagvarptr
+.xref set_flagvar
 .xref is_builtin_dir
 .xref insufficient_memory
-.xref str_nul
-.xref word_listexec
 .xref word_path
 .xref word_temp
 .xref word_user
@@ -26,15 +23,16 @@
 .xref word_upper_term
 .xref word_home
 .xref word_upper_home
+.xref word_columns
+.xref word_upper_columns
 .xref word_shlvl
 .xref word_upper_shlvl
-
-.xref tmpargs
 
 .xref shellvar_top
 .xref histchar1
 .xref histchar2
 .xref wordchars
+.xref tmpargs
 
 .text
 
@@ -55,79 +53,50 @@
 
 set_shellvar:
 		movem.l	d1-d3/a0-a3,-(a7)
+		move.b	d1,d2				*  D2.B : export flag
 		movea.l	a1,a2				*  A2 : セットする値（単語リスト）
 		movea.l	a0,a1				*  A1 : シェル変数名
-		move.w	d0,d2				*  D2.W : 単語数
+		move.w	d0,d1				*  D1.W : 単語数
 		lea	shellvar_top(a5),a0
 		bsr	setvar
 		beq	no_space_in_shellvar
 
 		bsr	get_var_value
 		movea.l	a0,a2				*  A2 : セットした変数の最初の値のアドレス
-****************
-		movea.l	a1,a0
-		bsr	flagvarptr
-		beq	not_flagvar
-
-		movea.l	d0,a3
-		st	(a3)
-		lea	word_listexec,a0
-		bsr	strcmp
-		bne	set_svar_return0
-
-		tst.w	d2
-		beq	set_svar_return0
-
+		movea.l	a1,a0				*  A0 : 変数名
 		movea.l	a2,a1
-		lea	word_quick,a0
-		bsr	strcmp
+		st	d0
+		bsr	set_flagvar
 		bne	set_svar_return0
 
-		neg.b	(a3)
-		bra	set_svar_return0
-****************
-not_flagvar:
-		lea	word_histchars,a0
+		lea	word_histchars,a1
 		bsr	strcmp
 		bne	not_histchars
 
 		clr.w	histchar1(a5)
 		clr.w	histchar2(a5)
-		tst.w	d2
-		beq	set_svar_return0
+		tst.w	d1
+		beq	set_histchars_done
 
-		bsr	get_histchar
-		beq	set_svar_return0
+		movea.l	a2,a0
+		bsr	scanchar2
+		beq	set_histchars_done
 
-		move.w	d0,histchar1(a5)
+			move.w	d0,histchar1(a5)
 
-		bsr	get_histchar
-		beq	set_svar_return0
+		bsr	scanchar2
+		beq	set_histchars_done
 
-		move.w	d0,histchar2(a5)
+			move.w	d0,histchar2(a5)
+set_histchars_done:
 		bra	set_svar_return0
-**
-get_histchar:
-			move.b	(a2)+,d0
-			beq	get_histchar_return
-
-			bsr	issjis
-			bne	get_histchar_return
-
-			lsl.w	#8,d0
-			move.b	(a2)+,d0
-			bne	get_histchar_return
-
-			clr.w	d0
-get_histchar_return:
-			rts
 ****************
 not_histchars:
-		lea	word_wordchars,a0
+		lea	word_wordchars,a1
 		bsr	strcmp
 		bne	not_wordchars
 
-		tst.w	d2
+		tst.w	d1
 		bne	set_wordchars
 
 		lea	str_nul,a2
@@ -136,19 +105,44 @@ set_wordchars:
 		bra	set_svar_return0
 ****************
 not_wordchars:
-		tst.b	d1				*  エクスポートが禁止されているならば
+		tst.b	d2				*  エクスポートが禁止されているならば
 		beq	set_svar_return0		*  完了
 
-		lea	word_path,a0
+		lea	word_path,a1
 		bsr	strcmp
 		bne	not_path
 
 		bsr	rehash
 
 		movea.l	a2,a0				*  A0 : シェル変数 path の値
+		movea.l	tmpargs(a5),a2			*  A2 : バッファ
+		clr.b	(a2)
+		st	d2				*  D2.B : first flag
+		bra	export_build_path_continue
+
+export_build_path_loop:
+		bsr	is_builtin_dir
+		bne	ignore
+
+		tst.b	d2
+		bne	dup_a_word
+
+		move.b	#';',(a2)+
+dup_a_word:
+		movea.l	a0,a1
+		exg	a0,a2
+		bsr	stpcpy
+		exg	a0,a2
+		sf	d2
+ignore:
+		bsr	strfor1
+export_build_path_continue:
+		dbra	d1,export_build_path_loop
+
+		movea.l	tmpargs(a5),a0
+		bsr	sltobsl
 		lea	word_path,a1
-		bsr	export_path
-		bra	set_svar_return_x
+		bra	set_svar_setenv
 ****************
 not_path:
 		lea	export_table-6,a3
@@ -157,13 +151,13 @@ compare_export_loop:
 		move.l	(a3)+,d0
 		beq	set_svar_return0
 
-		movea.l	d0,a0
+		movea.l	d0,a1
 		bsr	strcmp
 		bne	compare_export_loop
 
-		lea	tmpargs,a0			*  A0 : バッファ
+		movea.l	tmpargs(a5),a0			*  A0 : バッファ
 		clr.b	(a0)
-		tst.w	d2
+		tst.w	d1
 		beq	do_export
 
 		movea.l	a2,a1				*  A1 : シェル変数の値
@@ -173,10 +167,10 @@ compare_export_loop:
 
 		bsr	sltobsl
 do_export:
-		movea.l	a0,a1
-		movea.l	(a3),a0				*  A0 : 環境変数名
+		movea.l	(a3),a1				*  A1 : 環境変数名
+set_svar_setenv:
+		exg	a0,a1
 		bsr	fish_setenv
-set_svar_return_x:
 		beq	set_svar_return1
 set_svar_return0:
 		moveq	#0,d0
@@ -189,41 +183,6 @@ no_space_in_shellvar:
 set_svar_return1:
 		moveq	#1,d0
 		bra	set_svar_return
-****************************************************************
-export_path:
-		movem.l	d2/a0,-(a7)
-		move.l	a1,-(a7)
-		lea	tmpargs,a2			*  A2 : バッファ
-		clr.b	(a2)
-		st	d1				*  D1 : first flag
-		bra	export_build_path_continue
-
-export_build_path_loop:
-		bsr	is_builtin_dir
-		beq	ignore
-
-		tst.b	d1
-		bne	dup_a_word
-
-		move.b	#';',(a2)+
-dup_a_word:
-		movea.l	a0,a1
-		exg	a0,a2
-		bsr	stpcpy
-		exg	a0,a2
-		sf	d1
-ignore:
-		bsr	strfor1
-export_build_path_continue:
-		dbra	d2,export_build_path_loop
-
-		lea	tmpargs,a0
-		bsr	sltobsl
-		movea.l	a0,a1
-		movea.l	(a7)+,a0
-		bsr	fish_setenv
-		movem.l	(a7)+,d2/a0
-		rts
 ****************************************************************
 * set_shellvar_nul - シェル変数に空文字列をセットする．exportはしない
 *
@@ -279,6 +238,7 @@ set_shellvar_num:
 
 .xdef word_histchars
 .xdef word_wordchars
+.xdef str_nul
 
 .even
 export_table:
@@ -298,6 +258,10 @@ export_table:
 		dc.l	word_upper_term
 		dc.w	0
 
+		dc.l	word_columns
+		dc.l	word_upper_columns
+		dc.w	0
+
 		dc.l	word_shlvl
 		dc.l	word_upper_shlvl
 		dc.w	0
@@ -305,7 +269,7 @@ export_table:
 		dc.l	0
 
 word_histchars:		dc.b	'histchars',0
-word_wordchars:		dc.b	'wordchars',0
-word_quick:		dc.b	'quick',0
+word_wordchars:		dc.b	'wordchars'
+str_nul:		dc.b	0
 
 .end

@@ -3,6 +3,7 @@
 
 .include ../src/var.h
 
+.xref atou
 .xref strlen
 .xref strcmp
 .xref strmove
@@ -67,7 +68,7 @@ freevar_done:
 		movem.l	(a7)+,d0/a0
 		rts
 ****************************************************************
-* dupvar - 変数（シェル変数，別名）を複製する
+* dupvar - 変数を複製する
 *
 * CALL
 *      A4     source BSS top
@@ -129,7 +130,7 @@ dupvar_return:
 		movem.l	(a7)+,d1-d3/a0-a3
 		rts
 ****************************************************************
-* findvar - 変数（シェル変数，別名）を探す
+* findvar - 変数を探す
 *
 * CALL
 *      A0     変数リストの根
@@ -198,6 +199,25 @@ find_shellvar:
 		bsr	findvar
 		movea.l	(a7)+,a1
 		rts
+****************************************************************
+* get_shellvar - シェル変数を得る
+*
+* CALL
+*      A0     変数名の先頭アドレス
+*
+* RETURN
+*      A0     変数の値の先頭アドレス（もしあれば）
+*      D0.L   値の単語数（変数が無ければ 0）
+****************************************************************
+****************************************************************
+* get_var_value - 変数の値を得る
+*
+* CALL
+*      D0.L   変数の先頭アドレス
+*
+* RETURN
+*      A0     変数の値の先頭アドレス
+*      D0.L   値の単語数
 ****************************************************************
 .xdef get_shellvar
 .xdef get_var_value
@@ -335,11 +355,10 @@ setvar_return:
 		movem.l	(a7)+,d1-d2/a0/a3-a4
 		rts
 ****************************************************************
-* printvar - 変数の値を表示する
+* print_var_value - 変数の値を表示する
 *
 * CALL
-*      A0     変数の値の先頭アドレス
-*      D0.W   変数の要素数
+*      D0.L   変数の先頭アドレス
 *
 * RETURN
 *      無し
@@ -347,40 +366,27 @@ setvar_return:
 .xdef print_var_value
 
 print_var_value:
-		movem.l	d0-d2/a1,-(a7)
-		move.w	d0,d2
-		cmp.w	#1,d2
-		beq	print_var_value_start
-
-		move.b	#'(',d0			* ( を
-		bsr	putc			* 表示する
-print_var_value_start:
-		move.w	d2,d0
+		movem.l	d0/a0-a1,-(a7)
+		bsr	get_var_value
 		lea	cputs(pc),a1
 		bsr	echo
-
-		cmp.w	#1,d2
-		beq	print_var_value_done
-
-		move.b	#')',d0			* ) を
-		bsr	putc			* 表示する
-print_var_value_done:
-		movem.l	(a7)+,d0-d2/a1
+		movem.l	(a7)+,d0/a0-a1
 		rts
 ****************************************************************
-* print_var - 変数を表示する
+* printvar - 変数を表示する
 *
 * CALL
-*      A0     変数領域の先頭アドレス
+*      A3     変数領域の先頭アドレスを格納しているポインタのアドレス
 *
 * RETURN
-*      無し
+*      D0.L   0
+*      CCR    TST.L D0
 ****************************************************************
 .xdef printvar
 
 printvar:
-		movem.l	d0/a0-a1,-(a7)
-		movea.l	a0,a1
+		movem.l	d1/a0-a1,-(a7)
+		movea.l	(a3),a1
 printvar_loop:
 		cmpa.l	#0,a1
 		beq	printvar_done
@@ -388,17 +394,154 @@ printvar_loop:
 		lea	var_body(a1),a0
 		bsr	cputs			*  変数名を表示する
 		bsr	put_tab			*  水平タブを表示する
-		bsr	strfor1			*  A0 : 変数の値のアドレス
-		move.w	var_nwords(a1),d0	*  D0.W : 変数の値の語数
-		bsr	print_var_value		*  変数の値を表示する
+		move.w	var_nwords(a1),d1
+		subq.w	#1,d1
+		beq	printvar_value_1
+
+		moveq	#'(',d0			* ( を
+		bsr	putc			* 表示する
+printvar_value_1:
+		move.l	a1,d0
+		bsr	print_var_value
+		tst.w	d1
+		beq	printvar_value_2
+
+		moveq	#')',d0			* ) を
+		bsr	putc			* 表示する
+printvar_value_2:
 		bsr	put_newline		*  改行する
 		movea.l	var_next(a1),a1		*  次の変数のポインタ
 		bra	printvar_loop		*  繰り返す
 
 printvar_done:
-		movem.l	(a7)+,d0/a0-a1
+		movem.l	(a7)+,d1/a0-a1
+return_0:
+		moveq	#0,d0
 		rts
 ****************************************************************
+svartou_sub1:
+		moveq	#0,d1
+		moveq	#0,d2
+		bsr	find_shellvar
+		beq	svartou_sub1_done		*  変数が無い ; return 0
 
+		moveq	#1,d2
+		bsr	get_var_value
+		beq	svartou_sub1_done		*  単語が無い ; return 1
+
+		moveq	#2,d2				*  単語が空   ; return 2
+		tst.b	(a0)
+svartou_sub1_done:
+		rts
+****************************************************************
+svartou_sub2:
+		moveq	#3,d2
+		bsr	atou
+		bmi	svartou_sub2_done		*  数字で始まっていない ; return 3
+
+		moveq	#4,d2
+		tst.b	(a0)
+		bne	svartou_sub2_done		*  数字の後に文字がある ; return 4
+
+		moveq	#5,d2
+		cmp.w	d2,d2
+svartou_sub2_done:
+		rts
+****************************************************************
+* svartou - シェル変数を探し、最初の要素を数値に変換する
+*           無符合
+*
+* CALL
+*      A0     変数名を指す
+*
+* RETURN
+*      D0.L    0 : 変数が無い...D1:=0
+*              1 : 要素が無い...D1:=0
+*              2 : 要素が空文字列...D1:=0
+*              3 : 単語が数字で始まっていない...D1:=0
+*              4 : 数字以外の文字がある
+*              5 : 成功
+*             -1 : オーバーフローした
+*
+*      D1.L   値
+*
+*      CCR    TST.L D0
+****************************************************************
+.xdef svartou
+
+svartou:
+		movem.l	d2/a0,-(a7)
+		bsr	svartou_sub1
+		beq	svartou_return
+
+		bsr	svartou_sub2
+		bne	svartou_return
+
+		tst.l	d0
+		beq	svartou_return
+
+		moveq	#-1,d2				*  オーバーフロー ; return -1
+svartou_return:
+		move.l	d2,d0
+		movem.l	(a7)+,d2/a0
+		rts
+****************************************************************
+* svartol - シェル変数を探し、最初の要素を数値に変換する
+*           符号付き
+*
+* CALL
+*      A0     変数名を指す
+*
+* RETURN
+*      D0.L    0 : 変数が無い...D1:=0
+*              1 : 要素が無い...D1:=0
+*              2 : 要素が空文字列...D1:=0
+*              3 : 単語が数字または符号で始まっていない...D1:=0
+*              4 : 数字以外の文字がある
+*              5 : 成功
+*             -1 : オーバーフローした
+*
+*      D1.L   値
+*             オーバーフローの場合にも符号ビットが符号を表わす
+*
+*      CCR    TST.L D0
+****************************************************************
+.xdef svartol
+
+svartol:
+		movem.l	d2-d3/a0,-(a7)
+		bsr	svartou_sub1
+		beq	svartol_return
+
+		moveq	#-1,d3
+		cmpi.b	#'-',(a0)
+		beq	svartol_skip_sign
+
+		moveq	#1,d3
+		cmpi.b	#'+',(a0)
+		bne	svartol_atou
+svartol_skip_sign:
+		addq.l	#1,a0
+svartol_atou:
+		bsr	svartou_sub2
+		bne	svartol_return
+
+		tst.l	d0
+		bne	svartol_overflow		*  オーバーフロー
+
+		tst.l	d1
+		bpl	svartol_1
+svartol_overflow:
+		bclr	#31,d1
+		moveq	#-1,d2
+svartol_1:
+		tst.l	d3
+		bpl	svartol_return
+
+		neg.l	d1
+svartol_return:
+		move.l	d2,d0
+		movem.l	(a7)+,d2-d3/a0
+		rts
+****************************************************************
 .end
-

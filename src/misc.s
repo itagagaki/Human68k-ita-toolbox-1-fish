@@ -88,7 +88,7 @@ xcputs_done:
 .xdef putc
 
 cputc:
-		bsr	iscntrl
+		jsr	iscntrl
 		bne	putc
 
 		move.l	d0,-(a7)
@@ -305,7 +305,7 @@ putsex_loop:
 		bsr	basic_escape_sequence
 		beq	putsex_escape_0
 
-		bsr	isodigit
+		jsr	isodigit
 		beq	putsex_octal
 
 		cmp.b	#'c',d0
@@ -434,7 +434,7 @@ wordlistpcmp:
 wordlistpcmp_loop:
 		moveq	#0,d0
 		exg	a0,a1
-		bsr	strpcmp
+		jsr	strpcmp
 		exg	a0,a1
 		beq	wordlistpcmp_return	*  現状の作業ディレクトリを受け入れる
 

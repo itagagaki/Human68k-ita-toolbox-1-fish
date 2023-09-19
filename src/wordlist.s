@@ -11,7 +11,6 @@
 .xref strcmp
 .xref strmove
 .xref strfor1
-.xref strforn
 .xref memmovi
 .xref rotate
 .xref is_word_separator
@@ -26,6 +25,7 @@
 *      A0     source line address
 *      A1     destination word list buffer address (MAXWORDLISTSIZE)
 *      D1.W   バッファの容量
+*      D2.B   非0:complete用
 *
 * RETURN
 *      D0.L   正数ならば成功．下位ワードは語数．
@@ -42,28 +42,34 @@
 *           (  )  ;  |  ||  &  &&  <  <<  >  >>  （以上は csh と同じ）
 *           <=  >=  <<=  >>=  &=  |=
 *
-*      エスケープされていない $ および $? に続く文字は特別な意味を持
-*      たない
-*
 *      エスケープされていない $ の直後に { があるとき、次に現われる }
 *      までの文字は特別な意味を持たない
+*
+*      エスケープされていない $ に続く $ は特別な意味を持たない
+*
+*      エスケープされていない $ に続く < は特別な意味を持たない
+*
+*      エスケープされていない $? に続く < は特別な意味を持たない
 *****************************************************************
 .xdef make_wordlist
 
 make_wordlist:
 		movem.l	d2-d6/a0/a2,-(a7)
-		moveq	#0,d2			*  D2.W : 単語数
+		moveq	#0,d3			*  D3.W : 単語数
 make_wordlist_loop:
 		jsr	skip_space		*  空白をスキップする
 		movea.l	a0,a2
-		move.b	(a2)+,d0		*  最初の文字が
-		beq	make_wordlist_done	*  NULならば終わり
+		move.b	(a2)+,d0
+		bne	make_wordlist_1
 
-		addq.w	#1,d2
-		cmp.w	#MAXWORDS,d2
+		tst.b	d2
+		beq	make_wordlist_done
+make_wordlist_1:
+		addq.w	#1,d3
+		cmp.w	#MAXWORDS,d3
 		bhi	make_wordlist_too_many_words
 
-		move.w	#MAXWORDLEN+1,d3	* 単語の終わりのNULの分も勘定する
+		move.w	#MAXWORDLEN+1,d4	*  単語の終わりのNULの分も勘定する
 
 		bsr	isspace2
 		beq	special_word_1
@@ -90,80 +96,83 @@ make_wordlist_loop:
 		beq	special_word_and_or
 
 		subq.l	#1,a2
-		moveq	#0,d5			*  D5 : ${}レベル
+		moveq	#0,d6			*  D6.L : ${}レベル
 		moveq	#0,d0
 make_wordlist_normal_loop_0:
-		move.b	d0,d4			*  D4 : クオート・フラグ
+		move.b	d0,d5			*  D5.B : クオート・フラグ
 make_wordlist_normal_loop_1:
-		moveq	#0,d6			*  D6 : -1:$の次，1:$?の次
-make_wordlist_normal_loop_2:
 		move.b	(a2),d0
-		beq	make_wordlist_terminate_word
+		beq	make_wordlist_terminate_word_nomore
 
 		addq.l	#1,a2
 		bsr	issjis
 		beq	make_wordlist_dup_sjis
 
-		cmp.b	d4,d0
+		cmp.b	d5,d0
 		bne	make_wordlist_not_close_quote
 
-			moveq	#0,d4
+			moveq	#0,d5
 			bra	make_wordlist_check_term
 
 make_wordlist_not_close_quote:
-		cmp.b	#'{',d0
-		bne	make_wordlist_not_open_brace
-
-			tst.b	d6
-			bpl	make_wordlist_check_term
-
-			addq.l	#1,d5
-			bra	make_wordlist_check_term
-
-make_wordlist_not_open_brace:
 		cmp.b	#'}',d0
 		bne	make_wordlist_not_close_brace
 
-			tst.l	d5
+			tst.l	d6
 			beq	make_wordlist_check_term
 
-			subq.l	#1,d5
+			subq.l	#1,d6
 			bra	make_wordlist_check_term
 
 make_wordlist_not_close_brace:
-		cmp.b	#"'",d4
+		cmp.b	#"'",d5
 		beq	make_wordlist_normal_loop_1
 
-		cmp.b	#"`",d4
+		cmp.b	#"`",d5
 		beq	make_wordlist_normal_loop_1
 
 		cmp.b	#'$',d0
 		bne	make_wordlist_not_doller
 
-			tst.b	d6
-			bne	make_wordlist_check_term
+			move.b	(a2)+,d0
+			cmp.b	#'?',d0
+			bne	make_wordlist_doller_no_question
 
-			moveq	#1,d6
-			cmpi.b	#'?',(a2)
-			beq	make_wordlist_doller_1
+			move.b	(a2)+,d0
+			bra	make_wordlist_doller_check_less
 
-			moveq	#-1,d6
-			cmpi.b	#'{',(a2)
-			bne	make_wordlist_normal_loop_2
+make_wordlist_doller_no_question:
+			cmp.b	#'{',d0
+			beq	make_wordlist_doller_brace
 
-			tst.b	d4
-			bne	make_wordlist_normal_loop_2
+			cmp.b	#'@',d0
+			beq	make_wordlist_doller_special
 
-			tst.l	d5
-			bne	make_wordlist_normal_loop_2
+			cmp.b	#'%',d0
+			beq	make_wordlist_doller_special
 
-			addq.l	#1,d5
-make_wordlist_doller_1:
-			addq.l	#1,a2
-			bra	make_wordlist_normal_loop_2
+			cmp.b	#'$',d0
+			beq	make_wordlist_doller_ok
+make_wordlist_doller_check_less:
+			cmp.b	#'<',d0
+			beq	make_wordlist_doller_ok
+			bra	make_wordlist_doller_unknown
+
+make_wordlist_doller_special:
+			move.b	(a2)+,d0
+			cmp.b	#'{',d0
+			beq	make_wordlist_doller_brace
+make_wordlist_doller_unknown:
+			subq.l	#1,a2
+			bra	make_wordlist_doller_ok
+
+make_wordlist_doller_brace:
+			addq.l	#1,d6
+make_wordlist_doller_ok:
+			bra	make_wordlist_check_term
 
 make_wordlist_not_doller:
-		tst.b	d4
+		tst.b	d5
 		bne	make_wordlist_normal_loop_1
 
 		cmp.b	#'"',d0
@@ -183,21 +192,23 @@ make_wordlist_not_doller:
 		beq	make_wordlist_normal_loop_1
 make_wordlist_dup_sjis:
 		tst.b	(a2)
-		beq	make_wordlist_terminate_word
+		beq	make_wordlist_terminate_word_nomore
 
 		addq.l	#1,a2
 make_wordlist_check_term:
-		tst.b	d4
+		tst.b	d5
 		bne	make_wordlist_normal_loop_1
 
-		tst.l	d5
+		tst.l	d6
 		bne	make_wordlist_normal_loop_1
 
 		move.b	(a2),d0
+		beq	make_wordlist_terminate_word_nomore
+
 		bsr	is_word_separator
 		bne	make_wordlist_normal_loop_1
 
-		bra	make_wordlist_terminate_word
+		bra	make_wordlist_terminate_word_more
 ****************
 special_word_less_great:
 		cmp.b	(a2),d0
@@ -228,6 +239,12 @@ special_word_3:
 special_word_2:
 		addq.l	#1,a2
 special_word_1:
+make_wordlist_terminate_word_more:
+		st	d5
+		bra	make_wordlist_terminate_word
+
+make_wordlist_terminate_word_nomore:
+		sf	d5
 make_wordlist_terminate_word:
 		move.l	a2,d0
 		sub.l	a0,d0
@@ -238,7 +255,7 @@ make_wordlist_terminate_word:
 		sub.w	d0,d1
 		bcs	make_wordlist_too_long_line
 
-		sub.w	d0,d3
+		sub.w	d0,d4
 		bcs	make_wordlist_too_long_word
 
 		subq.l	#1,d0
@@ -246,23 +263,32 @@ make_wordlist_terminate_word:
 		bsr	memmovi
 		clr.b	(a0)+
 		exg	a0,a1
-		bra	make_wordlist_loop
-****************
+		tst.b	d5				*  more?
+		bne	make_wordlist_loop
 make_wordlist_done:
-		move.l	d2,d0
+		move.l	d3,d0
 make_wordlist_return:
 		movem.l	(a7)+,d2-d6/a0/a2
 		rts
 ********************************
 make_wordlist_too_long_line:
+		tst.b	d2
+		bne	make_wordlist_error
+
 		bsr	too_long_line
 		bra	make_wordlist_error
 
 make_wordlist_too_long_word:
+		tst.b	d2
+		bne	make_wordlist_error
+
 		bsr	too_long_word
 		bra	make_wordlist_error
 
 make_wordlist_too_many_words:
+		tst.b	d2
+		bne	make_wordlist_error
+
 		bsr	too_many_words
 make_wordlist_error:
 		moveq	#-1,d0
@@ -372,7 +398,7 @@ close_paren_found:
 *      なし
 *
 * NOTE
-*      アルゴリズムは単純選択法．遅い．実行時間はpow(N,2)のオーダー．
+*      アルゴリズムは単純選択法．遅い．O(N*(N-1)/2)
 *      交換は配列を巡回しているので特に遅い．
 *      安定ではある．
 *****************************************************************
@@ -389,9 +415,6 @@ sort_wordlist:
 sort_wordlist_x:
 		movem.l	d0-d2/a0-a3,-(a7)
 		move.w	d0,d1				*  D1.W : 要素数
-		movea.l	a0,a2
-		bsr	strforn
-		exg	a0,a2				*  A0:最初の要素  A2:最後の要素の次
 sort_wordlist_loop2:
 		cmp.w	#2,d1
 		blo	sort_wordlist_done
@@ -411,12 +434,30 @@ sort_wordlist_loop1_start:
 sort_wordlist_loop1_continue:
 		dbra	d2,sort_wordlist_loop1
 
-		movea.l	a3,a0
-		cmpa.l	a0,a1				*  先頭の単語が最小なら
+		cmpa.l	a3,a1				*  先頭の単語が最小なら
 		beq	sort_wordlist_loop2_continue	*  交換しない
 
-		bsr	rotate
+		movea.l	a1,a0
+		bsr	strfor1
+		movea.l	a0,a2
+		movea.l	a3,a0
+		bsr	strlen
+		addq.l	#1,d0
+		add.l	a1,d0
+		cmp.l	a2,d0
+		bne	sort_wordlist_rotate
+wort_wordlist_exchange_loop:
+		move.b	(a0),d0
+		move.b	(a1),(a0)+
+		beq	sort_wordlist_loop2
+
+		move.b	d0,(a1)+
+		bra	wort_wordlist_exchange_loop
+
+sort_wordlist_rotate:
+		jsr	rotate
 sort_wordlist_loop2_continue:
+		movea.l	a3,a0
 		bsr	strfor1
 		bra	sort_wordlist_loop2
 
@@ -567,7 +608,7 @@ common_spell_loop1:
 		tst.b	d2				*  大文字と小文字を区別
 		beq	common_spell_ank_1		*  しないなら
 
-		bsr	tolower				*  tolower しておく
+		jsr	tolower				*  tolower しておく
 common_spell_ank_1:
 		move.b	d0,d6
 		bra	common_spell_ank_continue
@@ -579,7 +620,7 @@ common_spell_ank_loop:
 		tst.b	d2				*  （大文字と小文字を区別
 		beq	common_spell_ank_2		*    しないなら
 
-		bsr	tolower				*    tolower してから）
+		jsr	tolower				*    tolower してから）
 common_spell_ank_2:
 		cmp.b	d6,d0				*  比較する．
 		bne	common_spell_done		*  一致しない単語がある…ここまで

@@ -3,8 +3,14 @@
 *
 * Itagaki Fumihiko 15-Jul-90  Create.
 
+.include ../src/fish.h
 .include ../src/var.h
 
+.xref isdigit
+.xref isupper
+.xref islower
+.xref isalpha
+.xref isalnum
 .xref strfor1
 .xref strforn
 .xref divsl
@@ -22,6 +28,7 @@
 .xref undefined
 .xref ambiguous
 .xref syntax_error
+.xref expression_syntax_error
 .xref bad_subscript
 .xref subscript_out_of_range
 .xref divide_by_0
@@ -29,10 +36,10 @@
 .xref strmove
 .xref str_nul
 
-.xref tmpargs
-
 .xref shellvar_top
 .xref tmpline
+.xref tmpword1
+.xref tmpargs
 
 OP_ASSIGN	equ	1
 OP_MULASSIGN	equ	2
@@ -73,16 +80,17 @@ OP_DECREMENT	equ	13
 .xdef cmd_set
 
 cmd_set:
-		move.w	d0,d7				* 引数が無いなら
-		beq	set_disp			* シェル変数のリストを表示
+		lea	shellvar_top(a5),a3
+		move.w	d0,d7				*  引数が無いなら
+		beq	printvar			*  シェル変数のリストを表示
 set_loop:
 		tst.w	d7
-		beq	set_success_return
+		beq	return_0
 
 		bsr	scan_name_and_index
-		bne	cmd_set_return
+		bne	return
 
-		sf	d3				*  D3 : ()フラグ
+		sf	d3				*   D3 : ()フラグ
 		cmpi.b	#'=',(a0)
 		bne	cmd_set_not_includes_equal
 
@@ -144,14 +152,14 @@ set_arg_word:
 		bsr	strfor1
 		subq.w	#1,d7
 set_value:
-		movea.l	a0,a4				* A4 : 次の引数を指すポインタ
-		move.l	a1,d6				* D6.L : 展開前の値を指すポインタ
-		lea	tmpargs,a0
+		movea.l	a0,a4				*  A4 : 次の引数を指すポインタ
+		move.l	a1,d6				*  D6.L : 展開前の値を指すポインタ
+		movea.l	tmpargs(a5),a0
 		bsr	expand_wordlist
-		bmi	cmd_set_return
+		bmi	return
 
-		movea.l	a0,a1				* A1 : value wordlist
-		tst.l	d2				* [index]形式か？
+		movea.l	a0,a1				*  A1 : value wordlist
+		tst.l	d2				*  [index]形式か？
 		bpl	do_set_a_element
 
 		tst.b	d3
@@ -167,15 +175,15 @@ do_set_one:
 		bra	cmd_set_next
 
 do_set_a_element:
-		cmp.w	#1,d0				* [index]形式なのに単語数が
-		bhi	set_ambiguous			* １個を超えるならエラー
-		beq	do_set_a_element_1		* １個ならばＯＫ
+		cmp.w	#1,d0				*  [index]形式なのに単語数が
+		bhi	set_ambiguous			*  １個を超えるならエラー
+		beq	do_set_a_element_1		*  １個ならばＯＫ
 
-		clr.b	(a1)				* 0個ならば "\0" とする
+		clr.b	(a1)				*  0個ならば "\0" とする
 do_set_a_element_1:
 		bsr	set_a_element
 cmd_set_next:
-		bne	cmd_set_return
+		bne	return
 
 		movea.l	a4,a0
 		bra	set_loop
@@ -183,14 +191,6 @@ cmd_set_next:
 set_ambiguous:
 		movea.l	d6,a0
 		bra	ambiguous
-********************************
-set_disp:
-		movea.l	shellvar_top(a5),a0
-		bsr	printvar
-set_success_return:
-		moveq	#0,d0
-cmd_set_return:
-		rts
 ****************************************************************
 *  Name
 *       @ - シェル変数の表示と設定
@@ -223,11 +223,13 @@ cmd_set_return:
 .xdef cmd_set_expression
 
 cmd_set_expression:
-		move.w	d0,d7			* 引数が無いなら
-		beq	set_disp		* シェル変数のリストを表示
+		lea	shellvar_top(a5),a3
+		move.w	d0,d7				*  引数が無いなら
+		beq	printvar			*  シェル変数のリストを表示
 set_expression_loop:
+		moveq	#0,d0
 		tst.w	d7
-		beq	cmd_set_expression_success_return
+		beq	cmd_set_expression_return
 
 		bsr	scan_name_and_index
 		bne	cmd_set_expression_return
@@ -268,15 +270,8 @@ set_expression_op_ok:
 
 		subq.w	#1,d7
 		moveq	#1,d1
-		cmp.b	#OP_DECREMENT,d4
-		beq	set_expression_decrement
-**  var ++
-		moveq	#OP_ADDASSIGN,d4
 		bra	set_expression_postcalc
-**  var --
-set_expression_decrement:
-		moveq	#OP_SUBASSIGN,d4
-		bra	set_expression_postcalc
+
 **  var op= expr
 set_expression_expression:
 		tst.b	(a0)
@@ -289,8 +284,8 @@ set_expression_do_expression:
 		bne	cmd_set_expression_return
 ********************************
 set_expression_postcalc:
-		movea.l	a0,a4				* A4 : 次の引数
-		move.l	d1,d5				* D5.L : 右辺値
+		movea.l	a0,a4				*  A4 : 次の引数
+		move.l	d1,d5				*  D5.L : 右辺値
 		*
 		*  A4   : 引数ポインタ
 		*  D7.W : 引数カウンタ
@@ -326,7 +321,64 @@ set_expression_check_nwords:
 
 		movea.l	a0,a1
 		bsr	expr_atoi
-		bne	cmd_set_expression_return
+		beq	set_expression_lvalue_ok
+
+		cmp.b	#OP_INCREMENT-OP_ASSIGN,d4
+		bne	expression_syntax_error
+
+		move.b	(a1),d0
+		bsr	isalpha
+		bne	expression_syntax_error
+
+		lea	tmpword1+1,a0
+test_magical_increment:
+		move.b	(a1)+,d0
+		beq	do_magical_increment
+
+		bsr	isalnum
+		bne	expression_syntax_error
+
+		move.b	d0,(a0)+
+		bra	test_magical_increment
+
+do_magical_increment:
+		clr.b	(a0)
+		lea	tmpword1+1,a1
+		move.l	a0,d1
+		sub.l	a1,d1
+magical_increment_loop:
+		move.b	-(a0),d0
+		moveq	#'a',d3
+		moveq	#'z',d4
+		bsr	islower
+		beq	magical_increment_1
+
+		moveq	#'A',d3
+		moveq	#'Z',d4
+		bsr	isupper
+		beq	magical_increment_1
+
+		moveq	#'0',d3
+		moveq	#'9',d4
+		bsr	isdigit
+		bne	expression_syntax_error
+magical_increment_1:
+		addq.b	#1,d0
+		move.b	d0,(a0)
+		cmp.b	d4,d0
+		bls	magical_increment_ok
+
+		move.b	d3,(a0)
+		cmpa.l	a1,a0
+		bne	magical_increment_loop
+
+		cmp.w	#MAXWORDLEN,d1
+		bhs	expression_syntax_error
+
+		move.b	d3,-(a1)
+magical_increment_ok:
+		bra	set_expression_do_set
+
 set_expression_lvalue_ok:
 		move.l	d5,d0
 		*
@@ -394,8 +446,7 @@ postcalc_mul:
 postcalc_itoa_0:
 		move.l	d0,d1
 postcalc_itoa:
-		link	a6,#-12
-		lea	-12(a6),a1
+		lea	tmpword1,a1
 		bsr	expr_itoa
 		*
 		*  A4   : 引数ポインタ
@@ -404,24 +455,10 @@ postcalc_itoa:
 		*  D2.L : 左辺変数の添字の値（[index]形式で無ければ-1）
 		*  A1   : 値を表す文字列が格納されているバッファのアドレス
 		*
-		tst.l	d2				*  [index]形式でなければ
-		bmi	do_set_expression		*  name に A1 を設定する
-
-		bsr	set_a_element
-		bra	set_expression_next
-
-do_set_expression:
-		moveq	#1,d0
-		bsr	do_set
-set_expression_next:
-		unlk	a6
-		bne	cmd_set_expression_return
-
+set_expression_do_set:
+		bsr	do_set_expression
 		movea.l	a4,a0
-		bra	set_expression_loop
-
-cmd_set_expression_success_return:
-		moveq	#0,d0
+		beq	set_expression_loop
 cmd_set_expression_return:
 		rts
 ****************************************************************
@@ -437,8 +474,8 @@ cmd_set_expression_return:
 *      CCR    TST.L D0
 ****************************************************************
 scan_name_and_index:
-		movea.l	a0,a2			* A2 : name
-		moveq	#-1,d2			* D2.L : index
+		movea.l	a0,a2				*  A2 : name
+		moveq	#-1,d2				*  D2.L : index
 		bsr	skip_varname
 		cmpa.l	a2,a0
 		beq	syntax_error
@@ -456,7 +493,9 @@ scan_name_and_index:
 		move.l	d1,d2
 		bmi	subscript_out_of_range
 name_and_index_are_ok:
+return_0:
 		moveq	#0,d0
+return:
 		rts
 ****************************************************************
 * CALL
@@ -567,6 +606,11 @@ no_operator:
 scan_assign_operator_return:
 		rts
 ****************************************************************
+do_set_expression:
+		moveq	#1,d0
+		tst.l	d2				*  [index]形式でなければ
+		bmi	do_set				*  name に A1 を設定する
+****************************************************************
 * CALL
 *      A1     セットする値（文字列）
 *      A2     名前
@@ -651,6 +695,7 @@ postcalc_jump_table:
 		dc.l	postcalc_and
 		dc.l	postcalc_xor
 		dc.l	postcalc_or
+		dc.l	postcalc_add
+		dc.l	postcalc_sub
 
 .end
-

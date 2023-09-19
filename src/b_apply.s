@@ -11,11 +11,10 @@
 .xref strlen
 .xref strforn
 .xref memmovi
-.xref wordlistlen
-.xref xmalloc
+.xref alloc_new_argbuf
 .xref free_current_argbuf
-.xref eput_newline
 .xref eputs
+.xref ecputs
 .xref enputs1
 .xref subst_history
 .xref ask_yes
@@ -25,10 +24,9 @@
 .xref bad_arg
 .xref too_large_number
 .xref too_long_line
-.xref cannot_because_no_memory
+.xref cannot_run_command_because_no_memory
 .xref usage
 
-.xref current_argbuf
 .xref tmpline
 .xref command_name
 
@@ -107,31 +105,25 @@ apply_too_large_number:
 		bra	apply_return
 
 cannot_apply:
-		lea	msg_apply,a0
-		bsr	cannot_because_no_memory
+		bsr	cannot_run_command_because_no_memory
 		bra	apply_return
 
 parse_option_done:
 		move.w	d2,d0
 		addq.w	#1,d0
-		bsr	wordlistlen
-		move.l	d0,d5
-		addq.l	#4,d0
-		bsr	xmalloc
+		move.l	d2,d5
+		moveq	#0,d2
+		bsr	alloc_new_argbuf
 		beq	cannot_apply
 
-		movea.l	a0,a1
-		movea.l	d0,a0
-		move.l	current_argbuf(a5),(a0)
-		move.l	a0,current_argbuf(a5)
-		addq.l	#4,a0
-		movea.l	a0,a3
-		move.l	d5,d0
+		movea.l	a0,a3				*  A3 : コマンドのアドレス
+		move.l	d1,d0
 		bsr	memmovi
 		movea.l	a3,a0
 		bsr	strlen
 		move.l	d0,command_len(a6)
 		lea	1(a0,d0.l),a2			*  A2 : 引数ポインタ
+		move.w	d5,d2
 apply_loop:
 		tst.w	d2
 		beq	apply_success_return
@@ -197,27 +189,20 @@ do_command:
 		beq	not_prompt
 
 		lea	tmpline(a5),a0
-		bsr	eputs
-
-		tst.b	prompt_mode(a6)
-		bne	do_prompt
-
-		bsr	eput_newline
-		bra	not_prompt
-
-do_prompt:
+		moveq	#1,d0
+		move.b	prompt_mode(a6),d1
 		bsr	ask_yes
 		bmi	apply_success_return
 		bne	apply_loop
 not_prompt:
-		movem.l	d1-d3/a2-a3,-(a7)
+		movem.l	d2-d3/a2-a3,-(a7)
 		move.l	command_name(a5),-(a7)
 		lea	tmpline(a5),a0
 		clr.b	d2
 		sf	d7
 		jsr	do_line_v			*!! 再帰 !!*
 		move.l	(a7)+,command_name(a5)
-		movem.l	(a7)+,d1-d3/a2-a3
+		movem.l	(a7)+,d2-d3/a2-a3
 		bra	apply_loop
 
 apply_expect:
@@ -225,7 +210,7 @@ apply_expect:
 		lea	msg_expect_1,a0
 		bsr	eputs
 		movea.l	a2,a0
-		bsr	eputs
+		bsr	ecputs
 		lea	msg_expect_2,a0
 		bsr	enputs1
 apply_done:
@@ -250,9 +235,8 @@ apply_too_long_line:
 ****************************************************************
 .data
 
-msg_usage:		dc.b	'[ -p ] [ -t ] [ -<n> ] <コマンド> [ <引数> ... ]',0
-msg_apply:		dc.b	'applyを実行できません',0
+msg_usage:		dc.b	'[-tp] [-<N>] <コマンド行> [ <単語> ... ]',0
 msg_expect_1:		dc.b	"'",0
-msg_expect_2:		dc.b	"' 以降の引数が揃っていません",0
+msg_expect_2:		dc.b	"' 以降の単語数が半端です",0
 
 .end

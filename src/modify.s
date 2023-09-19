@@ -38,6 +38,7 @@
 .xref prev_lhs
 .xref prev_rhs
 .xref not_execute
+.xref in_getline_x
 
 .text
 
@@ -111,7 +112,8 @@ tmp_search_str = -(((MAXSEARCHLEN+1)+1)>>1<<1)
 tmp_subst_str = tmp_search_str-(((MAXSUBSTLEN+1)+1)>>1<<1)
 number = tmp_subst_str-4
 time = number-4
-search_pointer = time-4
+wordlist = time-4
+search_pointer = wordlist-4
 search_counter = search_pointer-2
 special_pattern = search_counter-1
 option = special_pattern-1
@@ -121,7 +123,7 @@ modify:
 		link	a6,#pad
 		movem.l	d1-d7/a2-a4,-(a7)
 		move.w	d1,d4				* D4.W : 単語数
-		movea.l	a0,a4				* A4 : 単語並びのアドレス
+		move.l	a0,a4				* A4 : 単語並びのアドレス
 		movea.l	a1,a3				* A3 : 修飾子のアドレス
 		move.l	d0,d5				* D5.L : ステータス
 		clr.b	option(a6)
@@ -161,8 +163,8 @@ modify_no_g:
 		*}
 modify_no_a:
 		move.b	d0,d6
-		lea	str_modifier_rhtedflu,a0
-		jsr	strchr				*  str_modifier_rhtedflu にはシフトJIS文字は無い
+		lea	str_simple_modifier,a0
+		jsr	strchr				*  str_simple_modifier にはシフトJIS文字は無い
 		bne	modify_simple
 
 		cmp.b	#'s',d0
@@ -198,6 +200,9 @@ bad_modifier:
 		btst	#MODIFYSTATBIT_ERROR,d5
 		bne	modify_loop
 
+		tst.b	in_getline_x(a5)
+		bne	modify_error
+
 		lea	msg_bad_modifier,a0
 		jsr	eputs
 		cmp.w	#$100,d0
@@ -221,10 +226,14 @@ modify_simple:
 		bsr	modify_dup
 		beq	modify_loop
 
+		move.l	a4,wordlist(a6)
 		movea.l	a4,a0
 		move.w	d4,d7
 		subq.w	#1,d7
 		movem.l	d1-d3/a1-a4,-(a7)
+		move.w	d4,d0
+		jsr	wordlistlen
+		move.l	d0,d3
 modify_simple_loop:
 		movea.l	a0,a4
 		jsr	strfor1
@@ -240,10 +249,12 @@ modify_simple_loop:
 		cmp.b	#'u',d6
 		beq	modify_chcase
 
+		move.l	d3,-(a7)
+		jsr	split_pathname
+		move.l	(a7)+,d3
 		cmp.b	#'r',d6
 		beq	modify_root
 
-		bsr	split_pathname
 		cmp.b	#'h',d6
 		beq	modify_head
 
@@ -253,16 +264,40 @@ modify_simple_loop:
 		cmp.b	#'e',d6
 		beq	modify_extention
 
+		cmp.b	#'d',d6
+		beq	modify_drive
+
 		cmp.b	#'f',d6
 		beq	modify_file
 ****************
+modify_add_slash:
+		tst.b	(a2)
+		beq	modify_simple_continue
+
+		addq.l	#1,d3
+		cmp.l	#MAXWORDLISTSIZE,d3
+		bhi	modify_simple_overflow
+
+		jsr	strfor1
+		movea.l	a0,a1
+		movea.l	wordlist(a6),a0
+		adda.l	d3,a0
+		move.l	a0,d0
+		sub.l	a1,d0
+		lea	-1(a0),a1
+		bsr	memmovd
+		move.b	#'/',(a1)
+		addq.l	#1,a0
+		bra	modify_simple_continue
+****************
 modify_drive:
 		cmpa.l	a0,a1
-		beq	modify_simple_cut_tail
+		beq	modify_simple_cut_tail_0
 
 		subq.l	#1,a1
 modify_simple_cut_tail:
 		movea.l	a1,a0
+modify_simple_cut_tail_0:
 		clr.b	(a0)+
 		cmpa.l	a4,a0
 		beq	modify_simple_continue
@@ -273,37 +308,32 @@ modify_simple_cut_tail:
 		bra	modify_simple_continue
 ****************
 modify_root:
-		movea.l	a0,a1
-		bsr	suffix
-		exg	a0,a1
-		beq	modify_simple_cut_tail
+modify_root_loop:
+		movea.l	a2,a0
+		jsr	suffix
+		beq	modify_simple_cut_tail_0
 
 		btst.b	#OPTBIT_A,option(a6)
-		beq	modify_simple_cut_tail
+		beq	modify_simple_cut_tail_0
 
-		clr.b	(a1)
-		bra	modify_root
+		clr.b	(a0)
+		bra	modify_root_loop
 ****************
 modify_head:
 		tst.l	d1
-		beq	modify_head_skip
-modify_head_0:
+		beq	modify_skip
+modify_head_loop:
 		lea	-1(a2),a1
 		btst.b	#OPTBIT_A,option(a6)
 		beq	modify_simple_cut_tail
 
 		clr.b	(a1)
 		move.l	a1,-(a7)
-		bsr	split_pathname
+		jsr	split_pathname
 		movea.l	(a7)+,a1
 		tst.l	d1
 		beq	modify_simple_cut_tail
-		bra	modify_head_0
-
-modify_head_skip:
-		movea.l	a4,a0
-		dbra	d7,modify_simple_loop
-		bra	modify_simple_done
+		bra	modify_head_loop
 ****************
 modify_extention:
 		movea.l	a3,a2
@@ -349,9 +379,18 @@ modify_chcase_sjis:
 modify_simple_continue:
 		btst.b	#OPTBIT_G,option(a6)
 		dbeq	d7,modify_simple_loop
+		bra	modify_simple_done
+
+modify_skip:
+		movea.l	a4,a0
+		dbra	d7,modify_simple_loop
 modify_simple_done:
 		movem.l	(a7)+,d1-d3/a1-a4
 		bra	modify_loop
+
+modify_simple_overflow:
+		bset	#MODIFYSTATBIT_OVFLO,d5
+		bra	modify_simple_done
 ****************
 modify_redo_subst:
 		movea.l	a3,a0
@@ -699,7 +738,11 @@ modify_subst_errorp:
 		btst	#MODIFYSTATBIT_ERROR,d5
 		bne	modify_subst_done
 
+		tst.b	in_getline_x(a5)
+		bne	modify_subst_errorp_1
+
 		jsr	enputs
+modify_subst_errorp_1:
 		bset	#MODIFYSTATBIT_ERROR,d5
 		bra	modify_subst_done
 
@@ -891,7 +934,7 @@ get_subst_option_fail:
 ****************************************************************
 .data
 
-str_modifier_rhtedflu:	dc.b	'rhtedflu',0
+str_simple_modifier:	dc.b	'rhtedflu/',0
 msg_bad_modifier:	dc.b	'無効な修飾子 :',0
 msg_bad_substitute:	dc.b	':sの区切り文字が無効です',0
 msg_lhs_too_long:	dc.b	'文字列修正の検索文字列が長過ぎます',0

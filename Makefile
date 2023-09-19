@@ -10,21 +10,24 @@ TOP       = A:\home\fish
 DESTDIR   = A:\bin
 BACKUPDIR = B:\fish
 
-ARCHIVE_NAME  = FISH070.Lzh
+ARCHIVE_NAME  = FISH080.Lzh
 
 ARCHIVE_FILES = \
-	$(TOP)\doc\MANIFEST \
-	$(TOP)\doc\README \
-	$(TOP)\doc\NOTICE \
-	A:\home\DIRECTORY \
-	$(TOP)\doc\CHANGES \
-	$(TOP)\doc\FAQ \
-	$(TOP)\doc\FISH.DOC \
-	$(TOP)\prg\fish.x \
-	$(TOP)\doc\Pfishrc \
-	$(TOP)\doc\Plogin \
-	$(TOP)\doc\Plogout \
-	$(TOP)\doc\Passwd
+	doc\MANIFEST \
+	doc\README \
+	doc\NOTICE \
+	A:\home\toolbox\DIRECTORY \
+	doc\CHANGES \
+	doc\FAQ \
+	doc\FISH.DOC \
+	prg\fish.x \
+	doc\Pfishrc \
+	doc\Plogin \
+	doc\Plogout \
+	doc\Passwd
+
+CONTRIB_FILES = \
+	contrib\manscrpt.Lzh
 
 define newline
 
@@ -53,30 +56,33 @@ clobber::
 	cd $(TOP)\prg || $(MAKE) clobber
 
 backup::
-	@$(BACKUP) $(TOP)\Makefile $(BACKUPDIR)
-	@$(BACKUP) $(TOP)\src\*.* $(BACKUPDIR)\src
-	@$(BACKUP) $(TOP)\include\*.* $(BACKUPDIR)\include
-	@$(BACKUP) $(TOP)\prg\Makefile $(BACKUPDIR)\prg
-	@$(BACKUP) $(TOP)\prg\fish.x $(BACKUPDIR)\prg
-	@$(BACKUP) $(TOP)\prg\fishg.x $(BACKUPDIR)\prg
-	@$(BACKUP) $(TOP)\lib\Makefile $(BACKUPDIR)\lib
-	@$(BACKUP) $(TOP)\lib\*.s $(BACKUPDIR)\lib
-	@$(BACKUP_R) $(TOP)\extlib\*.* $(BACKUPDIR)\extlib
+	@$(BACKUP) Makefile $(BACKUPDIR)
+	@$(BACKUP) src\*.* $(BACKUPDIR)\src
+	@$(BACKUP) include\*.* $(BACKUPDIR)\include
+	@$(BACKUP) prg\Makefile $(BACKUPDIR)\prg
+	@$(BACKUP) prg\fish.x $(BACKUPDIR)\prg
+	@$(BACKUP) prg\fishg.x $(BACKUPDIR)\prg
+	@$(BACKUP) lib\Makefile $(BACKUPDIR)\lib
+	@$(BACKUP) lib\*.s $(BACKUPDIR)\lib
+	@$(BACKUP_R) extlib\*.* $(BACKUPDIR)\extlib
 
 backup_doc::
-	@$(BACKUP) $(TOP)\doc\*.* $(BACKUPDIR)\doc
+	@$(BACKUP) doc\*.* $(BACKUPDIR)\doc
 
 backup_misc::
-	@$(BACKUP) $(TOP)\FISH_MailList $(BACKUPDIR)\misc
-	@$(BACKUP) $(TOP)\Mail.LZH $(BACKUPDIR)\misc
-	@$(BACKUP) $(TOP)\NewsLetter.Lzh $(BACKUPDIR)\misc
+	@$(BACKUP) FISH_MailList $(BACKUPDIR)\misc
+	@$(BACKUP) Mail.LZH $(BACKUPDIR)\misc
+	@$(BACKUP) NewsLetter.Lzh $(BACKUPDIR)\misc
 
 ###
 
 archive:: $(ARCHIVE_NAME)
 
-$(ARCHIVE_NAME): $(ARCHIVE_FILES)
-	$(foreach i,$?,$(ARCHIVE) $@ $i$(newline))
+$(ARCHIVE_NAME):: $(ARCHIVE_FILES)
+	$(ARCHIVE) $@ $?
+
+$(ARCHIVE_NAME):: $(CONTRIB_FILES)
+	$(ARCHIVE) -x $@ $?
 
 clean::
 	$(RM) $(ARCHIVE_NAME)
@@ -85,6 +91,6 @@ clobber::
 	$(RM) $(ARCHIVE_NAME)
 
 #backup::
-#	@$(BACKUP) $(TOP)\$(ARCHIVE_NAME) $(BACKUPDIR)
+#	@$(BACKUP) $(ARCHIVE_NAME) $(BACKUPDIR)
 
 ###

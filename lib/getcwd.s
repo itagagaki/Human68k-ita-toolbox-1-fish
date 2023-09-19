@@ -30,9 +30,7 @@ getcwd:
 		clr.w	-(a7)
 		DOS	_CURDIR
 		addq.l	#6,a7
-		jsr	bsltosl
 		movem.l	(a7)+,d0/a0
-		rts
+		jmp	bsltosl
 
 .end
-

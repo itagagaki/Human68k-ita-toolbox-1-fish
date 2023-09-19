@@ -11,36 +11,40 @@
 .xref atou
 .xref strlen
 .xref strcmp
-.xref strfor1
+.xref memcmp
+.xref strmove
 .xref memmovi
+.xref strfor1
 .xref wordlistlen
 .xref eputs
-.xref enputs
-.xref enputs1
 .xref ecputs
 .xref eput_newline
 .xref echo
 .xref getline_stdin
-.xref xmalloc
+.xref alloc_new_argbuf
 .xref free_current_argbuf
 .xref DoSimpleCommand_recurse
-.xref perror
+.xref command_error
 .xref perror_command_name
 .xref bad_arg
-.xref too_long_line
+.xref badly_formed_number
 .xref too_long_word
 .xref too_many_words
-.xref cannot_because_no_memory
+.xref cannot_run_command_because_no_memory
 .xref usage
 
-.xref mainjmp
-.xref stackp
-.xref current_argbuf
 .xref simple_args
 .xref argc
 .xref command_name
+.xref undup_input
+.xref undup_output
+.xref save_stdin
+.xref save_stdout
 
 .text
+
+memmovi_near:
+		jmp	memmovi
 
 ****************************************************************
 *  Name
@@ -56,307 +60,259 @@
 *       -p
 *       -x
 *       -ssize
-*       -eeofstr
+*       -eeofword
 ****************************************************************
 .xdef cmd_xargs
 
 save_mainjmp = -4
 save_stackp = save_mainjmp-4
-initial_args = save_stackp-4
+input = save_stackp-2
+initial_args = input-4
 initial_args_size = initial_args-4
-eofstr = initial_args_size-4
-input = eofstr-2
-leadargc = input-2
-nargs = leadargc-2
-eof = nargs-1
-trace_mode = eof-1
+max_args_size = initial_args_size-4
+getargbuf = max_args_size-4
+replstr = getargbuf-4
+replstrlen = replstr-4
+eofword = replstrlen-4
+count = eofword-4
+wordlen = count-4
+fixed_argc = wordlen-2
+initial_argc = fixed_argc-2
+remain = initial_argc-1
+eof = remain-1
+mode = eof-1			*  default=0, -n=1, -l=2, -i=3
+flag_x = mode-1
+trace_mode = flag_x-1
 prompt_mode = trace_mode-1
-pad = prompt_mode-1
+lastchar = prompt_mode-1
+getcharbuf = lastchar-1
+pad = getcharbuf-0
 
 cmd_xargs:
-		link	a6,#pad
-		movea.l	a0,a1
-		move.w	d0,d2				*  D2.W : 引数の数
-		bsr	wordlistlen
-		move.l	d0,d3
-		addq.l	#4,d0
-		bsr	xmalloc
-		beq	cannot_xargs_because_no_memory
+		move.l	d0,d3				*  D3.W : 引数の数
+		move.l	#MAXWORDLEN+1,d2
+		bsr	alloc_new_argbuf
+		beq	cannot_run_command_because_no_memory
 
-		movea.l	d0,a0
-		move.l	current_argbuf(a5),(a0)
-		move.l	a0,current_argbuf(a5)
-		addq.l	#4,a0
-		move.l	d3,d0
+		link	a6,#pad
 		move.l	a0,-(a7)
-		bsr	memmovi
+		move.l	d1,d0
+		bsr	memmovi_near
+		move.l	a0,getargbuf(a6)
 		movea.l	(a7)+,a0
 
 		sf	trace_mode(a6)
 		sf	prompt_mode(a6)
-		lea	default_eofstr,a1
-		move.l	a1,eofstr(a6)
-		move.w	#MAXWORDS,nargs(a6)
-parse_option_loop:
-		subq.w	#1,d2
-		bcs	parse_option_done
+		lea	default_eofword,a1
+		move.l	a1,eofword(a6)
+		move.l	#MAXWORDLISTSIZE,max_args_size(a6)
+		move.l	#MAXWORDLISTSIZE/2+1,count(a6)
+		clr.b	mode(a6)
+		sf	flag_x(a6)
+decode_opt_loop1:
+		movea.l	a0,a1
+		subq.w	#1,d3
+		bcs	decode_opt_done
 
-		cmpi.b	#'-',(a0)
-		bne	parse_option_done
+		cmpi.b	#'-',(a0)+
+		bne	decode_opt_done
 
-		addq.l	#1,a0
 		move.b	(a0)+,d0
+		beq	decode_opt_done_0
+decode_opt_loop2:
 		cmp.b	#'t',d0
 		beq	option_t
 
 		cmp.b	#'p',d0
 		beq	option_p
 
+		cmp.b	#'l',d0
+		beq	option_l
+
+		cmp.b	#'i',d0
+		beq	option_i
+
 		cmp.b	#'n',d0
 		beq	option_n
+
+		cmp.b	#'s',d0
+		beq	option_s
 
 		cmp.b	#'e',d0
 		beq	option_e
 
-		bra	xargs_bad_arg
-
-option_e:
-		move.l	a0,eofstr(a6)
-		bsr	strfor1
-		bra	parse_option_loop
-
-option_n:
-		bsr	atou
-		bmi	option_n_error
-		bne	option_n_error
-
-		tst.b	(a0)+
-		bne	xargs_bad_arg
-
-		tst.l	d1
-		beq	option_n_error
-
-		cmp.l	#MAXWORDS,d1
-		bhi	option_n_error
-
-		move.w	d1,nargs(a6)
-		bra	parse_option_loop
-
-option_n_error:
+		cmp.b	#'x',d0
+		beq	option_x
+xargs_bad_arg:
+		bsr	bad_arg
+xargs_usage:
 		lea	msg_usage,a0
 		bsr	usage
-		lea	msg_nargs,a0
-		bsr	enputs1
-		bra	xargs_return
+		bra	xargs_done
+
+option_e:
+		move.l	a0,eofword(a6)
+nextarg:
+		jsr	strfor1
+		bra	decode_opt_loop1
+
+option_x:
+		st	flag_x(a6)
+decode_opt_nextch:
+		move.b	(a0)+,d0
+		bne	decode_opt_loop2
+		bra	decode_opt_loop1
+
+option_i:
+		move.b	#3,mode(a6)
+		move.l	#1,count(a6)
+		movea.l	a0,a1
+		tst.b	(a1)
+		bne	set_replstr
+
+		lea	default_replstr,a1
+set_replstr:
+		move.l	a1,replstr(a6)
+		exg	a0,a1
+		jsr	strlen
+		exg	a0,a1
+		move.l	d0,replstrlen(a6)
+		bra	nextarg
+
+option_l:
+		move.b	#2,mode(a6)
+		tst.b	(a0)
+		bne	set_count_1
+
+		moveq	#1,d1
+		bra	set_count_2
+
+option_n:
+		move.b	#1,mode(a6)
+		tst.b	(a0)
+		beq	xargs_bad_arg
+set_count_1:
+		jsr	atou
+		beq	set_count_2
+		bmi	xargs_badly_formed_number
+
+		move.l	#MAXWORDLISTSIZE/2+1,d1
+set_count_2:
+		tst.b	(a0)+
+		bne	xargs_badly_formed_number
+
+		move.l	d1,count(a6)
+		beq	xargs_bad_arg
+		bra	decode_opt_loop1
+
+option_s:
+		tst.b	(a0)
+		beq	xargs_bad_arg
+
+		jsr	atou
+		bmi	xargs_badly_formed_number
+
+		tst.b	(a0)+
+		bne	xargs_badly_formed_number
+
+		tst.l	d0
+		bne	bad_size
+
+		cmp.l	#MAXWORDLISTSIZE,d1
+		bhi	bad_size
+
+		move.l	d1,max_args_size(a6)
+		bra	decode_opt_loop1
+
+bad_size:
+		lea	msg_bad_size,a0
+		bsr	command_error
+		bra	xargs_usage
+
+xargs_badly_formed_number:
+		bsr	badly_formed_number
+		bra	xargs_usage
 
 option_p:
 		st	prompt_mode(a6)
 option_t:
 		st	trace_mode(a6)
-		tst.b	(a0)+
-		beq	parse_option_loop
-xargs_bad_arg:
-		bsr	bad_arg
-		lea	msg_usage,a0
-		bsr	usage
-		bra	xargs_return
+		bra	decode_opt_nextch
 
-cannot_xargs_because_no_memory:
-		lea	msg_xargs,a0
-		bsr	cannot_because_no_memory
-		bra	xargs_return
-
-parse_option_done:
-		move.w	d2,d0
+decode_opt_done:
+		movea.l	a1,a0
+decode_opt_done_0:
+		move.w	d3,d0
 		addq.w	#1,d0
 		bne	command_ok
 
 		lea	default_command,a0
 		moveq	#2,d0
 command_ok:
-		move.w	d0,leadargc(a6)
+		cmpi.b	#1,mode(a6)
+		bls	flag_x_ok
+
+		st	flag_x(a6)
+flag_x_ok:
+		move.w	d0,initial_argc(a6)
 		move.l	a0,initial_args(a6)
 		bsr	wordlistlen
 		move.l	d0,initial_args_size(a6)
+		sf	remain(a6)
 		sf	eof(a6)
-*		clr.w	-(a7)
-*		DOS	_DUP
-*		addq.l	#2,a7
-*		tst.l	d0
-*		bmi	xargs_perror
 
-*		move.w	d0,input(a6)
-*		clr.w	-(a7)
-*		DOS	_CLOSE
-*		move.w	#2,(a7)
-*		DOS	_DUP
-*		addq.l	#2,a7
-		move.l	mainjmp(a5),d0
-		move.l	d0,save_mainjmp(a6)
-		move.l	stackp(a5),d0
-		move.l	d0,save_stackp(a6)
-		lea	xargs_interrupted(pc),a0
-		move.l	a0,mainjmp(a5)
-		move.l	a6,-(a7)
-		move.l	a7,stackp(a5)
-xargs_loop:
-		tst.b	eof(a6)
-		bne	xargs_success_return
+		clr.w	input(a6)
+		move.l	undup_input(a5),d0
+		bmi	xargs_loop_2
 
-		lea	simple_args(a5),a0
-		move.w	#MAXLINELEN,d1
-		movea.l	initial_args(a6),a1
-		move.l	initial_args_size(a6),d0
-		sub.w	d0,d1
-		bsr	memmovi
+		move.w	d0,input(a6)
+xargs_loop_1:
+		clr.w	-(a7)				*  標準入力は
+		DOS	_CLOSE				*  クローズしておく．
+		addq.l	#2,a7				*  そうしないと ^C や ^S が効かない．
+xargs_loop_2:
 		clr.w	argc(a5)
-		move.w	nargs(a6),d5
-		bra	xargs_ln_get_continue
+		clr.w	fixed_argc(a6)
+		move.l	max_args_size(a6),d1
+		cmpi.b	#3,mode(a6)
+		beq	get_args_start
 
-xargs_ln_get_loop:
-		movea.l	a0,a1
-*		move.w	input(a6),d0
-		moveq	#0,d0
-		bsr	getarg
-		bmi	xargs_error_return
-		beq	xargs_ln_get_done
-
-		exg	a0,a1
-		bsr	strlen
-		exg	a0,a1
-		cmp.l	#MAXWORDLEN,d0
-		bhi	xargs_too_long_word
-
-		movea.l	eofstr(a6),a2
-		tst.b	(a2)
-		beq	xargs_ln_get_not_eof
-
-		exg	a0,a2
-		bsr	strcmp
-		exg	a0,a2
-		bne	xargs_ln_get_not_eof
-
-		st	eof(a6)
-		bra	xargs_ln_get_done
-
-xargs_ln_get_not_eof:
-		addq.w	#1,argc(a5)
-		cmpi.w	#MAXWORDS,argc(a5)
-		bhi	xargs_too_many_words
-xargs_ln_get_continue:
-		dbra	d5,xargs_ln_get_loop
-xargs_ln_get_done:
-		tst.w	argc(a5)
-		beq	xargs_success_return
-
-		move.w	leadargc(a6),d0
-		add.w	d0,argc(a5)
-		cmpi.w	#MAXWORDS,argc(a5)
-		bhi	xargs_too_many_words
-
-		tst.b	trace_mode(a6)
-		beq	not_prompt
+		move.l	initial_args_size(a6),d0
+		sub.l	d0,d1
+		blo	xargs_size_over
 
 		lea	simple_args(a5),a0
-		lea	ecputs(pc),a1
-		move.w	argc(a5),d0
-		bsr	echo
-		tst.b	prompt_mode(a6)
-		bne	do_prompt
+		movea.l	initial_args(a6),a1
+		bsr	memmovi_near
+		move.l	count(a6),d5
+get_args_start:
+get_args_loop:
+		movea.l	getargbuf(a6),a1
+		tst.b	remain(a6)
+		bne	add_remain_arg
 
-		bsr	eput_newline
-		bra	not_prompt
+		tst.b	eof(a6)
+		bne	get_args_eof
 
-do_prompt:
-		bsr	ask_yes
-		bmi	xargs_success_return
-		bne	xargs_loop
-not_prompt:
-		move.l	command_name(a5),-(a7)
-		lea	simple_args(a5),a0
-		moveq	#0,d1
-		jsr	DoSimpleCommand_recurse		*!! 再帰 !!*
-		move.l	(a7)+,command_name(a5)
-		bra	xargs_loop
-
-xargs_success_return:
-		moveq	#0,d0
-xargs_done:
-		addq.l	#4,a7
-		move.l	d0,-(a7)
-		bsr	resume_hooks
-		jsr	free_current_argbuf
-		move.l	(a7)+,d0
-xargs_return:
-		unlk	a6
-		rts
-
-xargs_perror:
-		move.l	command_name(a5),a0
-		bsr	perror
-		moveq	#1,d0
-		bra	xargs_return
-
-xargs_too_long_word:
-		bsr	too_long_word
-		bra	xargs_error_return
-
-xargs_too_many_words:
-		bsr	too_many_words
-xargs_error_return:
-		moveq	#1,d0
-		bra	xargs_done
-
-xargs_interrupted:
-		move.l	(a7)+,a6
-		bsr	resume_hooks
-		movea.l	stackp(a5),a7
-		movea.l	mainjmp(a5),a0
-		jmp	(a0)
-
-resume_hooks:
-		move.l	d0,-(a7)
-*		clr.w	-(a7)
-*		DOS	_CLOSE
-*		move.w	input(a6),(a7)
-*		DOS	_DUP
-*		DOS	_CLOSE
-*		addq.l	#2,a7
-		move.l	save_mainjmp(a6),d0
-		move.l	d0,mainjmp(a5)
-		move.l	save_stackp(a6),d0
-		move.l	d0,stackp(a5)
-		move.l	(a7)+,d0
-		rts
-****************************************************************
-getarg:
-		link	a6,#-2
-		movem.l	d2-d5/a1,-(a7)
-		movea.l	a0,a1
-		move.w	d0,d5				*  D5.W : 入力ハンドル
 		sf	d2				*  D2.B : 入力有フラグ
 		clr.b	d3				*  D3.B : クォートフラグ
-		sf	d4				*  D4.b : \ フラグ
+		sf	d4				*  D4.B : \ フラグ
+		move.l	#MAXWORDLEN,d6
 getarg_loop:
-		move.l	#1,-(a7)
-		pea	-2(a6)
-		move.w	d5,-(a7)
-		DOS	_READ
-		lea	10(a7),a7
-		tst.l	d0
+		bsr	getarg_getchar
 		bmi	getarg_eof
-		beq	getarg_eof
-
-		move.b	-2(a6),d0
 getarg_cmp:
+		tst.b	d0
+		beq	getarg_nul
+
 		cmp.b	#CR,d0
 		beq	getarg_CR
 
 		tst.b	d4
-		bne	getarg_insert
+		bne	getarg_store
 
 		cmp.b	#LF,d0
-		beq	getarg_LF
+		beq	getarg_eol
 
 		tst.b	d3
 		bne	getarg_in_quote
@@ -374,119 +330,302 @@ getarg_cmp:
 		beq	getarg_quote
 
 		cmp.b	#'\',d0
-		bne	getarg_insert
+		bne	getarg_store
 
 		st	d4
 		bra	getarg_loop
 
 getarg_in_quote:
 		cmp.b	d3,d0
-		bne	getarg_insert
+		bne	getarg_store
 getarg_quote:
 		eor.b	d0,d3
-		bra	getarg_inserted
-
-getarg_insert:
-		subq.w	#1,d1
-		bcs	getarg_over
-
-		move.b	d0,(a0)+
-		bsr	issjis
-		bne	getarg_inserted
-
-		move.l	#1,-(a7)
-		pea	-2(a6)
-		move.w	d5,-(a7)
-		DOS	_READ
-		lea	10(a7),a7
-		tst.l	d0
-		bmi	getarg_eof
-		beq	getarg_eof
-
-		subq.w	#1,d1
-		bcs	getarg_over
-
-		move.b	-2(a6),d0
-		move.b	d0,(a0)+
-getarg_inserted:
-		st	d2
-		sf	d4
 		bra	getarg_loop
 
 getarg_CR:
-		move.l	#1,-(a7)
-		pea	-2(a6)
-		move.w	d5,-(a7)
-		DOS	_READ
-		lea	10(a7),a7
-		tst.l	d0
-		bmi	getarg_eof
-		beq	getarg_eof
+		bsr	getarg_getchar
+		bmi	getarg_CR_1
 
-		move.b	-2(a6),d0
 		cmp.b	#LF,d0
 		beq	getarg_CRLF
+getarg_CR_1:
+		subq.l	#1,d6
+		bcs	xargs_too_long_word
 
-		subq.w	#1,d1
-		bcs	getarg_over
+		move.b	#CR,(a1)+
+		tst.l	d0
+		bmi	getarg_eof
 
-		move.b	#CR,(a0)+
 		st	d2
 		sf	d4
 		bra	getarg_cmp
 
 getarg_CRLF:
 		tst.b	d4
-		beq	getarg_LF
+		beq	getarg_eol
 
-		subq.w	#1,d1
-		bcs	getarg_over
+		subq.l	#1,d6
+		bcs	xargs_too_long_word
 
-		move.b	#CR,(a0)+
-		bra	getarg_insert
+		move.b	#CR,(a1)+
+getarg_store:
+		subq.l	#1,d6
+		bcs	xargs_too_long_word
 
-getarg_LF:
-		tst.b	d3
-		bne	getarg_missing_quote
+		move.b	d0,(a1)+
+		jsr	issjis
+		bne	getarg_store_1
+
+		bsr	getarg_getchar
+		bmi	getarg_eof
+
+		tst.b	d0
+		beq	getarg_nul
+
+		subq.l	#1,d6
+		bcs	xargs_too_long_word
+
+		move.b	d0,(a1)+
+getarg_store_1:
+		st	d2
+		sf	d4
+		bra	getarg_loop
+
 getarg_blank:
+		cmpi.b	#3,mode(a6)
+		bne	getarg_word_separator
+
+		tst.b	d2
+		beq	getarg_loop
+		bra	getarg_store
+
+getarg_eof:
+		cmpi.b	#2,mode(a6)
+		bhs	xargs_done_0
+
+		st	eof(a6)
+		tst.b	d2
+		beq	get_args_eof
+getarg_nul:
+getarg_eol:
+		tst.b	d3
+		bne	missing_quote
+getarg_word_separator:
 		tst.b	d2
 		beq	getarg_loop
 
-		subq.w	#1,d1
-		bcs	getarg_over
+		clr.b	(a1)+
+		move.b	d0,lastchar(a6)
+		move.l	a1,d6
+		movea.l	getargbuf(a6),a1
+		sub.l	a1,d6
+		movea.l	eofword(a6),a2
+		tst.b	(a2)
+		beq	check_add_one_arg
 
-		clr.b	(a0)+
-getarg_return:
-		movem.l	(a7)+,d2-d5/a1
+		exg	a0,a2
+		jsr	strcmp
+		exg	a0,a2
+		bne	check_add_one_arg
+
+		*  CON対策
+		move.b	lastchar(a6),d0
+getarg_drop_inpline:
+		cmp.b	#LF,d0
+		beq	getarg_drop_inpline_done
+
+		bsr	getarg_getchar
+		bpl	getarg_drop_inpline
+getarg_drop_inpline_done:
+		cmpi.b	#2,mode(a6)
+		bhs	xargs_done_0
+
+		st	eof(a6)
+get_args_eof:
+		tst.w	fixed_argc(a6)
+		beq	xargs_done_0
+		bra	get_args_done
+
+check_add_one_arg:
+		*cmpi.b	#2,mode(a6)
+		*bhs	add_one_arg
+		*  mode(a6)>=2 なら必ず flag_x(a6)!=0
+
+		tst.b	flag_x(a6)
+		bne	add_one_arg
+
+		cmp.l	d6,d1
+		bhs	add_one_arg
+
+		tst.w	fixed_argc(a6)
+		beq	add_one_arg
+
+		st	remain(a6)
+		move.l	d6,wordlen(a6)
+		bra	get_args_done
+
+insert_arg:
+		subq.l	#1,d6
+		lea	simple_args(a5),a2
+		movea.l	initial_args(a6),a1
+		move.w	initial_argc(a6),d2
+		move.w	d2,argc(a5)
+		bra	insert_arg_continue
+
+insert_arg_loop:
+		movea.l	replstr(a6),a0
+		move.l	replstrlen(a6),d0
+		jsr	memcmp
+		bne	insert_arg_dup
+
+		sub.l	d6,d1
+		blo	xargs_size_over
+
+		move.l	a1,-(a7)
+		movea.l	getargbuf(a6),a1
+		move.l	d6,d0
+		movea.l	a2,a0
+		bsr	memmovi_near
+		movea.l	a0,a2
+		movea.l	(a7)+,a1
+		adda.l	replstrlen(a6),a1
+		bra	insert_arg_loop
+
+insert_arg_dup:
+		subq.l	#1,d1
+		blo	xargs_size_over
+
+		move.b	(a1)+,d0
+		move.b	d0,(a2)+
+		beq	insert_arg_continue
+
+		jsr	issjis
+		bne	insert_arg_loop
+
+		subq.l	#1,d1
+		blo	xargs_size_over
+
+		move.b	(a1)+,d0
+		move.b	d0,(a2)+
+		bne	insert_arg_loop
+insert_arg_continue:
+		dbra	d2,insert_arg_loop
+		bra	compound_args_ok
+
+add_remain_arg:
+		move.l	wordlen(a6),d6
+add_one_arg:
+		cmpi.b	#3,mode(a6)
+		beq	insert_arg
+
+		sub.l	d6,d1
+		blo	xargs_size_over
+
+		jsr	strmove
+		addq.w	#1,argc(a5)
+		sf	remain(a6)
+		cmpi.w	#MAXWORDS,argc(a5)
+		bhi	xargs_too_many_words
+
+		cmpi.b	#1,mode(a6)
+		bls	get_args_continue
+
+		cmpi.b	#LF,lastchar(a6)
+		bne	get_args_loop
+get_args_continue:
+		move.w	argc(a5),fixed_argc(a6)
+		subq.l	#1,d5
+		bne	get_args_loop
+get_args_done:
+		move.w	fixed_argc(a6),argc(a5)
+		move.w	initial_argc(a6),d0
+		add.w	d0,argc(a5)
+		cmpi.w	#MAXWORDS,argc(a5)
+		bhi	xargs_too_many_words
+compound_args_ok:
+		tst.b	trace_mode(a6)
+		beq	not_prompt
+
+		lea	simple_args(a5),a0
+		move.w	argc(a5),d0
+		move.b	prompt_mode(a6),d1
+		bsr	ask_yes
+		bmi	xargs_done_error
+		bne	xargs_loop_2
+not_prompt:
+		move.l	undup_input(a5),d0
+		bmi	do_command
+
+		clr.w	-(a7)
+		move.w	d0,-(a7)
+		DOS	_DUP2
+		addq.l	#4,a7
+do_command:
+		move.l	command_name(a5),-(a7)
+		lea	simple_args(a5),a0
+		moveq	#0,d1
+		jsr	DoSimpleCommand_recurse		*!! 再帰 !!*
+		move.l	(a7)+,command_name(a5)
+		tst.l	undup_input(a5)
+		bmi	xargs_loop_2
+		bra	xargs_loop_1
+
+xargs_done_0:
+		moveq	#0,d0
+xargs_done:
+		move.l	d0,-(a7)
+		jsr	free_current_argbuf
+		move.l	(a7)+,d0
 		unlk	a6
-		tst.b	d0
 		rts
 
-getarg_eof:
-		moveq	#0,d0
-		bra	getarg_return
-
-getarg_over:
-		bsr	too_long_line
-		bra	getarg_error_return
-
-getarg_missing_quote:
+missing_quote:
 		bsr	perror_command_name
-		move.l	a0,-(a7)
 		lea	msg_missing_quote,a0
-		bsr	eputs
-		movea.l	(a7)+,a0
-		move.l	a0,d0
+		jsr	eputs
+		move.l	a1,d0
+		movea.l	getargbuf(a6),a1
 		sub.l	a1,d0
 		move.l	d0,-(a7)
 		move.l	a1,-(a7)
 		move.w	#2,-(a7)
 		DOS	_WRITE
 		lea	10(a7),a7
-		bsr	eput_newline
-getarg_error_return:
+		jsr	eput_newline
+xargs_done_error:
+		moveq	#1,d0
+		bra	xargs_done
+
+xargs_too_long_word:
+		jsr	too_long_word
+		bra	xargs_done
+
+xargs_size_over:
+		lea	msg_size_over,a0
+		jsr	command_error
+		bra	xargs_done
+
+xargs_too_many_words:
+		jsr	too_many_words
+		bra	xargs_done
+****************************************************************
+getarg_getchar:
+		move.l	#1,-(a7)
+		pea	getcharbuf(a6)
+		move.w	input(a6),-(a7)
+		DOS	_READ
+		lea	10(a7),a7
+		neg.l	d0
+		bpl	getarg_getchar_eof
+
+		moveq	#0,d0
+		move.b	getcharbuf(a6),d0
+		tst.l	d0
+		rts
+
+getarg_getchar_eof:
 		moveq	#-1,d0
-		bra	getarg_return
+		rts
 ****************************************************************
 .xdef ask_yes
 
@@ -496,12 +635,41 @@ askbuf = -ASKBUFSIZE
 ask_yes:
 		link	a6,#askbuf
 		movem.l	d1/a0-a1,-(a7)
-		lea	str_xarg_prompt,a0
-		bsr	eputs
+		lea	ecputs,a1
+		bsr	echo
+		tst.b	d1
+		beq	ask_yes_ok
+
+		tst.l	undup_output(a5)
+		bmi	ask_yes_output_ok
+
+		*  標準出力が切り換えられている．
+		*  このままだとエコーバックが切り換え先に流れてしまうので，
+		*  一時的に unredirect しておく．
+		move.l	save_stdout(a5),d0
+		move.w	#1,-(a7)
+		move.w	d0,-(a7)
+		DOS	_DUP2
+		addq.l	#4,a7
+ask_yes_output_ok:
+		lea	ask_yes_prompt,a0
+		jsr	eputs
 		lea	askbuf(a6),a0
 		moveq	#ASKBUFSIZE-1,d1
 		suba.l	a1,a1
 		bsr	getline_stdin
+
+		move.l	d0,-(a7)
+		move.l	undup_output(a5),d0
+		bmi	ask_yes_redirect_ok
+
+		*  redirect を元に戻す．
+		move.w	#1,-(a7)
+		move.w	d0,-(a7)
+		DOS	_DUP2
+		addq.l	#4,a7
+ask_yes_redirect_ok:
+		move.l	(a7)+,d0
 		bne	ask_yes_return
 
 		cmpi.b	#'y',askbuf(a6)
@@ -512,16 +680,24 @@ ask_yes_return:
 		movem.l	(a7)+,d1/a0-a1
 		unlk	a6
 		rts
+
+ask_yes_ok:
+		jsr	eput_newline
+		moveq	#0,d0
+		bra	ask_yes_return
 ****************************************************************
 .data
 
 default_command:	dc.b	'~~/echo',0,'-',0
-default_eofstr:		dc.b	'_',0
-msg_usage:		dc.b	'[ <オプション> ] [ <コマンド> [ <引数並び> ] ]',0
-msg_nargs:		dc.b	'単語数の指定は1以上2048以下でなければなりません',0
-msg_xargs:		dc.b	'xargsを実行できません',0
+default_replstr:	dc.b	'{}',0
+default_eofword:	dc.b	'_',0
+
+msg_usage:	dc.b	'[-n<単語数>|-l[<行数>]|-i[<被置換文字列>]] [-tpx] [-s<サイズ>] [-e[<EOF単語>]]',CR,LF
+		dc.b	'          [ <コマンド名> [ <引数> ... ] ]',CR,LF,0
+
+msg_bad_size:		dc.b	'<サイズ>は4096以下でなければなりません',0
+msg_size_over:		dc.b	'コマンド行の長さがサイズの限度を超えました',0
 msg_missing_quote:	dc.b	'クオートが閉じていない？: ',0
-str_xarg_prompt:	dc.b	' ?... ',0
+ask_yes_prompt:		dc.b	' ?... ',0
 
 .end
-裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹裹

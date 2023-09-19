@@ -8,6 +8,7 @@
 .xref drvchkp
 .xref contains_dos_wildcard
 .xref headtail
+.xref get_fair_pathname
 .xref memmovi
 .xref strcpy
 .xref strcmp
@@ -35,6 +36,10 @@ searchnamebuf = -(((MAXPATH+1)+1)>>1<<1)
 stat:
 		movem.l	a0-a3,-(a7)
 		movea.l	a1,a3				*  A3 : statbuf
+		bsr	get_fair_pathname
+		bcs	stat_fail
+
+		bclr	#31,d0
 		bsr	drvchkp
 		bmi	stat_return
 
@@ -91,13 +96,46 @@ stat_normal:
 		move.l	a3,-(a7)
 		DOS	_FILES
 		lea	10(a7),a7
-		tst.l	d0
 		bra	stat_return
 
 stat_fail:
 		moveq	#-1,d0
 stat_return:
 		movem.l	(a7)+,a0-a3
+		tst.l	d0
 		rts
+****************************************************************
+* lgetmode - ファイルの属性を得る
+*
+* CALL
+*      A0     ファイル名の先頭アドレス
+*
+* RETURN
+*      D0.L   負ならばエラー．正ならば下位バイトは属性．
+*      CCR    TST.L D0
+*
+* DESCRIPTION
+*      ファイルがシンボリック・リンクである場合にはリンク自体の
+*      属性を返す．
+*****************************************************************
+.xdef lgetmode
+
+lgetmode:
+		move.l	a0,-(a7)
+		bsr	get_fair_pathname
+		bcs	lgetmode_fail
+
+		move.w	#-1,-(a7)
+		move.l	a0,-(a7)
+		DOS	_CHMOD
+		addq.l	#6,a7
+lgetmode_return:
+		movea.l	(a7)+,a0
+		tst.l	d0
+		rts
+
+lgetmode_fail:
+		moveq	#-1,d0
+		bra	lgetmode_return
 ****************************************************************
 .end

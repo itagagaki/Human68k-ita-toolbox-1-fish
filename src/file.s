@@ -4,16 +4,49 @@
 * This contains file controll routines.
 
 .include doscall.h
-.include chrcode.h
+.include limits.h
+.include error.h
 .include stat.h
+.include chrcode.h
 
 .xref isspace3
+.xref fair_pathname
+.xref tfopen
 .xref fclose
 .xref stat
 .xref drvchkp
 
+.xref doscall_pathname
+
 .text
 
+*****************************************************************
+.xdef get_fair_pathname
+
+get_fair_pathname:
+		movem.l	d0/a1,-(a7)
+		movea.l	a0,a1
+		lea	doscall_pathname,a0
+		moveq	#MAXPATH,d0
+		bsr	fair_pathname
+		movem.l	(a7)+,d0/a1
+		rts
+*****************************************************************
+.xdef tfopenx
+
+tfopenx:
+		move.l	a0,-(a7)
+		bsr	get_fair_pathname
+		bcs	tfopenx_fail
+
+		jsr	tfopen
+tfopenx_return:
+		movea.l	(a7)+,a0
+		rts
+
+tfopenx_fail:
+		moveq	#ENOFILE,d0
+		bra	tfopenx_return
 *****************************************************************
 * create_normal_file - 通常のファイルを生成する
 *
@@ -25,9 +58,6 @@
 *             正: 下位ワードが、作成してオープンされたファイル・ハンドルを示す
 *
 *      CCR    TST.L D0
-*
-* NOTE
-*      ドライブの検査は行わない
 *****************************************************************
 .xdef create_savefile
 .xdef create_normal_file
@@ -36,7 +66,7 @@ statbuf = -STATBUFSIZE
 
 create_savefile:
 		link	a6,#statbuf
-		movem.l	a1/d1,-(a7)
+		movem.l	d1/a1,-(a7)
 		moveq	#$20,d1
 		lea	statbuf(a6),a1
 		bsr	stat
@@ -45,19 +75,34 @@ create_savefile:
 		move.b	statbuf+ST_MODE(a6),d1
 create_savefile_1:
 		move.w	d1,d0
-		movem.l	(a7)+,a1/d1
+		movem.l	(a7)+,d1/a1
 		unlk	a6
 		bra	create_file
 
 create_normal_file:
 		moveq	#$20,d0
 create_file:
+		move.l	a0,-(a7)
+		bsr	get_fair_pathname
+		bcs	create_file_fail
+
 		move.w	d0,-(a7)
 		move.l	a0,-(a7)
+		bset	#31,d0
+		bsr	drvchkp
+		bmi	create_file_done
+
 		DOS	_CREATE
+create_file_done:
 		addq.l	#6,a7
+create_file_return:
+		movea.l	(a7)+,a0
 		tst.l	d0
 		rts
+
+create_file_fail:
+		moveq	#ENOFILE,d0
+		bra	create_file_return
 *****************************************************************
 .xdef fclosexp
 

@@ -21,6 +21,13 @@
 ****************************************************************
 .xdef usage
 
+put_command_name:
+		movea.l	command_name(a5),a0
+		bsr	ecputs
+put_space:
+		moveq	#' ',d0
+		bra	eputc
+
 usage:
 		move.l	a0,-(a7)
 		lea	msg_usage,a0
@@ -28,10 +35,7 @@ usage:
 		tst.l	command_name(a5)
 		beq	usage_1
 
-		movea.l	command_name(a5),a0
-		bsr	ecputs
-		move.b	#' ',d0
-		bsr	eputc
+		bsr	put_command_name
 usage_1:
 		movea.l	(a7)+,a0
 		bra	enputs1
@@ -174,11 +178,26 @@ insufficient_memory:
 ****************************************************************
 .xdef cannot_because_no_memory
 
+because_no_memory:
+		lea	msg_bacause_of_no_memory,a0
+		bra	eputs
+
 cannot_because_no_memory:
 		move.l	a0,-(a7)
-		lea	msg_bacause_of_no_memory,a0
-		bsr	eputs
+		bsr	because_no_memory
 		movea.l	(a7)+,a0
+		bra	enputs1
+****************************************************************
+.xdef cannot_run_command_because_no_memory
+
+cannot_run_command_because_no_memory:
+		tst.l	command_name(a5)
+		beq	insufficient_memory
+
+		bsr	because_no_memory
+		bsr	put_space
+		bsr	put_command_name
+		lea	msg_cannot_run,a0
 		bra	enputs1
 ****************************************************************
 .xdef perror_command_name
@@ -217,7 +236,7 @@ perror:
 		blo	perror_1
 
 		sub.l	#256,d0
-		cmp.l	#4,d0
+		cmp.l	#5,d0
 		bhi	perror_1
 
 		lea	perror_table_2,a0
@@ -272,6 +291,7 @@ perror_table_2:
 	dc.l	msg_no_media_in_drive	* 258 (-259)
 	dc.l	msg_media_set_miss	* 259 (-260)
 	dc.l	msg_drive_not_ready	* 260 (-261)
+	dc.l	msg_write_protected	* 261 (-262)
 
 .xdef msg_usage
 .xdef msg_too_long
@@ -305,8 +325,9 @@ msg_too_few_args:		dc.b	'引数が足りません',0
 msg_no_close_brace:		dc.b	'} がありません',0
 msg_no_match:			dc.b	'マッチするファイルやディレクトリがありません',0
 msg_dstack_not_deep:		dc.b	'ディレクトリ・スタックはそんなに深くありません',0
-msg_bacause_of_no_memory:	dc.b	'メモリが足りないため',0
+msg_bacause_of_no_memory:	dc.b	'メモリ不足のため',0
 msg_insufficient_memory:	dc.b	'メモリが足りません',0
+msg_cannot_run:			dc.b	'を実行できません',0
 msg_err:			dc.b	'error',0
 msg_nofile:			dc.b	'このようなファイルはありません',0
 msg_nodir:			dc.b	'このようなディレクトリはありません',0
@@ -325,6 +346,6 @@ msg_no_drive:			dc.b	'ドライブがありません',0
 msg_no_media_in_drive:		dc.b	'ドライブにメディアがセットされていません',0
 msg_media_set_miss:		dc.b	'ドライブにメディアが正しくセットされていません',0
 msg_drive_not_ready:		dc.b	'ドライブの準備ができていません',0
+msg_write_protected:		dc.b	'メディアがプロテクトされています',0
 ****************************************************************
 .end
-

@@ -16,6 +16,35 @@
 .text
 
 *****************************************************************
+* xmalloc - メモリを確保する
+*
+* CALL
+*      D0.L   確保するバイト数
+*
+* RETURN
+*      D0.L   確保したメモリ・ブロックの先頭アドレス
+*             0 は確保できなかったことを示す
+*
+*      CCR    TST.L D0
+*****************************************************************
+.xdef xmalloc
+
+xmalloc:
+		move.l	d0,-(a7)			*  要求量
+		move.w	#1,-(a7)			*  必要最小ブロックから
+	.if EXTMALLOC
+		jsr	allocate_memory_reg_saved
+	.else
+		DOS	_MALLOC
+	.endif
+		addq.l	#6,a7
+		tst.l	d0
+		bpl	xmalloc_return
+
+		moveq	#0,d0
+xmalloc_return:
+		rts
+*****************************************************************
 * free, xfree - 確保したメモリを解放する
 *
 * CALL
@@ -37,13 +66,60 @@ xfree:
 free:
 		move.l	d0,-(a7)
 	.if EXTMALLOC
-		bsr	free_memory_reg_saved
+		jsr	free_memory_reg_saved
 	.else
 		DOS	_MFREE
 	.endif
 		addq.l	#4,a7
 		tst.l	d0
 free_return:
+		rts
+*****************************************************************
+* free_all - 確保したメモリをすべて解放する
+*
+* CALL
+*      none
+*
+* RETURN
+*      D0.L   エラー・コード
+*      CCR    TST.L D0
+*****************************************************************
+.xdef free_all
+
+free_all:
+	.if EXTMALLOC
+		jmp	free_all_memory_reg_saved
+	.else
+		*  代用品は無い (^^;
+		moveq	#-1,d0
+		rts
+	.endif
+*****************************************************************
+* xmallocp - メモリを確保する
+*
+* CALL
+*      D0.L   確保するバイト数
+*      A0     確保したメモリ・ブロックの先頭アドレスを格納するポインタのアドレス
+*
+* RETURN
+*      D0.L   確保したメモリ・ブロックの先頭アドレス
+*             0 は確保できなかったことを示す
+*      (A0)   D0.L
+*      CCR    TST.L D0
+*
+* DESCRIPTION
+*      (A0) != 0 ならば xmalloc せず、(A0) を持って帰る
+*****************************************************************
+.xdef xmallocp
+
+xmallocp:
+		tst.l	(a0)
+		bne	xmallocp_return
+
+		bsr	xmalloc
+		move.l	d0,(a0)
+xmallocp_return:
+		move.l	(a0),d0
 		rts
 *****************************************************************
 * xfreep - 確保したメモリを解放する
@@ -68,35 +144,6 @@ xfreep:
 
 		clr.l	(a0)
 xfreep_return:
-		rts
-*****************************************************************
-* xmalloc - メモリを確保する
-*
-* CALL
-*      D0.L   確保するバイト数
-*
-* RETURN
-*      D0.L   確保したメモリ・ブロックの先頭アドレス
-*             0 は確保できなかったことを示す
-*
-*      CCR    TST.L D0
-*****************************************************************
-.xdef xmalloc
-
-xmalloc:
-		move.l	d0,-(a7)			*  要求量
-		move.w	#1,-(a7)			*  必要最小ブロックから
-	.if EXTMALLOC
-		bsr	allocate_memory_reg_saved
-	.else
-		DOS	_MALLOC
-	.endif
-		addq.l	#6,a7
-		tst.l	d0
-		bpl	xmalloc_return
-
-		moveq	#0,d0
-xmalloc_return:
 		rts
 *****************************************************************
 * xmalloct - 一時的メモリを確保する
@@ -174,39 +221,12 @@ xfreetp:
 free_all_tmp:
 	.if EXTMALLOC
 		bsr	swap_lake
-		bsr	free_all_memory_reg_saved
+		jsr	free_all_memory_reg_saved
 		bra	swap_lake
 	.else
 		*  代用品は無い (^^;
+		moveq	#-1,d0
 		rts
 	.endif
-*****************************************************************
-* xmallocp - メモリを確保する
-*
-* CALL
-*      D0.L   確保するバイト数
-*      A0     確保したメモリ・ブロックの先頭アドレスを格納するポインタのアドレス
-*
-* RETURN
-*      D0.L   確保したメモリ・ブロックの先頭アドレス
-*             0 は確保できなかったことを示す
-*      (A0)   D0.L
-*      CCR    TST.L D0
-*
-* DESCRIPTION
-*      (A0) != 0 ならば xmalloc せず、(A0) を持って帰る
-*****************************************************************
-.xdef xmallocp
-
-xmallocp:
-		tst.l	(a0)
-		bne	xmallocp_return
-
-		bsr	xmalloc
-		move.l	d0,(a0)
-xmallocp_return:
-		move.l	(a0),d0
-		rts
-*****************************************************************
 
 .end

@@ -33,7 +33,7 @@ cmd_return:
 		bne	too_many_args
 
 		move.l	d1,d0
-		bsr	set_status
+		jsr	set_status
 success_return:
 		st	exitflag(a5)
 		moveq	#0,d0

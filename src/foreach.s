@@ -12,6 +12,7 @@
 .xref strmove
 .xref wordlistlen
 .xref copy_wordlist
+.xref skip_paren
 .xref skip_varname
 .xref subst_var_wordlist
 .xref expand_wordlist
@@ -28,8 +29,6 @@
 .xref cannot_because_no_memory
 
 .xref save_sourceptr
-.xref tmpargs
-
 .xref loop_status	*  -2:end待ち(偽), -1:end待ち(真), 1:実行中, 2:実行開始, 3:continue
 .xref loop_level
 .xref forward_loop_level
@@ -43,6 +42,7 @@
 .xref loop_top_eventno
 .xref keep_loop
 .xref loop_fail
+.xref tmpargs
 
 .text
 
@@ -78,52 +78,57 @@ state_foreach:
 		tst.b	(a0)+
 		bne	bad_varname
 
-		subq.w	#3,d7
-		bcs	word_not_parened
+		subq.w	#1,d7
+		beq	word_not_parened
 
-		cmpi.b	#'(',(a0)+
+		cmpi.b	#'(',(a0)
 		bne	word_not_parened
 
-		tst.b	(a0)+
+		tst.b	1(a0)
 		bne	word_not_parened
 
-		movea.l	a0,a1				*  A1 : 単語並び（展開前）の先頭
-		move.w	d7,d0
-		bsr	strforn
-		cmpi.b	#')',(a0)+
-		bne	word_not_parened
+		lea	2(a0),a1			*  A1 : 単語並び（展開前）の先頭
+		move.w	d7,d3				*  D3.W : ( 以降の単語数
+		move.w	d3,d0
+		bsr	skip_paren
+		beq	word_not_parened
 
-		tst.b	(a0)
-		bne	word_not_parened
+		subq.w	#1,d0
+		bne	syntax_error
 
-		lea	tmpargs,a0
+		move.w	d0,d7
+		move.w	d3,d0
+		subq.w	#2,d0
+		sub.w	d7,d0
+		movea.l	tmpargs(a5),a0
 		bsr	expand_wordlist
 		bmi	return
 
-		move.w	d0,d7
-		movea.l	a0,a3
+		move.w	d0,d3				*  D3.W : ( ) 内の置換展開後の単語数
+		movea.l	a0,a3				*  A3 : ( ) 内の置換展開後の単語並び
 		bsr	wordlistlen
 		add.l	d0,d2
 		addq.l	#5,d2
 
 		moveq	#0,d0
-		move.w	d7,d0
+		move.w	d3,d0
 		bsr	set_next_loop
-		tst.w	d7
-		beq	start_read_loop
+		tst.w	d3
+		beq	foreach_start_read_loop
 
 		move.l	d2,d0
 		bsr	xmallocp
 		beq	cannot_alloc_foreach_memory
 
 		movea.l	d0,a0
-		move.w	d7,(a0)+
+		move.w	d3,(a0)+
 		clr.w	(a0)+
 		movea.l	a2,a1
 		bsr	strmove
 		movea.l	a3,a1
-		move.w	d7,d0
+		move.w	d3,d0
 		bsr	copy_wordlist
+foreach_start_read_loop:
 		bra	start_read_loop
 
 continue_foreach:
@@ -221,7 +226,7 @@ set_next_loop_level_ok:
 
 		move.b	#-2,loop_status(a5)
 set_condition_ok:
-		free_loop_store:
+free_loop_store:
 		bsr	loop_stack_p
 		lea	LOOPINFO_STORE(a1),a0
 		bra	xfreep
@@ -250,7 +255,7 @@ start_read_loop_source:
 		subq.l	#1,d0
 start_read_loop_static:
 		bsr	loop_stack_p
-		move.l	save_sourceptr,LOOPINFO_TOPPTR(a1)
+		move.l	save_sourceptr(a5),LOOPINFO_TOPPTR(a1)
 		move.l	d0,LOOPINFO_TOPLINENO(a1)
 		bra	success_return
 *****************************************************************
@@ -425,7 +430,7 @@ msg_too_many_loops:		dc.b	'while/foreach のネストが深過ぎます',0
 msg_not_in_while_or_foreach:	dc.b	'while/foreach は開始していません',0
 msg_bad_varname:		dc.b	'変数名が無効です',0
 msg_word_not_parened:		dc.b	'単語並びが()で囲われていません',0
-msg_cannot_while_foreach:	dc.b	' while/'
-msg_cannot_foreach:		dc.b	'foreach を実行できません',0
+msg_cannot_while_foreach:	dc.b	' while /'
+msg_cannot_foreach:		dc.b	' foreach を実行できません',0
 
 .end

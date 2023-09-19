@@ -192,6 +192,8 @@ label_not_found:
 *****************************************************************
 .data
 
+.xdef msg_nolabel
+
 msg_nolabel:			dc.b	'ラベルがありません',0
 msg_cant_from_terminal:		dc.b	'標準入力からは制御できません',0
 msg_cannot_goto_on_terminal:	dc.b	'標準入力モードでは goto は実行できません',0

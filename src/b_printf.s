@@ -460,9 +460,9 @@ fmtout_string:
 fmtout_string_ok:
 		move.l	a1,-(a7)
 		movea.l	a4,a1
-		lea	tmpargs,a0		*  tmpargs に
-		moveq	#1,d0
-		bsr	expand_wordlist		*  単語を置換展開する
+		moveq	#1,d0				*  1単語を
+		movea.l	tmpargs(a5),a0			*  tmpargs に
+		bsr	expand_wordlist			*  置換展開する
 		movea.l	(a7)+,a1
 		bmi	printf_return
 

@@ -23,7 +23,7 @@ cmd_srand:
 		blo	with_timer
 		bhi	too_many_args
 
-		bsr	atou
+		jsr	atou
 		bmi	badly_formed_number
 
 		tst.b	(a0)
@@ -48,4 +48,3 @@ do_srand:
 		rts
 
 .end
-

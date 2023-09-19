@@ -10,7 +10,7 @@
 .xref strfor1
 .xref free
 .xref escape_quoted
-.xref flagvarptr
+.xref set_flagvar
 .xref too_few_args
 
 .xref default_wordchars
@@ -21,6 +21,7 @@
 .xref word_wordchars
 
 .xref alias_top
+.xref completion_top
 .xref shellvar_top
 .xref histchar1
 .xref histchar2
@@ -34,14 +35,13 @@
 * CALL
 *      A0     変数リストの根ポインタのアドレス
 *      A1     削除する変数名パターンを指す
-*      D0.B   0 : シェル変数である
+*      D1.B   0 : シェル変数である
 *
 * RETURN
-*      none
+*      D0.L   破壊
 ****************************************************************
 unsetvar:
-		movem.l	d0-d1/a0/a2-a3,-(a7)
-		move.b	d0,d1
+		movem.l	d1/a0/a2-a3,-(a7)
 		movea.l	a0,a3
 unsetvar_loop:
 		tst.l	(a3)
@@ -57,16 +57,12 @@ unsetvar_loop:
 		tst.b	d1
 		bne	delete_entry
 
-		bsr	flagvarptr
-		beq	not_flagvar
+		sf	d0
+		bsr	set_flagvar
+		bne	delete_entry
 
-		movea.l	d0,a0
-		sf	(a0)
-		bra	delete_entry
-
-not_flagvar:
 		lea	word_histchars,a1
-		bsr	strcmp
+		jsr	strcmp
 		bne	not_histchars
 
 		move.w	#'!',histchar1(a5)
@@ -75,7 +71,7 @@ not_flagvar:
 
 not_histchars:
 		lea	word_wordchars,a1
-		bsr	strcmp
+		jsr	strcmp
 		bne	not_wordchars
 
 		lea	default_wordchars,a1
@@ -93,7 +89,7 @@ notmatch:
 		bra	unsetvar_loop
 ****************
 unsetvar_return:
-		movem.l	(a7)+,d0-d1/a0/a2-a3
+		movem.l	(a7)+,d1/a0/a2-a3
 		rts
 ****************************************************************
 *  Name
@@ -102,19 +98,26 @@ unsetvar_return:
 *
 *  Synopsis
 *       unalias pattern ...
+*       uncomplete pattern ...
 *       unset pattern ...
 ****************************************************************
 .xdef cmd_unalias
+.xdef cmd_uncomplete
 .xdef cmd_unset
 
 cmd_unalias:
 		lea	alias_top(a5),a2
-		moveq	#1,d1
+		bra	unvar_start
+
+cmd_uncomplete:
+		lea	completion_top(a5),a2
+unvar_start:
+		st	d1
 		bra	start
 
 cmd_unset:
 		lea	shellvar_top(a5),a2
-		moveq	#0,d1
+		sf	d1
 start:
 		move.w	d0,d2
 		subq.w	#1,d2
@@ -123,7 +126,6 @@ loop:
 		lea	tmpword1,a1
 		bsr	escape_quoted		* A1 : クオートをエスケープに代えた検索文字列
 		exg	a0,a2
-		move.b	d1,d0
 		bsr	unsetvar
 		exg	a0,a2
 		bsr	strfor1

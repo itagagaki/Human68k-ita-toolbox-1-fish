@@ -6,13 +6,10 @@
 .include ../src/fish.h
 
 .xref strmove
-.xref wordlistlen
-.xref xmalloc
+.xref alloc_new_argbuf
 .xref free_current_argbuf
 .xref do_line_substhist
-.xref cannot_because_no_memory
-
-.xref current_argbuf
+.xref cannot_run_command_because_no_memory
 
 .text
 
@@ -26,41 +23,27 @@
 .xdef cmd_eval
 
 cmd_eval:
-		move.w	d0,d1				*  D1.W : ˆø”‚Ì”
+		move.w	d0,d3				*  D3.W : ˆø”‚Ì”
 		beq	return_0
 
-		bsr	wordlistlen
-		addq.l	#4,d0
-		bsr	xmalloc
-		beq	cannot_eval
+		moveq	#0,d2
+		bsr	alloc_new_argbuf
+		beq	cannot_run_command_because_no_memory
 
-		movea.l	a0,a1
-		movea.l	d0,a0
-		move.l	current_argbuf(a5),(a0)
-		move.l	a0,current_argbuf(a5)
-		addq.l	#4,a0
-		movea.l	a0,a2
-		subq.w	#1,d1
+		move.l	a0,-(a7)
+		subq.w	#1,d3
 build_line_loop:
 		bsr	strmove
 		move.b	#' ',-1(a0)
-		dbra	d1,build_line_loop
+		dbra	d3,build_line_loop
 
 		clr.b	-1(a0)
-		movea.l	a2,a0
+		movea.l	(a7)+,a0
 		sf	d0
 		jsr	do_line_substhist		*!! Ä‹A !!*
 		jsr	free_current_argbuf
 return_0:
 		moveq	#0,d0
 		rts
-
-cannot_eval:
-		lea	msg_eval,a0
-		bra	cannot_because_no_memory
-****************************************************************
-.data
-
-msg_eval:	dc.b	'eval‚ğÀs‚Å‚«‚Ü‚¹‚ñ',0
 
 .end

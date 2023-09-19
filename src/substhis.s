@@ -23,7 +23,8 @@
 .xref enputs
 .xref xmallocp
 .xref free
-.xref xfreep
+.xref allocate_tmpgetlinebuf
+.xref free_tmpgetlinebuf
 .xref modify
 .xref perror_command_name
 .xref pre_perror
@@ -32,7 +33,6 @@
 .xref too_long_line
 .xref msg_colon_blank
 .xref msg_too_large_number
-.xref str_nul
 
 .xref history_top
 .xref history_bot
@@ -40,7 +40,6 @@
 .xref prev_search
 .xref histchar1
 .xref histchar2
-.xref tmpgetlinebufp
 
 .text
 
@@ -577,6 +576,12 @@ compare_histchar:
 		exg	a0,a3
 		bsr	scanchar2
 		exg	a0,a3
+		bne	compare_histchar_1
+
+		moveq	#-1,d1				*  CC <- NZ
+		rts
+
+compare_histchar_1:
 		cmp.w	d1,d0
 		rts
 *****************************************************************
@@ -799,9 +804,7 @@ get_hist_search_str:
 current_event:
 		addq.l	#1,a2				*  # をスキップ
 
-		lea	tmpgetlinebufp(a5),a0
-		move.l	#MAXWORDLISTSIZE,d0
-		bsr	xmallocp
+		bsr	allocate_tmpgetlinebuf
 		beq	cannot_expand_current_event
 
 		clr.b	(a1)
@@ -811,6 +814,7 @@ current_event:
 		move.l	#MAXWORDLISTSIZE,d0
 		movea.l	buftop(a6),a0
 		move.l	a1,-(a7)
+		sf	d2
 		bsr	make_wordlist
 		movea.l	(a7)+,a0
 		movea.l	(a7)+,a1
@@ -1002,8 +1006,7 @@ subst_history_fatal_error:
 subst_hist_done:
 		subq.l	#1,a1
 subst_history_return:
-		lea	tmpgetlinebufp(a5),a0
-		bsr	xfreep
+		bsr	free_tmpgetlinebuf
 		movea.l	a2,a0
 		move.w	d7,d1
 		movem.l	(a7)+,d2-d7/a2-a3
@@ -1073,13 +1076,14 @@ error:
 .xdef msg_no_prev_search
 
 special_word_selecters:		dc.b	'%'
-special_word_selecters_2:	dc.b	'-*^$',0
+special_word_selecters_2:	dc.b	'-*^$'
+str_nul:			dc.b	0
 msg_event_not_found:		dc.b	'イベントが見当たりません',0
 msg_subst:			dc.b	'!置換の',0
 msg_bad_word_selecter:		dc.b	'単語選択子が無効です',0
 msg_no_prev_search:		dc.b	'検索文字列の記憶はありません',0
 msg_modifier_failed:		dc.b	'文字列修正は起こりませんでした',0
-msg_cannot_sharp:		dc.b	'!#を処理できません',0
+msg_cannot_sharp:		dc.b	' !# を処理できません',0
 ****************************************************************
 
 .end

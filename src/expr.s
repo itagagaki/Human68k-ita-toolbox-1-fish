@@ -3,6 +3,7 @@
 
 .include doscall.h
 .include stat.h
+.include error.h
 .include ../src/fish.h
 
 *  PRIMARY
@@ -24,6 +25,7 @@
 *     -b <name>
 *     -i <name>
 *     -o <name>
+*     -X <name>
 *     -t <handle>
 *     sizeof <filename>
 *     timeof <filename>
@@ -92,15 +94,21 @@ termsize equ MAXWORDLEN*2+1
 .xref enputs1
 .xref escape_quoted
 .xref expand_a_word
-.xref tfopen
+.xref scan_drive_name
+.xref cat_pathname
+.xref strip_excessive_slashes
+.xref tfopenx
 .xref fclose
 .xref isblkdev
 .xref stat
+.xref lgetmode
 .xref xmalloct
 .xref freet
 .xref divsl
 .xref mulsl
 .xref drvchk
+.xref drvchkp
+.xref search_command_0
 .xref fork_and_wait
 .xref command_error
 .xref expression_syntax_error
@@ -109,8 +117,11 @@ termsize equ MAXWORDLEN*2+1
 .xref too_long_word
 .xref no_close_brace
 .xref msg_ambiguous
+.xref dos_allfile
 
 .xref tmpstatbuf
+.xref pathname_buf
+.xref doscall_pathname
 
 .text
 
@@ -139,7 +150,7 @@ expression:
 		bsr	subexpression
 		bne	expression_done
 
-		bsr	expr_atoi
+		bsr	expr_atoi2
 		bne	expression_done
 
 		bsr	expr_itoa
@@ -193,7 +204,7 @@ triterm:
 		tst.b	d6
 		beq	triterm_ignore
 
-		bsr	expr_atoi			*  条件項を数値に変換する
+		bsr	expr_atoi2			*  条件項を数値に変換する
 		bne	return
 
 		tst.l	d1				*  条件項は真か偽か
@@ -227,7 +238,7 @@ triterm_ignore:
 
 triterm_skip_colon:
 		cmp.b	#OP_COLON,d5
-		bne	expression_syntax_error
+		bne	expression_syntax_error_near
 
 		bsr	next_token			*  演算子 : をスキップする
 		bra	success
@@ -257,7 +268,7 @@ bool_or_loop:
 		tst.b	d6
 		beq	bool_or_1
 
-		bsr	expr_atoi
+		bsr	expr_atoi2
 		bne	bool_error
 
 		move.l	d1,d2
@@ -299,7 +310,7 @@ bool_and_loop:
 		tst.b	d6
 		beq	bool_and_1
 
-		bsr	expr_atoi
+		bsr	expr_atoi2
 		bne	bool_error
 
 		move.l	d1,d2
@@ -376,7 +387,7 @@ compare_string:
 		bsr	compare_less_or_greater
 		bne	return
 compare_string_loop:
-		lea	strcmp(pc),a2
+		lea	strcmp,a2
 		moveq	#0,d1
 		cmp.b	#OP_EQ,d5
 		beq	do_compare_string
@@ -618,7 +629,7 @@ unary_1:
 		tst.b	d6
 		beq	unary_return
 
-		bsr	expr_atoi
+		bsr	expr_atoi2
 		bne	return
 unary_more:
 		moveq	#0,d0
@@ -666,7 +677,7 @@ unary_return:
 ****************************************************************
 primary:
 		subq.w	#1,d7
-		bcs	expression_syntax_error
+		bcs	expression_syntax_error_near
 
 		move.b	(a0),d0
 **
@@ -683,15 +694,15 @@ primary:
 			bne	return
 
 			subq.w	#1,d7
-			bcs	expression_syntax_error
+			bcs	expression_syntax_error_near
 
 			cmpi.b	#')',(a0)+
-			bne	expression_syntax_error
+			bne	expression_syntax_error_near
 
 			tst.b	(a0)+
-			bne	expression_syntax_error
-
-			bra	success
+			beq	success
+expression_syntax_error_near:
+			jmp	expression_syntax_error
 		*}
 
 primary_not_expression:
@@ -709,7 +720,7 @@ primary_not_expression:
 			moveq	#0,d0
 primary_command_count_loop:
 			tst.w	d7
-			beq	no_close_brace
+			beq	primary_command_no_close_brace
 
 			cmpi.b	#'}',(a2)
 			bne	primary_command_count_continue
@@ -722,6 +733,9 @@ primary_command_count_continue:
 			exg	a0,a2
 			addq.w	#1,d0
 			bra	primary_command_count_loop
+
+primary_command_no_close_brace:
+			jmp	no_close_brace
 
 primary_command_count_break:
 			tst.b	d6
@@ -750,7 +764,7 @@ primary_not_command:
 		*{
 			lea	1(a0),a4
 			tst.b	(a4)
-			beq	expression_syntax_error
+			beq	expression_syntax_error_near
 
 			bsr	next_token__expand
 			bne	return
@@ -761,6 +775,9 @@ file_examination_loop:
 			move.b	(a4)+,d0
 			beq	store_1
 
+			cmp.b	#'X',d0
+			beq	primary_file_executable_in_path
+
 			cmp.b	#'z',d0
 			beq	primary_file_zero
 
@@ -770,13 +787,12 @@ file_examination_loop:
 			cmp.b	#'l',d0
 			beq	primary_file_mode_link
 
+			cmp.b	#'d',d0
+			beq	primary_file_mode_directory
+
 			sf	d3
 			cmp.b	#'c',d0
 			beq	primary_devicetype
-
-			moveq	#MODEVAL_DIR,d2
-			cmp.b	#'d',d0
-			beq	primary_file_mode
 
 			moveq	#MODEVAL_VOL,d2
 			cmp.b	#'v',d0
@@ -820,7 +836,7 @@ file_examination_loop:
 
 			moveq	#0,d2
 			cmp.b	#'e',d0
-			bne	expression_syntax_error
+			bne	expression_syntax_error_near
 primary_file_mode:
 			bsr	stat_operand_x
 			bpl	return
@@ -840,12 +856,48 @@ file_examination_continue:
 			beq	store_0
 			bra	file_examination_loop
 
-primary_file_mode_link:
-			move.w	#-1,-(a7)
-			move.l	a1,-(a7)
-			DOS	_CHMOD
-			addq.l	#6,a7
+primary_file_mode_directory:
+			movem.l	a0-a3,-(a7)
+			movea.l	a1,a0
+			lea	tmpstatbuf,a1
+			jsr	stat
+			bpl	primary_file_mode_directory_1
+
+			movea.l	a0,a1
+			lea	dos_allfile,a2
+			lea	doscall_pathname,a0
+			jsr	cat_pathname
+			bmi	primary_file_mode_directory_false
+
+			bsr	strip_excessive_slashes
+			jsr	drvchkp
+			bmi	primary_file_mode_directory_false
+
+			move.w	#MODEVAL_ALL,-(a7)		*  すべてのエントリを検索する
+			move.l	a0,-(a7)
+			pea	tmpstatbuf
+			DOS	_FILES
+			lea	10(a7),a7
 			tst.l	d0
+			bpl	primary_file_mode_directory_true
+
+			cmp.l	#ENOFILE,d0
+			beq	primary_file_mode_directory_true
+primary_file_mode_directory_false:
+			movem.l	(a7)+,a0-a3
+			bra	store_0
+
+primary_file_mode_directory_true:
+			st	tmpstatbuf+ST_MODE	*  $FF を置く ... MODEBIT_DIR が立つ
+primary_file_mode_directory_1:
+			movem.l	(a7)+,a0-a3
+			btst.b	#MODEBIT_DIR,tmpstatbuf+ST_MODE
+			bra	file_examination_continue
+
+primary_file_mode_link:
+			exg	a0,a1
+			jsr	lgetmode
+			exg	a0,a1
 			bmi	store_0
 
 			btst	#MODEBIT_LNK,d0
@@ -859,6 +911,19 @@ primary_file_zero:
 			seq	d1
 			bra	file_examination_booltoa_1
 
+primary_file_executable_in_path:
+			movem.l	a0-a1/a4,-(a7)
+			movea.l	a1,a0
+			lea	pathname_buf,a1
+			sf	d0
+			jsr	search_command_0
+			movem.l	(a7)+,a0-a1/a4
+			cmp.l	#-1,d0
+			beq	store_0			*  not found
+
+			tst.l	d0
+			bra	file_examination_continue
+
 primary_device_io:
 			bsr	open_device
 			bmi	success
@@ -871,18 +936,18 @@ primary_device_io:
 			sne	d0
 primary_device_1:
 			exg	d0,d1
-			bsr	fclose
+			jsr	fclose
 			bra	file_examination_booltoa
 
 primary_devicetype:
 			bsr	open_device
 			bmi	success
 
-			bsr	isblkdev
+			jsr	isblkdev
 			bra	primary_device_1
 
 primary_isatty:
-			bsr	expr_atoi
+			bsr	expr_atoi2
 			bne	expr_error
 
 			cmp.l	#$ffff,d1
@@ -905,7 +970,7 @@ primary_isatty:
 open_device:
 			exg	a0,a1
 			moveq	#2,d0
-			bsr	tfopen
+			jsr	tfopenx
 			exg	a0,a1
 			move.l	d0,d1
 			bpl	open_device_return
@@ -967,14 +1032,13 @@ primary_not_timeof:
 			tst.b	d6
 			beq	success
 
-			move.b	(a1),d0
-			beq	expression_syntax_error
-
-			cmpi.b	#':',1(a1)
-			bne	expression_syntax_error
+			exg	a0,a1
+			bsr	scan_drive_name
+			exg	a0,a1
+			bne	expression_syntax_error_near
 
 			tst.b	2(a1)
-			bne	expression_syntax_error
+			bne	expression_syntax_error_near
 
 			cmp.b	#'@',d0
 			bne	primary_freeof_1
@@ -983,12 +1047,12 @@ primary_not_timeof:
 			add.b	#'A',d0
 primary_freeof_1:
 			move.b	d0,d1
-			bsr	drvchk
+			bclr	#31,d0
+			jsr	drvchk
 			bne	store_0
 
 			moveq	#0,d0
 			move.b	d1,d0
-			bsr	toupper
 			sub.b	#'@',d0
 			link	a6,#-DFBUFSIZE
 			pea	-DFBUFSIZE(a6)
@@ -1038,12 +1102,12 @@ primary_not_strlen:
 		cmp.b	#OP_NMATCH,d5
 		bne	expr_expand_a_word
 primary_pattern:
-		bsr	escape_quoted
+		jsr	escape_quoted
 		bra	expr_expand_ok
 ****************************************************************
 next_token__expand:
 		bsr	next_token
-		bcs	expression_syntax_error
+		bcs	expression_syntax_error_near
 
 		tst.b	d6
 		beq	expr_expand_ok
@@ -1056,23 +1120,26 @@ expr_expand_a_word:
 		beq	expr_ambiguous
 
 		cmp.l	#-2,d0
-		beq	too_long_word
+		beq	expr_too_long_word
 
 		cmp.l	#-3,d0
-		beq	too_long_word
+		beq	expr_too_long_word
 
 		cmp.l	#-4,d0
 		beq	expr_error
 
 		clr.b	(a1)
 expr_expand_ok:
-		bsr	strfor1
+		jsr	strfor1
 		bra	success
 
 expr_ambiguous:
-		bsr	pre_perror
+		jsr	pre_perror
 		lea	msg_ambiguous,a0
-		bra	enputs1
+		jmp	enputs1
+
+expr_too_long_word:
+		jmp	too_long_word
 ****************************************************************
 stat_operand:
 		bsr	next_token__expand
@@ -1084,7 +1151,7 @@ stat_operand_x:
 		movem.l	a0-a1,-(a7)
 		movea.l	a1,a0
 		lea	tmpstatbuf,a1
-		bsr	stat
+		jsr	stat
 		movem.l	(a7)+,a0-a1
 		bmi	store_0
 
@@ -1116,7 +1183,7 @@ operator_return:
 		bra	success
 ****************************************************************
 next_token:
-		bsr	strfor1
+		jsr	strfor1
 		subq.w	#1,d7
 		rts
 ****************************************************************
@@ -1141,7 +1208,7 @@ dual_term:
 		tst.b	d6
 		beq	dual_term_false
 
-		bsr	expr_atoi			*  左項を数値に変換する
+		bsr	expr_atoi2			*  左項を数値に変換する
 		bne	return
 
 		bsr	next_token			*  演算子をスキップする
@@ -1153,7 +1220,7 @@ dual_term:
 		jsr	(a2)				*  右項を得る
 		bne	dual_term_done
 
-		bsr	expr_atoi			*  右項を数値に変換する
+		bsr	expr_atoi2			*  右項を数値に変換する
 		bne	dual_term_done
 
 		move.l	d1,d2
@@ -1179,6 +1246,11 @@ dual_term_false:
 *      CCR    TST.L D0
 ****************************************************************
 .xdef expr_atoi
+
+expr_atoi2:
+		bsr	expr_atoi
+		bne	expression_syntax_error_near
+		rts
 
 expr_atoi:
 		movem.l	d2/a2,-(a7)
@@ -1206,7 +1278,7 @@ expr_atoi_minus:
 expr_atou:
 		move.b	(a2)+,d0
 		bsr	isdigit
-		bne	expression_syntax_error
+		bne	expr_atou_error
 
 		exg	a0,a2
 		cmp.b	#'0',d0
@@ -1237,9 +1309,9 @@ expr_atou_1:
 		move.l	d0,d1
 		exg	a0,a2
 		tst.b	(a2)
-		bne	expression_syntax_error
-
-		bra	success
+		beq	success
+expr_atou_error:
+		bra	expr_error
 ****************************************************************
 .xdef scan_octal
 
@@ -1306,7 +1378,7 @@ scan_hexa_decimal_loop:
 		blo	scan_hexa_decimal_done
 
 		cmp.b	#9,d0
-		blo	scan_hexa_decimal_1
+		bls	scan_hexa_decimal_1
 
 		add.b	#'0',d0
 		bsr	toupper
@@ -1371,12 +1443,9 @@ boolize_done:
 .xdef mod_by_0
 
 divide_by_0:
-		lea	msg_divide_by_0,a0
-		bra	command_error
-
 mod_by_0:
-		lea	msg_mod_by_0,a0
-		bra	command_error
+		lea	msg_divide_by_0,a0
+		jmp	command_error
 
 expr_error:
 		moveq	#1,d0
@@ -1384,7 +1453,7 @@ expr_error:
 ****************************************************************
 alloc_term:
 		move.l	#termsize,d0
-		bsr	xmalloct
+		jsr	xmalloct
 		beq	could_not_alloc_term
 
 		movea.l	d0,a1
@@ -1394,15 +1463,14 @@ alloc_term:
 could_not_alloc_term:
 		move.l	a0,-(a7)
 		lea	msg_cannot_eval_expression,a0
-		bsr	cannot_because_no_memory
+		jsr	cannot_because_no_memory
 		movea.l	(a7)+,a0
-		tst.l	d0
-		rts
+		bra	expr_error
 ****************************************************************
 free_term:
 		move.l	d0,-(a7)
 		move.l	a1,d0
-		bsr	freet
+		jsr	freet
 		move.l	(a7)+,d0
 		rts
 ****************************************************************
@@ -1441,8 +1509,7 @@ token_timeof:	dc.b	'timeof',0
 token_freeof:	dc.b	'freeof',0
 token_strlen:	dc.b	'strlen',0
 
-msg_divide_by_0:		dc.b	'0での除算があります',0
-msg_mod_by_0:			dc.b	'0での剰余があります',0
+msg_divide_by_0:		dc.b	'0での除算または剰余があります',0
 msg_cannot_eval_expression:	dc.b	'式を評価できません',0
 
 .end

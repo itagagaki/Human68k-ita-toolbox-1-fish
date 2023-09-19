@@ -4,38 +4,64 @@
 * Itagaki Fumihiko 05-Sep-90  Create.
 
 .xref strfor1
-.xref cputs
 .xref enputs1
 .xref put_newline
-.xref echo
 .xref strip_quotes
 .xref expand_wordlist
 .xref strcmp
-.xref setvar
 .xref findvar
+.xref setvar
 .xref printvar
-.xref get_var_value
+.xref print_var_value
 .xref pre_perror
 .xref insufficient_memory
 .xref word_alias
 .xref word_unalias
 
-.xref tmpargs
-
 .xref alias_top
+.xref completion_top
+.xref tmpargs
 
 .text
 
 ****************************************************************
-.xdef print_alias_value
+cmd_alias_sub_1:
+		move.w	d0,d1
+		beq	printvar			*  D0.L==0, ZF==1
 
-print_alias_value:
-		movem.l	d0/a0-a1,-(a7)
-		bsr	get_var_value
-		lea	cputs(pc),a1
-		bsr	echo
-		movem.l	(a7)+,d0/a0-a1
+		movea.l	a0,a2
+		bsr	strfor1
+		exg	a0,a2				*  A0 : name   A2 : list
+		bsr	strip_quotes
+		subq.w	#1,d1
+		bne	return				*  ZF==0
+print_one:
+		movea.l	a0,a1
+		movea.l	(a3),a0
+		bsr	findvar
+		beq	return_0
+
+		bsr	print_var_value
+		bsr	put_newline
+return_0:
+		moveq	#0,d0				*  D0.L==0, ZF==1
+return:
 		rts
+****************************************************************
+cmd_alias_sub_2:
+		movea.l	a2,a1				*  A1 : list
+		movea.l	a0,a2				*  A2 : name
+		movea.l	tmpargs(a5),a0			*  A0 : for store expanded list
+		move.w	d1,d0
+		bsr	expand_wordlist
+		bmi	return
+
+		movea.l	a2,a1				*  A1 : name
+		movea.l	a0,a2				*  A2 : expanded list
+		movea.l	a3,a0				*  A0 : varptr
+		bsr	setvar
+		beq	insufficient_memory
+		bra	return_0
 ****************************************************************
 *  Name
 *       alias - 別名の表示と定義
@@ -53,15 +79,9 @@ print_alias_value:
 .xdef cmd_alias
 
 cmd_alias:
-		move.w	d0,d1			* D1.W : 引数の数
-		beq	print_all_alias		* 引数が無いなら別名のリストを表示
-
-		movea.l	a0,a2
-		bsr	strfor1
-		exg	a0,a2			* A0 : name   A2 : wordlist
-		bsr	strip_quotes
-		subq.w	#1,d1
-		beq	print_one_alias		* 引数が 1つならその別名の内容を表示
+		lea	alias_top(a5),a3
+		bsr	cmd_alias_sub_1
+		beq	return				*  D0.L == 0
 
 		lea	word_alias,a1
 		bsr	strcmp
@@ -71,37 +91,7 @@ cmd_alias:
 		bsr	strcmp
 		beq	danger
 
-		movea.l	a2,a1			* A1 : wordlist
-		movea.l	a0,a2			* A2 : name
-		lea	tmpargs,a0
-		move.w	d1,d0
-		bsr	expand_wordlist
-		bmi	return
-
-		movea.l	a2,a1			* A1 : name
-		movea.l	a0,a2			* A2 : tmpargs
-		lea	alias_top(a5),a0
-		bsr	setvar
-		beq	insufficient_memory
-		bra	return_0
-****************
-print_one_alias:
-		movea.l	a0,a1
-		movea.l	alias_top(a5),a0
-		bsr	findvar
-		beq	return_0
-
-		bsr	print_alias_value
-		bsr	put_newline
-		bra	return_0
-****************
-print_all_alias:
-		movea.l	alias_top(a5),a0
-		bsr	printvar
-return_0:
-		moveq	#0,d0
-return:
-		rts
+		bra	cmd_alias_sub_2
 ****************
 danger:
 		movea.l	a1,a0
@@ -109,9 +99,30 @@ danger:
 		lea	msg_danger,a0
 		bra	enputs1
 ****************************************************************
+*  Name
+*       complete - 補完式の表示と定義
+*
+*  Synopsis
+*       complete
+*            定義されているすべての補完式とそれらの定義を表示する
+*
+*       complete pattern
+*            pattern に一致する補完式の内容を表示する
+*
+*       complete name expression
+*            補完式 name を expression として定義する
+****************************************************************
+.xdef cmd_complete
+
+cmd_complete:
+		lea	completion_top(a5),a3
+		bsr	cmd_alias_sub_1
+		beq	return				*  D0.L == 0
+
+		bra	cmd_alias_sub_2
+****************************************************************
 .data
 
 msg_danger:		dc.b	'この名前を別名とするのは危険です',0
 
 .end
-

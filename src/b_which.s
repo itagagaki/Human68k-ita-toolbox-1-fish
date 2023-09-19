@@ -7,7 +7,6 @@
 .include limits.h
 
 .xref strfor1
-.xref strlen
 .xref strcpy
 .xref puts
 .xref nputs
@@ -18,7 +17,7 @@
 .xref findvar
 .xref find_function
 .xref list_1_function
-.xref print_alias_value
+.xref print_var_value
 .xref usage
 .xref too_few_args
 
@@ -35,11 +34,14 @@
 print_name_is:
 		move.l	a0,-(a7)
 		movea.l	a1,a0
-		bsr	cputs
+		bsr	cputs_near
 		lea	msg_is,a0
-		bsr	puts
+		jsr	puts
 		movea.l	(a7)+,a0
 		rts
+
+cputs_near:
+		jmp	cputs
 ****************************************************************
 *  Name
 *       which - コマンドの実体を表示する
@@ -149,11 +151,6 @@ not_function:
 	*
 	*  path 検索
 	*
-		movea.l	a1,a0
-		bsr	strlen
-		cmp.w	#MAXPATH,d0
-		bhi	not_a_file
-
 		moveq	#0,d0
 		move.b	d2,d0
 		lsr.b	#1,d0				*  bit 0 : ~~無視フラグ
@@ -162,7 +159,7 @@ not_function:
 
 		lea	command_name(a6),a0
 		exg	a0,a1
-		bsr	search_command_0
+		jsr	search_command_0
 		exg	a0,a1
 		cmp.l	#-1,d0
 		beq	not_a_file
@@ -173,7 +170,7 @@ not_function:
 search_all_path:
 		movea.l	a1,a0
 		lea	answer_path(pc),a4
-		bsr	search_command
+		jsr	search_command
 not_a_file:
 		tst.b	d7
 		bne	continue
@@ -185,10 +182,10 @@ not_a_file:
 
 		bsr	print_name_is
 		lea	msg_not_found,a0
-		bsr	nputs
+		bsr	nputs_near
 continue:
 		movea.l	a1,a0
-		bsr	strfor1
+		jsr	strfor1
 		movea.l	a0,a1
 		dbra	d1,loop
 
@@ -203,13 +200,17 @@ answer_alias:
 		bmi	return
 
 		lea	word_alias,a0
-		bne	nputs
+		bne	nputs_near
 
 		bsr	print_name_is
-		bsr	put_space
-		bsr	print_alias_value
+		bsr	put_space_near
+		bsr	print_var_value
 		lea	msg_is_aliased,a0
-		bra	nputs
+nputs_near:
+		jmp	nputs
+
+put_space_near:
+		jmp	put_space
 ****************
 answer_function:
 		st	d7
@@ -217,12 +218,12 @@ answer_function:
 		bmi	return
 
 		lea	word_function,a0
-		bne	nputs
+		bne	nputs_near
 
 		move.l	d0,-(a7)
 		bsr	print_name_is
 		lea	msg_is_function,a0
-		bsr	nputs
+		bsr	nputs_near
 		movea.l	(a7)+,a0
 		bra	list_1_function
 ****************
@@ -236,28 +237,28 @@ answer_path:
 		bmi	return
 
 		lea	word_builtin,a0
-		bne	nputs
+		bne	nputs_near
 
 		bsr	print_name_is
 		lea	msg_is_builtin,a0
-		bra	nputs
+		bra	nputs_near
 
 print_path:
 		*  ファイルである
 		tst.b	d3
-		bmi	nputs
+		bmi	nputs_near
 
 		movea.l	a0,a2
 		lea	word_file,a0
-		bne	nputs
+		bne	nputs_near
 
 		bsr	print_name_is
-		bsr	put_space
+		bsr	put_space_near
 		movea.l	a2,a0
-		bsr	cputs
-		bsr	put_space
+		bsr	cputs_near
+		bsr	put_space_near
 		lea	msg_desu,a0
-		bra	nputs
+		bra	nputs_near
 ****************
 which_too_few_args:
 		bsr	too_few_args
@@ -267,12 +268,12 @@ which_too_few_args:
 .data
 
 msg_usage:
-	dc.b	'[ -a ] [ -o | -O ] [ -t | -p ] [ - ] <コマンド名> ...',CR,LF
-	dc.b	'    -a   見つかってもなお検索を続行して見つかったものすべてを出力する',CR,LF
-	dc.b	'    -o   別名を除外する',CR,LF
-	dc.b	'    -O   別名，関数，組み込みコマンドを除外し、ファイルのみを検索する',CR,LF
-	dc.b	'    -t   シンプルな単語（‘alias’‘function’‘builtin’‘file’あるいは‘’）で答える',CR,LF
-	dc.b	'    -p   ファイルならばパス名を答え、それ以外ならば答えない',0
+	dc.b	'[-a] [-o|-O] [-t|-p] [-] <コマンド名> ...',CR,LF
+	dc.b	'     -a   見つかってもなお検索を続行して見つかったものすべてを出力する',CR,LF
+	dc.b	'     -o   別名を除外する',CR,LF
+	dc.b	'     -O   別名，関数，組み込みコマンドを除外し、ファイルのみを検索する',CR,LF
+	dc.b	'     -t   シンプルな単語（‘alias’‘function’‘builtin’‘file’あるいは‘’）で答える',CR,LF
+	dc.b	'     -p   ファイルならばパス名を答え、それ以外ならば答えない',0
 
 msg_is:			dc.b	' は',0
 msg_is_aliased:		dc.b	' の別名'

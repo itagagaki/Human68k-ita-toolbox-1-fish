@@ -27,8 +27,11 @@ cmd_time:
 		move.l	shell_timer_high(a5),d3
 		move.l	shell_timer_low(a5),d2
 		tst.w	d0
-		beq	report_time			*  0 ‚Å‹A‚é
+		bne	cmd_time_recurse
 
+		jmp	report_time			*  0 ‚Å‹A‚é
+
+cmd_time_recurse:
 		movea.l	a0,a1
 		moveq	#1,d1
 		jsr	DoSimpleCommand_recurse_2	*** Ä‹A ***

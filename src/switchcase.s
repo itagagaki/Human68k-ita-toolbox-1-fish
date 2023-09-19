@@ -68,7 +68,7 @@ state_switch:
 		blo	state_switch_missing
 		bhi	syntax_error
 
-		movea.l	a1,a0
+		movea.l	a0,a1
 		lea	switch_string(a5),a0
 		bsr	strcpy
 state_switch_ok:
@@ -121,6 +121,7 @@ state_case_no_colon:
 		lea	tmpword1,a1
 		bsr	escape_quoted
 		lea	switch_string(a5),a0
+		moveq	#0,d0
 		bsr	strpcmp
 		bne	success
 clear_switch_status:
@@ -166,4 +167,3 @@ cmd_breaksw:
 msg_missing_string:	dc.b	'•¶Žš—ñ‚ª‚ ‚è‚Ü‚¹‚ñ',0
 
 .end
-

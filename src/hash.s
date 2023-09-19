@@ -25,6 +25,7 @@
 .xref isfullpath
 .xref dos_allfile
 .xref cat_pathname
+.xref strip_excessive_slashes
 .xref drvchkp
 .xref builtin_table
 .xref too_many_args
@@ -61,6 +62,12 @@ hash_loop:
 		cmp.b	#'.',d0
 		beq	hash_done
 
+		cmp.b	#'/',d0
+		beq	hash_done
+
+		cmp.b	#'\',d0
+		beq	hash_done
+
 		or.b	#$20,d0
 		mulu	#241,d0
 		add.l	d0,d1
@@ -80,6 +87,12 @@ hash_loop:
 		beq	hash_done
 
 		cmp.b	#'.',d0
+		beq	hash_done
+
+		cmp.b	#'/',d0
+		beq	hash_done
+
+		cmp.b	#'\',d0
 		beq	hash_done
 
 		*  hashval += ch * base;
@@ -147,7 +160,7 @@ rehash_loop:
 
 		movea.l	a1,a0
 		bsr	is_builtin_dir
-		beq	rehash_builtin
+		bne	rehash_builtin
 
 		bsr	isfullpath
 		bne	rehash_next
@@ -162,11 +175,13 @@ rehash_loop:
 		bsr	cat_pathname
 		bmi	rehash_continue
 
+		*bclr	#31,d0	* D0.L:31 ‚Í 0 ‚É‚È‚Á‚Ä‚¢‚é‚Í‚¸
 		bsr	drvchkp
 		bmi	rehash_continue
 
 		movea.l	a1,a3
 
+		bsr	strip_excessive_slashes
 		move.w	#MODEVAL_ALL,-(a7)
 		move.l	a0,-(a7)
 		pea	files_buf(a6)

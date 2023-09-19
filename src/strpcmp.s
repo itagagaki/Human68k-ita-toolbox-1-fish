@@ -81,7 +81,7 @@ ismatch_loop:
 ****************
 ismatch_char:
 		move.b	(a0)+,d1
-		bsr	issjis
+		jsr	issjis
 		beq	ismatch_sjis
 
 		tst.b	d2
@@ -221,7 +221,7 @@ ismatch_return:
 
 ismatch_list_missing_blaket:
 		lea	msg_missing_blaket,a0
-		bsr	enputs
+		jsr	enputs
 		moveq	#-1,d0
 		bra	ismatch_return
 ****************************************************************

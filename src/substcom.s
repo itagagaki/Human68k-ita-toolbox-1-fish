@@ -14,21 +14,20 @@
 .xref dup1_2
 .xref dup1_with_escaping
 .xref dup1_with_escaping_in_quote
-.xref eputc
-.xref enputs
 .xref fgetc
 .xref tmpfile
 .xref redirect
 .xref unredirect
-.xref perror
 .xref fclose
 .xref remove
 .xref fork_and_wait
 .xref manage_signals
+.xref abort
+.xref perror
+.xref unmatched
 .xref too_many_words
 .xref too_long_word
 .xref too_long_line
-.xref msg_unmatched
 
 .xref tmpline
 .xref not_execute
@@ -38,17 +37,9 @@
 .text
 
 ****************************************************************
-abort:
-		movea.l	stackp(a5),a7
-		movea.l	mainjmp(a5),a0
-		jmp	(a0)
-****************************************************************
-unmatched:
+subst_command_unmatched_sub:
 		moveq	#'`',d0
-		bsr	eputc
-		bsr	eputc
-		lea	msg_unmatched,a0
-		bsr	enputs
+		bsr	unmatched
 		moveq	#-4,d0
 		rts
 ****************************************************************
@@ -57,7 +48,7 @@ unmatched:
 * CALL
 *      A0     ソースとなる単語の先頭アドレス
 *      A1     格納するバッファの先頭アドレス
-*      D0.W   展開語数の限度．D2.Bが0のときには無効
+*      D0.W   展開語数の限度
 *      D1.W   バッファの容量
 *
 * RETURN
@@ -292,7 +283,7 @@ substcom_input_done:
 		move.l	(a7)+,mainjmp(a5)
 		bsr	subst_command_erase_tmp
 		tst.b	interrupted(a6)
-		bne	abort
+		bne	subst_command_abort
 
 		move.l	#-1,tmpfiledesc(a6)
 		movea.l	sourcep(a6),a0
@@ -345,7 +336,7 @@ subst_command_return1:
 
 
 subst_command_unmatched:
-		bsr	unmatched
+		bsr	subst_command_unmatched_sub
 		bra	subst_command_return
 
 
@@ -482,7 +473,7 @@ subst_command_2_read_done:
 		move.l	(a7)+,mainjmp(a5)
 		bsr	subst_command_2_erase_tmp
 		tst.b	interrupted(a6)
-		bne	abort
+		bne	subst_command_abort
 
 		move.l	#-1,tmpfiledesc(a6)
 		movea.l	sourcep(a6),a0
@@ -528,7 +519,7 @@ subst_command_2_return1:
 
 
 subst_command_2_unmatched:
-		bsr	unmatched
+		bsr	subst_command_unmatched_sub
 		bra	subst_command_2_return
 
 
@@ -615,7 +606,8 @@ subst_command_redirect_interrupted:
 		movea.l	a1,a0
 		bsr	erase_tmp
 		move.l	(a7)+,d0
-		bra	abort
+subst_command_abort:
+		jmp	abort
 
 
 subst_command_unredirect:

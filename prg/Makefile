@@ -2,16 +2,15 @@
 #  Makefile for fish.x
 
 #AS	= A:\bin\AS -i $(INCLUDE)
-AS	= A:\usr\pds\HAS -l -i $(INCLUDE)
+AS	= A:\usr\pds\HAS -i $(INCLUDE)
 #LK	= A:\bin\LK -p -i
 LK	= A:\usr\pds\hlk -p ${@|basename}.map
 LIB	= A:\bin\LIB
 BIND	= A:\bin\BIND
-INSTALL = copy
-STRIP   = A:\usr\pds\strip
-TOUCH   = A:\bin\TOUCH
-CP      = copy
-RM      = -A:\usr\local\bin\rm -f
+INSTALL = A:\usr\ita\cp -upv
+STRIP   = A:\usr\ita\strip
+CP      = A:\usr\ita\cp
+RM      = -A:\usr\ita\rm -f
 
 LKFLAG_STRIP = -x
 
@@ -31,14 +30,14 @@ OBJS_BUILTIN1 = b_alias.o b_alloc.o b_apply.o b_bind.o b_dirs.o b_echo.o \
 OBJS_BUILTIN2 = b_set.o b_shift.o b_source.o b_srand.o b_time.o b_unset.o \
 		b_unsetenv.o b_which.o b_xargs.o
 
-OBJS_MISC     = chkwild.o echo.o error.o expr.o file.o f_getenv.o \
-		getcwdx.o getline.o malloc.o misc.o hash.o passwd.o \
-		quote.o skippar.o tmpfile.o wordlist.o
+OBJS_MISC     = echo.o error.o expr.o file.o f_getenv.o getcwdx.o \
+		getline.o malloc.o misc.o hash.o passwd.o quote.o \
+		skippar.o tmpfile.o wordlist.o
 
 OBJS_SUBST    = enterhis.o expwords.o glob.o modify.o substali.o \
 		substcom.o substhis.o substvar.o unpack.o
 
-OBJS_VAR      = var.o f_setenv.o flagvar.o setsvar.o svartou.o
+OBJS_VAR      = var.o f_setenv.o flagvar.o setsvar.o
 
 OBJS_STATE    = ifthen.o switchcase.o foreach.o function.o
 
@@ -89,7 +88,6 @@ clean::
 
 fishbody.x: fishg.x
 	$(CP) fishg.x $@
-	$(TOUCH) $@
 	$(STRIP) $@
 
 clean::

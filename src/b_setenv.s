@@ -19,9 +19,8 @@
 
 .xref str_nul
 
-.xref tmpargs
-
 .xref env_top
+.xref tmpargs
 
 .text
 
@@ -37,34 +36,32 @@
 .xdef cmd_setenv
 
 cmd_setenv:
-		tst.w	d0			* 引数がなければ
-		beq	printenv		* 環境変数を表示する
+		tst.w	d0				*  引数がなければ
+		beq	printenv			*  環境変数を表示する
 
 		lea	str_nul,a1
 		subq.w	#2,d0
 		bcs	cmd_setenv_set
-		bhi	too_many_args		* エラー
+		bhi	too_many_args			*  エラー
 
-		movea.l	a0,a2			* A2 : 変数名
+		movea.l	a0,a2				*  A2 : 変数名
 		bsr	strfor1
-		movea.l	a0,a1			* A1 : 値
-		move.l	a1,-(a7)
-		lea	tmpargs,a0		* tmpargs に
-		moveq	#1,d0
-		bsr	expand_wordlist		* 値を置換展開する
-		movea.l	(a7)+,a1
+		movea.l	a0,a1				*  A1 : 値
+		moveq	#1,d0				*  1単語を
+		movea.l	tmpargs(a5),a0			*  tmpargs に
+		bsr	expand_wordlist			*  置換展開する
 		bmi	cmd_setenv_return
 
-		cmp.w	#1,d0
-		bhi	setenv_ambiguous
+		exg	a0,a1				*  A0 : 置換展開前，A1 : 置換展開後
+		subq.w	#1,d0
+		bne	ambiguous
 
-		movea.l	a0,a1			* A1 : 置換展開された値
-		movea.l	a2,a0			* A0 : 変数名
+		movea.l	a2,a0				*  A0 : 変数名
 cmd_setenv_set:
 		bsr	strip_quotes
 		move.l	a0,-(a7)
 		moveq	#'=',d0
-		bsr	strchr
+		jsr	strchr
 		movea.l	(a7)+,a0
 		bne	syntax_error
 
@@ -96,7 +93,7 @@ printenv_loop:
 		lea	var_body(a1),a0
 		bsr	cputs
 		moveq	#'=',d0
-		bsr	putc
+		jsr	putc
 		bsr	strfor1
 		bsr	cputs
 		bsr	put_newline
@@ -111,9 +108,5 @@ cmd_setenv_return:
 cmd_setenv_fail:
 		moveq	#1,d0
 		rts
-****************
-setenv_ambiguous:
-		movea.l	a1,a0
-		bra	ambiguous
 
 .end

@@ -47,10 +47,9 @@
 .xref paren_pair
 .xref word_sub
 
-.xref save_sourceptr
 .xref tmpword1
-.xref tmpargs
 
+.xref save_sourceptr
 .xref funcdef_status
 .xref funcdef_topptr
 .xref funcdef_size
@@ -66,6 +65,7 @@
 .xref keep_loop
 .xref loop_fail
 .xref line
+.xref tmpargs
 
 .text
 
@@ -513,7 +513,7 @@ do_defun:
 		movea.l	d0,a0
 		lea	FUNC_HEADER_SIZE(a0),a0
 		movea.l	funcdef_topptr(a5),a2
-		movea.l	save_sourceptr,a3
+		movea.l	save_sourceptr(a5),a3
 		movea.l	current_source(a5),a1
 		move.l	SOURCE_POINTER(a1),-(a7)
 		move.l	a2,SOURCE_POINTER(a1)
@@ -536,8 +536,9 @@ make_function_body_script_loop:
 
 		move.l	a0,-(a7)
 		lea	line(a5),a0
-		lea	tmpargs,a1
+		movea.l	tmpargs(a5),a1
 		move.w	#MAXWORDLISTSIZE,d1
+		sf	d2
 		bsr	make_wordlist
 		movea.l	(a7)+,a0
 		bmi	make_function_body_script_done
@@ -546,7 +547,7 @@ make_function_body_script_loop:
 		beq	make_function_body_script_loop
 
 		subq.w	#1,d1
-		lea	tmpargs,a1
+		movea.l	tmpargs(a5),a1
 make_function_body_script_1:
 		bsr	strmove
 		move.b	#' ',-1(a0)

@@ -21,13 +21,20 @@
 *      CCR    TST.L D0
 *
 * NOTE
-*      オープンする前にドライブを検査する
+*      オープンする前にドライブが読み込み可能かどうか検査する
+*      （ライトプロテクトは検査しない）
 *****************************************************************
 .xdef tfopen
 
 tfopen:
 		move.w	d0,-(a7)
 		move.l	a0,-(a7)
+		bclr	#31,d0
+		and.b	#15,d0
+		beq	tfopen_1
+
+		bset	#31,d0
+tfopen_1:
 		jsr	drvchkp
 		bmi	return
 
@@ -38,4 +45,3 @@ return:
 		rts
 
 .end
-

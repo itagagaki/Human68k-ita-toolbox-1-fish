@@ -30,10 +30,10 @@ cmd_source:
 		beq	cmd_source_1
 
 		lea	str_h,a1
-		bsr	strcmp
+		jsr	strcmp
 		bne	cmd_source_1
 
-		moveq	#(1<<SOURCE_FLAGBIT_JUSTREAD),d7
+		moveq	#(1<<SOURCE_FLAGBIT_ONLYLOAD),d7
 		st	d6
 		bsr	strfor1
 		subq.w	#1,d1
@@ -56,6 +56,6 @@ cmd_source_too_few_args:
 .data
 
 str_h:		dc.b	'-h',0
-msg_usage:	dc.b	'[ -h ] { - | <ファイル名> }',0
+msg_usage:	dc.b	'[-h] {<ファイル名>|-}',0
 
 .end

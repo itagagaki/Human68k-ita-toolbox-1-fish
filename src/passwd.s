@@ -6,7 +6,7 @@
 .include limits.h
 .include error.h
 
-.xref tfopen
+.xref tfopenx
 .xref make_sys_pathname
 
 .text
@@ -30,11 +30,11 @@ open_passwd:
 		movem.l	a0-a1,-(a7)
 		lea	pathname(a6),a0
 		lea	pathname_passwd,a1
-		bsr	make_sys_pathname
+		jsr	make_sys_pathname
 		bmi	no_passwd
 
 		moveq	#0,d0
-		bsr	tfopen
+		jsr	tfopenx
 open_passwd_return:
 		movem.l	(a7)+,a0-a1
 		unlk	a6
@@ -49,4 +49,3 @@ no_passwd:
 pathname_passwd:	dc.b	'/etc/passwd',0
 
 .end
-

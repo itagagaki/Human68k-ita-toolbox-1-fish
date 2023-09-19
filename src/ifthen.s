@@ -101,7 +101,7 @@ state_if:
 		tst.b	if_status(a5)			*  現在
 		bne	state_if_1			*  FALSE状態である
 
-		lea	tmpargs,a0
+		movea.l	tmpargs(a5),a0
 		bsr	subst_var_wordlist
 		bmi	syntax_error
 
@@ -150,7 +150,7 @@ recurse:
 		exg	a0,a1
 		bsr	copy_wordlist
 		addq.l	#4,a7			**  戻りアドレスを捨てる **
-		bra	do_line			**!! 再帰 !!**
+		jmp	do_line			**!! 再帰 !!**
 
 
 state_if_inc_level:

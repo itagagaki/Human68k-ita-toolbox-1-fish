@@ -2,6 +2,7 @@
 * Itagaki Fumihiko 29-Jul-90  Create.
 
 .include doscall.h
+.include error.h
 .include chrcode.h
 .include limits.h
 .include stat.h
@@ -12,20 +13,23 @@
 .include ../src/var.h
 .include ../src/function.h
 
+.xref isupper
+.xref isalpha
 .xref isalnum
 .xref iscntrl
-.xref isdigit
 .xref issjis
 .xref isspace2
 .xref tolower
 .xref toupper
 .xref itoa
+.xref atou
+.xref scanchar2
 .xref strbot
 .xref strchr
 .xref jstrchr
+.xref strcmp
 .xref strcpy
 .xref stpcpy
-.xref strcmp
 .xref strlen
 .xref strmove
 .xref strfor1
@@ -34,36 +38,51 @@
 .xref memxcmp
 .xref memmovi
 .xref memmovd
+.xref strpcmp
 .xref rotate
 .xref skip_space
+.xref skip_varname
+.xref make_wordlist
 .xref sort_wordlist_x
 .xref uniq_wordlist
 .xref is_all_same_word
+.xref strip_quotes
+.xref skip_root
+.xref skip_slashes
+.xref find_slashes
+.xref is_slash_or_backslash
 .xref putc
 .xref cputc
 .xref puts
+.xref nputs
+.xref put_space
 .xref put_newline
 .xref printfi
 .xref printfs
 .xref compile_esch
 .xref preparse_fmtout
 .xref builtin_dir_match
+.xref is_builtin_dir
 .xref check_executable_suffix
-.xref test_command_file
 .xref isnotttyin
 .xref fgetc
 .xref fgets
 .xref close_tmpfd
 .xref open_passwd
 .xref fgetpwent
+.xref subst_var
 .xref expand_tilde
 .xref contains_dos_wildcard
+.xref fair_pathname
+.xref get_fair_pathname
+.xref normalize_pathname
 .xref headtail
 .xref cat_pathname
 .xref isfullpath
+.xref is_dot
 .xref stat
-.if 0
 .xref findvar
+.if 0
 .xref cmd_eval
 .xref find_function
 .xref source_function
@@ -74,36 +93,42 @@
 .xref svartol
 .xref common_spell
 .xref getcwdx
+.xref print_dirstack
 .xref is_histchar_canceller
 .xref xmalloct
 .xref xfreetp
 .xref minmaxul
-.xref divul
-.xref drvchk
 .xref drvchkp
 .xref manage_interrupt_signal
+.xref unmatched
 .xref too_long_line
 .xref statement_table
 .xref builtin_table
-.xref word_nomatch
-.xref word_exact
+.xref key_function_word_table
+.xref key_function_names_top
+.xref word_columns
+.xref word_fignore
 .xref word_path
 .xref word_prompt
 .xref word_prompt2
 .xref word_status
 .xref dos_allfile
+.xref msg_nolabel
 
 .xref congetbuf
-.xref tmpargs
 .xref tmpword1
 .xref tmpword2
 .xref tmppwline
+.xref tmppwbuf
+.xref pathname_buf
+.xref doscall_pathname
 
 .xref history_top
 .xref history_bot
 .xref current_eventno
 .xref current_source
 .xref alias_top
+.xref completion_top
 .xref shellvar_top
 .xref env_top
 .xref function_bot
@@ -116,16 +141,18 @@
 .xref loop_status
 .xref histchar1
 .xref wordchars
+.xref flag_addsuffix
 .xref flag_autolist
 .xref flag_cifilec
-.xref flag_execbit
 .xref flag_listexec
 .xref flag_listlinks
+.xref flag_matchbeep
 .xref flag_noalias
 .xref flag_nobeep
 .xref flag_nonullcommandc
 .xref flag_recexact
 .xref flag_reconlyexec
+.xref flag_showdots
 .xref flag_symlinks
 .xref flag_usegets
 .xref last_congetbuf
@@ -134,6 +161,8 @@
 .xref linecutbuf
 .xref tmpfd
 .xref in_prompt
+.xref in_getline_x
+.xref tmpargs
 
 .text
 
@@ -150,7 +179,7 @@
 *      D7.L   (A2) への引数 D0.L
 *
 * RETURN
-*      D0.L   0:入力有り，-1:EOF，1:入力エラー
+*      D0.L   0:入力有り，-1:EOF，-2: 入力エラー+EOF，1:入力エラー
 *      D1.W   残り入力可能バイト数（最後のNUL分は勘定しない）
 *      CCR    TST.L D0
 *****************************************************************
@@ -166,6 +195,7 @@ getline_more:
 		movea.l	a0,a4
 		move.l	d7,d0
 		jsr	(a2)
+		bmi	getline_eof
 		bne	getline_return
 
 		suba.l	a1,a1
@@ -342,7 +372,20 @@ getline_done:
 		moveq	#0,d0
 getline_return:
 		movem.l	(a7)+,d3-d6/a0-a4
+		tst.l	d0
 		rts
+
+getline_eof:
+		move.b	d4,d0
+		beq	getline_eof_1
+
+		bsr	unmatched
+		moveq	#-2,d0
+		bra	getline_return
+
+getline_eof_1:
+		moveq	#-1,d0
+		bra	getline_return
 
 getline_over:
 		moveq	#1,d0
@@ -351,7 +394,7 @@ getline_over:
 * getline_phigical
 *
 * CALL
-*      A0     入力バッファの先頭
+*      A0     行バッファ入力ポインタ
 *      A1     プロンプト出力ルーチンのエントリ・アドレス
 *      D0.W   入力ファイル・ハンドル
 *      D1.W   入力最大バイト数（32767以下．最後のNUL分は勘定しない）
@@ -427,11 +470,13 @@ getline_script_sub_1:
 		bcs	getline_script_sub_over
 
 		bsr	memmovi
-		clr.b	(a0)
 		moveq	#0,d0
+getline_script_sub_done:
+		clr.b	(a0)
 getline_script_sub_return:
 		movea.l	a3,a1
 		movea.l	(a7)+,a3
+		tst.l	d0
 		rts
 
 getline_script_sub_over:
@@ -440,7 +485,7 @@ getline_script_sub_over:
 
 getline_script_sub_eof:
 		moveq	#-1,d0
-		bra	getline_script_sub_return
+		bra	getline_script_sub_done
 *****************************************************************
 .xdef getline_stdin
 
@@ -519,6 +564,7 @@ x_hist_circle = killing-1
 pad = x_hist_circle-1			*  偶数バウンダリーに合わせる
 
 getline_x:
+		st	in_getline_x(a5)
 		link	a6,#pad
 		movem.l	d2-d7/a1-a3,-(a7)
 		move.w	d0,input_handle(a6)
@@ -588,6 +634,7 @@ getline_x_return:
 		move.l	(a7)+,d0
 		movem.l	(a7)+,d2-d7/a1-a3
 		unlk	a6
+		sf	in_getline_x(a5)
 		rts
 ********************************
 *  self-insert
@@ -628,6 +675,16 @@ x_error:
 		bsr	beep
 		bra	getline_x_1
 ********************************
+*  keyboard-quit
+********************************
+x_keyboard_quit:
+		bsr	moveto_bol
+		moveq	#0,d4
+		move.w	nbytes(a6),d2
+		bsr	compile_region
+		bsr	delete_region
+		bra	getline_x_0
+********************************
 *  macro
 ********************************
 x_macro:
@@ -658,7 +715,7 @@ x_abort:
 		bsr	put_newline
 		bra	manage_interrupt_signal
 ********************************
-*  cr
+*  accept-line
 ********************************
 x_accept_line:
 		bsr	eol_newline
@@ -791,6 +848,16 @@ x_forward_word:
 		bsr	move_word_forward
 		bra	getline_x_1
 ********************************
+*  next-word
+********************************
+x_next_word:
+		moveq	#0,d5
+		bsr	next_nonwordchar
+		bsr	next_wordchar
+		move.l	d5,d0
+		bsr	forward_cursor
+		bra	getline_x_1
+********************************
 *  delete-backward-char
 ********************************
 x_del_back_char:
@@ -914,10 +981,11 @@ compile_region:
 *  yank
 ********************************
 x_yank:
-		lea	linecutbuf(a5),a0
+		movea.l	linecutbuf(a5),a0
+x_copy_string:
+		movea.l	a0,a1
 		bsr	strlen
 		move.l	d0,d2
-		movea.l	a0,a1
 x_copy:
 		bsr	open_columns
 		bcs	x_over
@@ -944,6 +1012,33 @@ x_copy_prev_word:
 		lea	(a1,d0.w),a1
 		bra	x_copy
 ********************************
+*  insert-last-word
+********************************
+x_insert_last_word:
+		movea.l	history_bot(a5),a0
+		cmpa.l	#0,a0
+		beq	getline_x_1
+
+		move.w	HIST_NWORDS(a0),d0
+		subq.w	#1,d0
+		bls	getline_x_1
+
+		lea	HIST_BODY(a0),a0
+		bsr	strforn
+		bra	x_copy_string
+********************************
+*  change-case
+********************************
+x_change_case:
+		move.w	point(a6),d3
+		cmp.w	nbytes(a6),d3
+		beq	getline_x_1
+
+		movea.l	line_top(a6),a0
+		move.b	(a0,d3.w),d0
+		bsr	isupper
+		beq	x_downcase_char
+********************************
 *  upcase-char
 ********************************
 x_upcase_char:
@@ -969,15 +1064,15 @@ chcase_loop:
 		move.b	(a0,d3.w),d0
 		jsr	(a1)
 		cmp.b	(a0,d3.w),d0
-		beq	chcase_char_not_changed
+		bne	chcase_char_changed
 
+		bsr	move_letter_forward
+		bra	chcase_loop
+
+chcase_char_changed:
 		move.b	d0,(a0,d3.w)
 		bsr	putc
 		bsr	forward_letter
-		bra	chcase_loop
-
-chcase_char_not_changed:
-		bsr	move_letter_forward
 		bra	chcase_loop
 
 chcase_done:
@@ -1005,6 +1100,36 @@ chcase_word:
 x_downcase_word:
 		lea	tolower(pc),a1
 		bra	chcase_word
+********************************
+*  capitalize-word
+********************************
+x_capitalize_word:
+		move.w	point(a6),d4
+		bsr	forward_word
+		move.w	d4,point(a6)
+		add.w	d2,d4
+capitalize_loop1:
+		move.w	point(a6),d3
+		cmp.w	nbytes(a6),d3
+		beq	capitalize_done
+
+		cmp.w	d4,d3
+		bhs	capitalize_done
+
+		movea.l	line_top(a6),a0
+		move.b	(a0,d3.w),d0
+		bsr	isalpha
+		beq	capitalize_loop1_break
+
+		bsr	move_letter_forward
+		bra	capitalize_loop1
+
+capitalize_loop1_break:
+		lea	tolower(pc),a1
+		bsr	toupper
+		bsr	chcase_char_changed
+capitalize_done:
+		bra	getline_x_1
 ********************************
 *  upcase-region
 ********************************
@@ -1044,13 +1169,20 @@ x_downcase_region:
 		lea	tolower(pc),a1
 		bra	chcase_region
 ********************************
+*  transpose-gosling
+********************************
+x_transpose_gosling:
+		cmp.w	#2,point(a6)
+		blo	x_error
+		bra	x_transpose_chars_0
+********************************
 *  transpose-chars
 ********************************
 x_transpose_chars:
 		move.w	point(a6),d0
 		cmp.w	nbytes(a6),d0
 		blo	x_transpose_chars_1
-
+x_transpose_chars_0:
 		bsr	move_letter_backward
 x_transpose_chars_1:
 		move.w	point(a6),d0
@@ -1349,16 +1481,11 @@ copy_history_loop:
 copy_history_start:
 copy_history_dup_word_loop:
 		moveq	#0,d0
-		move.b	(a1)+,d0
+		exg	a0,a1
+		bsr	scanchar2
+		exg	a0,a1
 		beq	copy_history_continue
 
-		bsr	issjis
-		bne	copy_history_word_1
-
-		lsl.w	#8,d0
-		move.b	(a1)+,d0
-		beq	copy_history_continue
-copy_history_word_1:
 		cmp.w	histchar1(a5),d0
 		bne	copy_history_not_histchar
 
@@ -1381,7 +1508,7 @@ copy_history_not_histchar:
 copy_history_dup_1:
 		cmp.w	#$100,d0
 		blo	copy_history_dup_1_1
-copy_history_dup_1_2:
+
 		subq.w	#1,d1
 		bcs	copy_history_over
 
@@ -1405,15 +1532,10 @@ copy_history_dup_escape:
 		move.b	d0,(a0)+
 		addq.w	#1,nbytes(a6)
 
-		move.b	(a1)+,d0
-		beq	copy_history_continue
-
-		bsr	issjis
-		bne	copy_history_dup_1_1
-
-		lsl.w	#8,d0
-		move.b	(a1)+,d0
-		bne	copy_history_dup_1_2
+		exg	a0,a1
+		bsr	scanchar2
+		exg	a0,a1
+		bne	copy_history_dup_1
 copy_history_continue:
 		dbra	d2,copy_history_loop
 copy_history_done:
@@ -1433,6 +1555,21 @@ copy_history_over:
 ****************************************************************
 .xdef is_word_separator
 
+is_special:
+		cmp.b	#'\',d0
+		beq	is_special_return
+
+		cmp.b	#'*',d0
+		beq	is_special_return
+
+		cmp.b	#'?',d0
+		beq	is_special_return
+
+		cmp.b	#'[',d0
+		beq	is_special_return
+
+		cmp.b	#'{',d0
+		beq	is_special_return
 is_word_separator:
 		movem.l	d0/a0,-(a7)
 		lea	word_separators,a0
@@ -1440,6 +1577,7 @@ is_word_separator:
 		seq	d0
 		tst.b	d0
 		movem.l	(a7)+,d0/a0
+is_special_return:
 		rts
 ****************************************************************
 histcmp2:
@@ -1587,465 +1725,921 @@ history_search_return:
 		movem.l	(a7)+,d0-d2/d4/a0/a2
 		rts
 ********************************
-FLAGBIT_LIST     = 0	*  補完文字列の挿入は行わず，補完候補の表示を行う
-FLAGBIT_FILE     = 1	*  文字列の位置によらずファイル名として補完する
-FLAGBIT_CMD      = 2	*  文字列の位置によらずコマンド名として補完する
-FLAGBIT_VAR      = 3	*  $で始まっていなくとも常に変数名として補完する
-FLAGBIT_NOSVAR   = 4	*  変数名補完時にシェル変数をデフォルトの候補とする
-FLAGBIT_NOENV    = 5	*  変数名補完時に環境変数をデフォルトの候補とする
-FLAGBIT_SHOWDOTS = 6	*  . で始まる名前も list 表示する
+
+FLAGBIT_LIST       = 0
+FLAGBIT_RAW        = 1
+FLAGBIT_NOSUBSTDIR = 2
 
 FLAGX_COMPL      = 0
-FLAGX_COMPL_CMD  = (1<<FLAGBIT_CMD)
-FLAGX_COMPL_FILE = (1<<FLAGBIT_FILE)
-FLAGX_COMPL_VAR  = (1<<FLAGBIT_VAR)
-FLAGX_COMPL_SVAR = (1<<FLAGBIT_VAR)|(1<<FLAGBIT_NOENV)
-FLAGX_COMPL_ENV  = (1<<FLAGBIT_VAR)|(1<<FLAGBIT_NOSVAR)
+FLAGX_LIST       = 1<<FLAGBIT_LIST
+FLAGX_COMPL_RAW  = 1<<FLAGBIT_RAW
+FLAGX_LIST_RAW   = (1<<FLAGBIT_LIST)|(1<<FLAGBIT_RAW)
 
-FLAGX_LIST       = (1<<FLAGBIT_LIST)
-FLAGX_LIST_CMD   = (1<<FLAGBIT_LIST)|(1<<FLAGBIT_CMD)
-FLAGX_LIST_FILE  = (1<<FLAGBIT_LIST)|(1<<FLAGBIT_FILE)
-FLAGX_LIST_VAR   = (1<<FLAGBIT_LIST)|(1<<FLAGBIT_VAR)
-FLAGX_LIST_SVAR  = (1<<FLAGBIT_LIST)|(1<<FLAGBIT_VAR)|(1<<FLAGBIT_NOENV)
-FLAGX_LIST_ENV   = (1<<FLAGBIT_LIST)|(1<<FLAGBIT_VAR)|(1<<FLAGBIT_NOSVAR)
+PROP_FILE        = 0
+PROP_DIRECTORY   = 1
+PROP_COMMAND     = 2
+PROP_USER        = 3
+PROP_SVAR        = 4
+PROP_ENVIRON     = 5
+PROP_ALIAS       = 6
+PROP_FUNCTION    = 7
+PROP_BINDING     = 8
+PROP_COMPLETION  = 9
 
-********************************
-*  list-environment-variable
-********************************
-x_list_environment_variable:
-		moveq	#FLAGX_LIST_ENV,d7
-		bra	x_filec_or_list
-********************************
-*  list-shell-variable
-********************************
-x_list_shell_variable:
-		moveq	#FLAGX_LIST_SVAR,d7
-		bra	x_filec_or_list
-********************************
-*  list-variable
-********************************
-x_list_variable:
-		moveq	#FLAGX_LIST_VAR,d7
-		bra	x_filec_or_list
-********************************
-*  list-command
-********************************
-x_list_command:
-		moveq	#FLAGX_LIST_CMD,d7
-		bra	x_filec_or_list
-********************************
-*  list-file
-********************************
-x_list_file:
-		moveq	#FLAGX_LIST_FILE,d7
-		bra	x_filec_or_list
 ********************************
 *  list
 ********************************
 x_list:
+.if 0
 		moveq	#FLAGX_LIST,d7
 		bra	x_filec_or_list
+.endif
 ********************************
-*  complete-environment-variable
+*  list-raw
 ********************************
-x_complete_environment_variable:
-		moveq	#FLAGX_COMPL_ENV,d7
-		bra	x_filec_or_list
-********************************
-*  complete-shell-variable
-********************************
-x_complete_shell_variable:
-		moveq	#FLAGX_COMPL_SVAR,d7
-		bra	x_filec_or_list
-********************************
-*  complete-variable
-********************************
-x_complete_variable:
-		moveq	#FLAGX_COMPL_VAR,d7
-		bra	x_filec_or_list
-********************************
-*  complete-command
-********************************
-x_complete_command:
-		moveq	#FLAGX_COMPL_CMD,d7
-		bra	x_filec_or_list
-********************************
-*  complete-file
-********************************
-x_complete_file:
-		moveq	#FLAGX_COMPL_FILE,d7
+x_list_raw:
+		moveq	#FLAGX_LIST_RAW,d7
 		bra	x_filec_or_list
 ********************************
 *  complete
 ********************************
 x_complete:
+.if 0
 		moveq	#FLAGX_COMPL,d7
+		bra	x_filec_or_list
+.endif
+********************************
+*  complete-raw
+********************************
+x_complete_raw:
+		moveq	#FLAGX_COMPL_RAW,d7
 
 filec_statbuf = -STATBUFSIZE
-filec_fignore = filec_statbuf-4
-filec_command_ptr = filec_fignore-4
-filec_files_builtin_ptr = filec_command_ptr-4
+filec_file_search_path = filec_statbuf-(((MAXPATH+1)+1)>>1<<1)
+filec_current_program = filec_file_search_path-4
+filec_current_statement = filec_current_program-4
+filec_action = filec_current_statement-4
+filec_pattern = filec_action-4
+filec_program_suffix = filec_pattern-4
+filec_program_delimiter = filec_program_suffix-2
+filec_branch_time = filec_program_delimiter-2
+filec_fignore = filec_branch_time-2
+filec_fignore_list = filec_fignore-4
+filec_files_path_ptr = filec_fignore_list-4
+filec_files_path_count = filec_files_path_ptr-2
+filec_files_builtin_ptr = filec_files_path_count-4
 filec_buffer_ptr = filec_files_builtin_ptr-4
-filec_command_path_count = filec_buffer_ptr-2
-filec_buffer_free = filec_command_path_count-2
-filec_patlen = filec_buffer_free-4
-filec_dirlen = filec_patlen-4
-filec_maxlen = filec_dirlen-4
+filec_buffer_free = filec_buffer_ptr-2
+filec_command_top = filec_buffer_free-4
+filec_argno = filec_command_top-4
+filec_patlen = filec_argno-4
+filec_maxlen = filec_patlen-4
 filec_minlen = filec_maxlen-4
 filec_minlen_precious = filec_minlen-4
 filec_numentry = filec_minlen_precious-2
 filec_numprecious = filec_numentry-2
-filec_flag = filec_numprecious-1
-filec_command = filec_flag-1
-filec_suffix = filec_command-1
+filec_suffix = filec_numprecious-1
 filec_exact_suffix = filec_suffix-1
-filec_showdots = filec_exact_suffix-1
-filec_pad = filec_showdots-1
+filec_flag = filec_exact_suffix-1
+filec_quote = filec_flag-1
+filec_command_position = filec_quote-1
+filec_file_findmode = filec_command_position-1
+filec_file_path_fullpath = filec_file_findmode-1
+filec_file_path_dot = filec_file_path_fullpath-1
+filec_case_independent = filec_file_path_dot-1
+filec_pad = filec_case_independent-1
 
 x_filec_or_list:
 		link	a4,#filec_pad
 		move.b	d7,filec_flag(a4)
-		move.b	#-1,filec_showdots(a4)
-		*
-		*  対象の単語を取り出す
-		*
-		move.w	point(a6),d6
-		movea.l	line_top(a6),a2
-filec_find_word_statement_break:
-		move.b	#1,filec_command(a4)	*     0 : all files
-						*     1 : statement ->
-						*  -> 2 : alias  ->
-						*  -> 3 : function  ->
-						*  -> 4 : cmdfiles on each $path
-						*     5 : cmdfiles on specified directory
-filec_find_word_loop1:
-		movea.l	a2,a1
-		subq.w	#1,d6
-		bcs	filec_find_word_loop1_break
+	*
+	*  物理行を単語に分解する
+	*
+		movea.l	line_top(a6),a0
+		move.w	point(a6),d3
+		move.b	(a0,d3.w),d4
+		clr.b	(a0,d3.w)
+		movea.l	tmpargs(a5),a1
+		move.l	d1,-(a7)
+		move.w	#MAXWORDLISTSIZE,d1
+		st	d2
+		bsr	make_wordlist
+		move.l	(a7)+,d1
+		move.b	d4,(a0,d3.w)
+		move.l	d0,d2				*  D2.L : 物理行全体の単語数
+		bmi	filec_error
+	*
+	*  コマンドの先頭を見つける
+	*  complete_raw での候補（ファイルかコマンドか）を決める
+	*
+		movea.l	tmpargs(a5),a0
+filec_scan_statement:
+		moveq	#1,d0			*  1 : statement->alias->function->commandfiles
+filec_scan_command:
+		move.l	a0,filec_command_top(a4)
+		move.l	d2,filec_argno(a4)
+filec_scan_words:
+		move.b	d0,filec_command_position(a4)	*  0 : files
+							*  1 : statements ->
+							*  2 : aliases -> functions -> $path
+		subq.l	#1,d2
+		beq	filec_scan_done
 
-		move.b	(a2)+,d0
-		beq	filec_find_word_loop1
+		move.b	(a0)+,d0
+		beq	filec_scan_args
 
-		bsr	isspace2
-		beq	filec_find_word_loop1
+		cmp.b	#';',d0
+		beq	filec_scan_semicolon
 
-		cmp.b	#'=',d0
-		beq	filec_find_word_loop2
+		cmp.b	#'|',d0
+		beq	filec_scan_and_or
 
-		subq.l	#1,a2
-filec_find_word_loop1_break:
-		addq.w	#1,d6
-filec_find_word_loop2:
-		subq.w	#1,d6
-		bcs	filec_find_word_done
+		cmp.b	#'&',d0
+		beq	filec_scan_and_or
 
-		moveq	#0,d0
-		move.b	(a2)+,d0
-		beq	filec_find_word_normal_break
+		cmp.b	#'(',d0
+		beq	filec_scan_paren
+filec_scan_next:
+		bsr	strfor1
+filec_scan_args:
+		moveq	#0,d0			*  0 : all files
+		bra	filec_scan_words
 
+filec_scan_and_or:
+		cmp.b	(a0)+,d0
+		beq	filec_scan_andand_oror
+
+		subq.l	#1,a0
+filec_scan_andand_oror:
+filec_scan_semicolon:
+		tst.b	(a0)+
+		bne	filec_scan_next
+
+		moveq	#2,d0
+		bra	filec_scan_command
+
+filec_scan_paren:
+		tst.b	(a0)+
+		bne	filec_scan_next
+
+		tst.b	filec_command_position(a4)
+		beq	filec_scan_args
+		bra	filec_scan_statement
+
+filec_scan_done:
+		subq.l	#1,filec_argno(a4)
+	*
+	*  対象の単語を tmpword1 にコピーする
+	*  クオートが開いているかどうか調べる
+	*
+		movea.l	filec_command_top(a4),a0
+		move.l	filec_argno(a4),d0
+		bsr	strforn
+		lea	tmpword1,a1
+		clr.b	filec_quote(a4)
+filec_copy_word_loop:
+		move.b	(a0)+,d0
+		move.b	d0,(a1)+
+		beq	filec_copy_word_done
+
+		tst.b	filec_quote(a4)
+		beq	filec_copy_word_not_in_quote
+
+		cmp.b	filec_quote(a4),d0
+		bne	filec_copy_word_1
+filec_copy_word_quote:
+		eor.b	d0,filec_quote(a4)
+		bra	filec_copy_word_loop
+
+filec_copy_word_not_in_quote:
+		cmp.b	#'"',d0
+		beq	filec_copy_word_quote
+
+		cmp.b	#"'",d0
+		beq	filec_copy_word_quote
+
+		cmp.b	#'`',d0
+		beq	filec_copy_word_quote
+
+		cmp.b	#'\',d0
+		bne	filec_copy_word_1
+filec_check_quote_escape:
+		move.b	(a0)+,d0
+		move.b	d0,(a1)+
+		beq	filec_copy_word_done
+filec_copy_word_1:
 		bsr	issjis
-		beq	filec_find_word_sjis
+		bne	filec_copy_word_loop
 
-		lea	filec_separators,a0
-		bsr	strchr				*  filec_separators にシフトJIS文字は無い
-		beq	filec_find_word_loop2
-
-		cmpa.l	#x_command_separators_1,a0
-		blo	filec_find_word_normal_break
-
-		cmpa.l	#x_command_separators_2,a0
-		blo	filec_find_word_maybe_subshell
-
-		move.b	#2,filec_command(a4)
-		bra	filec_find_word_loop1
-
-filec_find_word_maybe_subshell:
-		tst.b	filec_command(a4)
-		beq	filec_find_word_normal_break
-
-		move.l	a2,d0
-		subq.l	#1,d0
-		sub.l	a1,d0
-		beq	filec_find_word_statement_break
-filec_find_word_normal_break:
-		clr.b	filec_command(a4)
-		bra	filec_find_word_loop1
-
-filec_find_word_sjis:
-		subq.w	#1,d6
-		bcs	filec_find_word_done
-
-		addq.l	#1,a2
-		bra	filec_find_word_loop2
-
-filec_find_word_done:
-		moveq	#0,d0
-		move.w	point(a6),d0
-		add.l	line_top(a6),d0
-		sub.l	a1,d0
-		cmp.l	#MAXWORDLEN,d0
-		bhi	filec_error
-
-		lea	tmpword1,a0
-		bsr	memmovi
-		clr.b	(a0)
-
+		move.b	(a0)+,d0
+		move.b	d0,(a1)+
+		bne	filec_copy_word_loop
+filec_copy_word_done:
+	*
+	*  ワーク初期設定
+	*
+		movea.l	tmpargs(a5),a0
+		move.l	a0,filec_buffer_ptr(a4)
+		move.w	#MAXWORDLISTSIZE,filec_buffer_free(a4)
 		clr.w	filec_numentry(a4)
 		clr.w	filec_numprecious(a4)
 		clr.l	filec_maxlen(a4)
 		move.l	#-1,filec_minlen(a4)
 		move.l	#-1,filec_minlen_precious(a4)
-		lea	tmpargs,a0
-		move.l	a0,filec_buffer_ptr(a4)
-		move.w	#MAXWORDLISTSIZE,filec_buffer_free(a4)
 		clr.b	filec_exact_suffix(a4)
-		clr.l	filec_fignore(a4)
-		*
-		*  変数名か？
-		*  ユーザ名か？
-		*  コマンド名／ファイル名か？
-		*
+	*
+		clr.l	filec_pattern(a4)		*!!
+		clr.l	filec_program_suffix(a4)	*!!
+	*
+	*  変数名補完か？
+	*
+		lea	tmpword1,a1
+		clr.b	d2				*  quote
+filec_check_doller_loop1:
+		moveq	#0,d3
+filec_check_doller_loop2:
+		move.b	(a1)+,d0
+		beq	filec_check_doller_done
+
+		tst.b	d2
+		beq	filec_check_doller_not_in_quote
+
+		cmp.b	d2,d0
+		beq	filec_check_doller_quote
+
+		cmp.b	#"'",d2
+		bne	filec_check_doller_not_in_single_quote
+		bra	filec_check_doller_check_slash
+
+filec_check_doller_quote:
+		eor.b	d0,d2
+		bra	filec_check_doller_loop2
+
+filec_check_doller_not_in_quote:
+		cmp.b	#'\',d0
+		bne	filec_check_doller_not_escape
+
+		move.b	(a1)+,d0
+		beq	filec_check_doller_done
+		bra	filec_check_doller_check_slash
+
+filec_check_doller_not_escape:
+		cmp.b	#'"',d0
+		beq	filec_check_doller_quote
+
+		cmp.b	#"'",d0
+		beq	filec_check_doller_quote
+
+		cmp.b	#'`',d0
+		beq	filec_check_doller_quote
+filec_check_doller_not_in_single_quote:
+		cmp.b	#'$',d0
+		beq	filec_check_doller_doller
+filec_check_doller_check_slash:
+		bsr	issjis
+		beq	filec_check_doller_sjis
+
+		cmp.b	#'/',d0
+		beq	filec_check_doller_loop1
+
+		cmp.b	#'\',d0
+		beq	filec_check_doller_loop1
+		bra	filec_check_doller_loop2
+
+filec_check_doller_sjis:
+		tst.b	(a1)+
+		beq	filec_check_doller_done
+		bra	filec_check_doller_loop2
+
+filec_check_doller_doller:
+		move.l	a1,d3
+		bra	filec_check_doller_loop2
+
+filec_check_doller_done:
+		tst.l	d3
+		beq	filec_not_varname
+
+		movea.l	d3,a1
+		move.b	(a1)+,d2
+		cmp.b	#'@',d2
+		beq	filec_doller_varname_1
+
+		cmp.b	#'%',d2
+		beq	filec_doller_varname_1
+
+		subq.l	#1,a1
+filec_doller_varname_1:
+		moveq	#0,d0
+		cmpi.b	#'{',(a1)
+		bne	filec_doller_varname_3
+
+		addq.l	#1,a1
+		moveq	#'}',d0
+filec_doller_varname_3:
+		move.b	d0,filec_suffix(a4)
+		move.b	(a1)+,d0
+		cmp.b	#'#',d0
+		beq	filec_doller_varname_4
+
+		cmp.b	#'?',d0
+		beq	filec_doller_varname_4
+
+		subq.l	#1,a1
+filec_doller_varname_4:
+		movea.l	a1,a0
 		lea	tmpword1,a0
-		btst.b	#FLAGBIT_VAR,filec_flag(a4)
-		bne	complete_varname_start
+		bsr	strcpy
+		bsr	strlen
+		move.l	d0,filec_patlen(a4)		*!!
 
-		moveq	#'$',d0
-		bsr	strchr				*  '$' にシフトJISの考慮は不要
-		bne	complete_varname
+		moveq	#0,d0
+		move.b	filec_suffix(a4),d0
+		beq	filec_doller_varname_5
 
-		lea	tmpword1,a0
-		bsr	builtin_dir_match
-		beq	filec_not_builtin
+		bsr	jstrchr
+		bne	filec_beep
+filec_doller_varname_5:
+		cmp.b	#'%',d2
+		beq	filec_doller_varname_6
 
-		cmpi.b	#'/',(a0,d0.l)
-		bne	filec_not_builtin
+		bsr	complete_svarname
+		bne	filec_error
+filec_doller_varname_6:
+		cmp.b	#'@',d2
+		beq	filec_doller_varname_7
+
+		bsr	complete_envname
+		bne	filec_error
+filec_doller_varname_7:
+		bra	filec_find_done
+
+filec_not_varname:
+	*
+	*  programmable completion のチェック
+	*
+		btst.b	#FLAGBIT_RAW,filec_flag(a4)
+		bne	complete_raw
+
+		movea.l	filec_command_top(a4),a0
+		movea.l	completion_top(a5),a2
+complete_search_program_loop:
+		cmpa.l	#0,a2
+		beq	complete_raw
+
+		lea	var_body(a2),a1
+		cmpi.b	#':',(a1)
+		beq	complete_search_program_next
+
+		bclr.b	#FLAGBIT_NOSUBSTDIR,filec_flag(a4)
+complete_search_program_check_flag:
+		move.b	(a1)+,d0
+		cmp.b	#'-',d0
+		beq	complete_program_x
+
+		cmp.b	#'=',d0
+		bne	complete_compare_program
+complete_program_nosubst:
+		bset.b	#FLAGBIT_NOSUBSTDIR,filec_flag(a4)
+complete_program_x:
+		bra	complete_search_program_check_flag
+
+complete_compare_program:
+		subq.l	#1,a1
+		st	d0
+		bsr	strpcmp
+		beq	complete_program_found
+complete_search_program_next:
+		movea.l	var_next(a2),a2
+		bra	complete_search_program_loop
+
+complete_program_found:
+		bsr	filec_try_static_rule
+		bmi	filec_error
+
+		subq.l	#1,d0
+		beq	filec_find_done
+
+		subq.l	#1,d0
+		beq	filec_done
+
+		clr.w	filec_branch_time(a4)
+		clr.l	filec_pattern(a4)		*!!
+complete_program_found_2:
+		move.l	a2,filec_current_program(a4)
+		move.l	a2,d0
+		bsr	get_var_value
+		move.w	d0,d2
+		movea.l	a0,a2
+		move.l	filec_pattern(a4),d0		*!!
+		beq	filec_test_program_start
+
+		tst.w	d2
+		beq	completion_label_not_found
+
+		movea.l	d0,a0
+		bsr	strlen
+		move.l	d0,d3
+complete_search_label_loop:
+		cmpi.b	#':',(a2)
+		bne	complete_search_label_continue
+
+		lea	1(a2),a1
+		move.l	d3,d0
+		bsr	memcmp
+		bne	complete_search_label_continue
+
+		cmpi.b	#':',(a1,d3.l)
+		beq	filec_test_program_start
+complete_search_label_continue:
+		exg	a0,a2
+		bsr	strfor1
+		exg	a0,a2
+		subq.w	#1,d2
+		bne	complete_search_label_loop
+completion_label_not_found:
+		lea	msg_nolabel,a1
+		bra	filec_perror
+
+filec_test_program_start:
+filec_test_program_loop:
+		subq.w	#1,d2
+		bcs	complete_raw_2
+
+		move.l	a2,filec_current_statement(a4)
+		move.b	(a2)+,d3
+		beq	filec_test_program_loop
+
+		cmp.b	#':',d3
+		bne	filec_test_program_1
+
+		moveq	#':',d0
+		exg	a0,a2
+		bsr	strchr
+		exg	a0,a2
+		beq	filec_program_error
+
+		addq.l	#1,a2
+		move.b	(a2)+,d3
+		beq	filec_test_program_loop
+filec_test_program_1:
+		exg	a0,a2
+		bsr	scanchar2
+		exg	a0,a2
+		beq	filec_program_error
+
+		move.w	d0,filec_program_delimiter(a4)
+
+		cmp.b	#'p',d3
+		beq	filec_program_p
+
+		bra	filec_program_error
+
+filec_test_program_skip:
+		movea.l	a2,a0
+		bsr	strfor1
+		movea.l	a0,a2
+		bra	filec_test_program_loop
+
+filec_program_p:
+		bsr	get_filec_program_field		*  get pattern
+		beq	filec_error			*  no action field
+
+		cmpi.b	#'*',(a0)
+		bne	filec_program_p_1
+
+		tst.b	1(a0)
+		bne	filec_program_p_1
+
+		tst.l	filec_argno(a4)
+		beq	filec_test_program_skip
+		bra	filec_program_pattern_matched
+
+filec_program_p_1:
+		lea	tmpword2,a0
+		moveq	#0,d4
+		cmpi.b	#'-',(a0)+
+		beq	filec_program_p_2
+
+		subq.l	#1,a0
+		movem.l	d1,-(a7)
+		bsr	atou
+		exg	d0,d1
+		movem.l	(a7)+,d1
+		bmi	filec_program_error
+		bne	filec_test_program_skip
+
+		move.l	d0,d4
+		move.l	d0,d5
+		cmpi.b	#'-',(a0)
+		bne	filec_program_p_3
+
+		addq.l	#1,a0
+filec_program_p_2:
+		move.l	filec_argno(a4),d5
+		movem.l	d1,-(a7)
+		bsr	atou
+		exg	d0,d1
+		movem.l	(a7)+,d1
+		bne	filec_program_p_3
+
+		move.l	d0,d5
+filec_program_p_3:
+		cmp.l	filec_argno(a4),d4
+		bhi	filec_test_program_skip
+
+		cmp.l	filec_argno(a4),d5
+		blo	filec_test_program_skip
+filec_program_pattern_matched:
+		bsr	get_filec_program_field		*  get action
+		move.l	a2,filec_program_suffix(a4)	*!!
+		move.l	a0,filec_action(a4)
+filec_program_action_loop:
+		movea.l	filec_action(a4),a0
+		move.b	(a0)+,d3
+		beq	filec_find_done
+
+		move.l	a0,filec_action(a4)
+		move.b	#' ',filec_suffix(a4)		*  default
+		cmp.b	#'>',d3
+		beq	complete_branch
+
+		clr.l	filec_pattern(a4)		*!!
+		cmp.b	#'(',d3
+		beq	complact_fromlist
+
+		moveq	#':',d0
+		bsr	strchr
+		beq	filec_program_action_1
+
+		clr.b	(a0)+
+		move.l	a0,filec_pattern(a4)		*!!
+filec_program_action_1:
+		movea.l	filec_action(a4),a0
+		cmp.b	#'$',d3
+		beq	complact_fromvar
+
+		move.b	(a0),d0
+		bne	filec_error
+
+		cmp.b	#'C',d3
+		beq	complact_completion
+
+		cmp.b	#'F',d3
+		beq	complact_function
+
+		cmp.b	#'a',d3
+		beq	complact_alias
+
+		cmp.b	#'b',d3
+		beq	complact_bindings
+
+		cmp.b	#'c',d3
+		beq	complact_cmdname
+
+		cmp.b	#'d',d3
+		beq	complact_directory
+
+		cmp.b	#'e',d3
+		beq	complact_envname
+
+		cmp.b	#'f',d3
+		beq	complact_file
+
+		cmp.b	#'s',d3
+		beq	complact_svarname
+
+		cmp.b	#'u',d3
+		beq	complact_username
+
+		cmp.b	#'v',d3
+		beq	complact_anyvarname
+
+		cmp.b	#'x',d3
+		beq	complact_explain
+filec_program_error:
+		movea.l	filec_current_statement(a4),a0
+		lea	msg_completion_syntax_error,a1
+		bra	filec_perror
+
+complete_branch:
+		cmp.w	#1000,filec_branch_time(a4)
+		bhs	completion_program_loop
+
+		addq.w	#1,filec_branch_time(a4)
+
+		moveq	#':',d0
+		movea.l	a0,a2
+		bsr	strchr
+		bne	complete_longjmp
+
+		move.l	a2,filec_pattern(a4)		*!!
+		movea.l	filec_current_program(a4),a2
+		bra	complete_program_found_2
+
+complete_longjmp:
+		clr.b	(a0)+
+		move.l	a0,filec_pattern(a4)		*!!
+		movea.l	a2,a0
+		movea.l	completion_top(a5),a2
+complete_search_longjmp_loop:
+		cmpa.l	#0,a2
+		beq	completion_not_found
+
+		lea	var_body(a2),a1
+		bsr	strcmp
+		beq	complete_program_found_2
+
+		movea.l	var_next(a2),a2
+		bra	complete_search_longjmp_loop
+
+completion_not_found:
+		lea	msg_completion_not_found,a1
+		bra	filec_perror
+
+completion_program_loop:
+		suba.l	a0,a0
+		lea	msg_completion_program_loop,a1
+		bra	filec_perror
+****************
+complact_fromlist:
+		movea.l	a0,a2				*  A2 : リストのポインタ
+		moveq	#0,d2				*  D2.L : 単語数
+complact_fromlist_sep_loop1:
+		movea.l	a0,a1
+		bsr	skip_space
+		exg	a0,a1
+		cmpa.l	a0,a1
+		beq	complact_fromlist_separate_space_ok
+		bsr	strcpy
+complact_fromlist_separate_space_ok:
+		move.b	(a0)+,d0
+		beq	filec_error
+
+		cmp.b	#')',d0
+		beq	complact_fromlist_sep_done
+
+		addq.l	#1,d2
+complact_fromlist_sep_loop2:
+		cmp.b	#'\',d0
+		bne	complact_fromlist_dupchar
 
 		movea.l	a0,a1
-		lea	tmpword2,a0
+		lea	-1(a1),a0
 		bsr	strcpy
-		bra	filec_file_0
+		move.b	(a0)+,d0
+complact_fromlist_dupchar:
+		bsr	issjis
+		bne	complact_fromlist_check_term
 
-filec_not_builtin:
-		cmpi.b	#'~',(a0)
-		bne	filec_file
+		tst.b	(a0)+
+		beq	filec_error
+complact_fromlist_check_term:
+		move.b	(a0)+,d0
+		cmp.b	#')',d0
+		beq	complact_fromlist_sep_done_1
 
-		moveq	#'/',d0
-		bsr	strchr				*  '/' にシフトJISの考慮は不要
-		beq	complete_username
+		bsr	isspace2
+		bne	complact_fromlist_sep_loop2
+
+		clr.b	-1(a0)
+		bra	complact_fromlist_sep_loop1
+
+complact_fromlist_sep_done_1:
+		clr.b	-1(a0)
+complact_fromlist_sep_done:
+		move.l	a0,filec_action(a4)
+complact_fromlist_2:
+		bsr	complete_fromlist
+complact_continue_x:
+		bne	filec_error
+
+		movea.l	filec_action(a4),a0
+		tst.b	(a0)
+		bne	filec_error
+
+		bra	filec_find_done
 ****************
-filec_file:
-	*
-	*  ファイルを検索する
-	*
-		*
-		*  ~ を展開…
-		*
-		lea	tmpword1,a0
-		lea	tmpword2,a1
-		moveq	#0,d2
-		move.l	d1,-(a7)
-		move.w	#MAXWORDLEN+1,d1
-		bsr	expand_tilde
-		move.l	(a7)+,d1
-		tst.l	d0
-		bmi	filec_find_done
-		*
-		*  ファイル名を検索する
-		*
+complact_fromvar:
+		movea.l	a0,a2
+		bsr	skip_varname
+		tst.b	d0
+		bne	filec_error
+
+		move.l	a0,filec_action(a4)
+		movea.l	a2,a0
+		bsr	get_shellvar
+		movea.l	a0,a2				*  A2 : リストのポインタ
+		move.l	d0,d2				*  D2.L : 単語数
+		bra	complact_fromlist_2
+****************
+complact_completion:
+		movea.l	completion_top(a5),a2
+		bsr	complete_varspace
+		bra	complact_continue_x
+****************
+complact_function:
+		bsr	complete_function
+		bra	complact_continue_x
+****************
+complact_alias:
+		bsr	complete_alias
+		bra	complact_continue_x
+****************
+complact_bindings:
+		bsr	complete_bindings
+		bra	complact_continue_x
+****************
+complact_cmdname:
+		bsr	complete_cmdname
+		bra	complact_continue_x
+****************
+complact_directory:
+		bsr	complete_directory
+		bra	complact_continue_x
+****************
+complact_file:
+		bsr	complete_file
+		bra	complact_continue_x
+****************
+complact_username:
+		bsr	complete_username
+		bra	complact_continue_x
+****************
+complact_svarname:
+		bsr	complete_svarname
+		bra	complact_continue_x
+****************
+complact_anyvarname:
+		bsr	complete_svarname
+		bne	complact_anyvarname_done
+complact_envname:
+		bsr	complete_envname
+complact_anyvarname_done:
+		bra	complact_continue_x
+****************
+complact_explain:
+		bsr	eol_newline
+		move.l	filec_pattern(a4),d0		*!!
+		beq	complete_explain_1
+
+		movea.l	d0,a0
+		bsr	puts
+complete_explain_1:
+		bsr	put_newline
+		bsr	redraw_with_prompt
+		bra	complact_continue_x
+********************************
+get_filec_program_field:
+		move.w	filec_program_delimiter(a4),d0
+		movea.l	a2,a0
+		bsr	jstrchr
+		move.l	a0,d0
+		sub.l	a2,d0
+		movea.l	a2,a1
 		lea	tmpword2,a0
-		bsr	contains_dos_wildcard		*  Human68k のワイルドカードを含んで
-		bne	filec_find_done			*  いるならば無効
-
-		moveq	#'\',d0				*  \ を
-		bsr	jstrchr				*  含んで
-		bne	filec_find_done			*  いるならば無効
-
+		bsr	memmovi
+		clr.b	(a0)
 		lea	tmpword2,a0
-		bsr	test_directory
-		bne	filec_find_done
-filec_file_0:
-		lea	tmpword2,a0			*  A0 : 補完文字列の先頭アドレス
-		bsr	headtail			*  A1 : ファイル部のアドレス
-							*  D0.L : ドライブ＋ディレクトリの長さ
-		btst.b	#FLAGBIT_FILE,filec_flag(a4)
-		bne	filec_file_file
+		movea.l	a1,a2
+		tst.b	(a2)
+		beq	get_filec_program_field_return	*  ZF=1
 
-		tst.b	filec_command(a4)
-		bne	filec_file_command
+		addq.l	#1,a2
+		moveq	#1,d0				*  ZF=0
+get_filec_program_field_return:
+		rts
+********************************
+complete_raw:
+		bsr	filec_try_static_rule
+		bmi	filec_error
 
-		btst.b	#FLAGBIT_CMD,filec_flag(a4)
-		beq	filec_file_file
+		subq.l	#1,d0
+		beq	filec_find_done
 
-		move.b	#2,filec_command(a4)		*  2 : 2:alias->3:function->4:cmdfile on each $path
-filec_file_command:
-		*  コマンド名補完
-		tst.l	d0				*  D0.L : ドライブ＋ディレクトリの長さ
-		bne	filec_file_command_hasdir
-
-		*  ディレクトリ指定無しのコマンド名補完
-		bsr	strlen				*  D0.L : 補完単語全体の長さ
-		tst.l	d0
-		bne	filec_file_start
+		subq.l	#1,d0
+		beq	filec_done
+complete_raw_2:
+		clr.l	filec_pattern(a4)		*!!
+		tst.b	filec_command_position(a4)
+		beq	complete_raw_file
 
 		tst.b	flag_nonullcommandc(a5)
-		bne	filec_error
+		beq	complete_raw_cmdname
 
-		bra	filec_file_start
+		tst.b	tmpword1
+		bne	complete_raw_cmdname
+complete_raw_file:
+		bsr	complete_file
+		bra	filec_find_done_x
 
-filec_file_command_hasdir:
-		*  ディレクトリ指定のコマンド名補完
-		move.b	#5,filec_command(a4)		*  5 : cmdfile on specified directory
-		bra	filec_just_real_file
-
-filec_file_file:
-		*  通常のファイル名補完
-		clr.b	filec_command(a4)		*  0 : all files
-filec_just_real_file:
-		cmp.l	#MAXHEAD,d0
-		bhi	filec_find_done
-
-		move.l	d0,filec_dirlen(a4)
-
-		move.l	a1,-(a7)
-		movea.l	a0,a1
-		lea	tmpword1,a0
-		bsr	memmovi
-		lea	dos_allfile,a1
+complete_raw_cmdname:
+		bsr	complete_cmdname
+		bra	filec_find_done_x
+********************************
+filec_try_static_rule:
+		clr.l	filec_pattern(a4)		*!!
+		btst.b	#FLAGBIT_NOSUBSTDIR,filec_flag(a4)
+		bne	filec_not_dirstack
+	*
+	*  ユーザ名補完か？
+	*
+		lea	tmpword1,a1
+		lea	tmpword2,a0
 		bsr	strcpy
-		movea.l	(a7)+,a1
-filec_file_start:
-		movea.l	a1,a0
-		bsr	strlen
-		move.l	d0,filec_patlen(a4)
+		bsr	strip_quotes
+		bsr	builtin_dir_match
+		bne	filec_not_username
 
-		lea	word_showdots,a0
-		bsr	get_shellvar
-		beq	filec_file_start_1
+		lea	tmpword1,a0			*  tmpword1 : 元の単語
+		cmpi.b	#'~',(a0)
+		bne	filec_not_username
 
-		move.l	a1,-(a7)
-		lea	str_A,a1
-		bsr	strcmp
-		movea.l	(a7)+,a1
-		bne	filec_file_start_2
+		lea	tmpword2+1,a0			*  tmpword2 : クオートを外した単語
+		bsr	find_slashes
+		bne	filec_not_username
 
-		move.b	#1,filec_showdots(a4)
-		bra	filec_file_start_2
-
-filec_file_start_1:
-		cmpi.b	#'.',(a1)
-		beq	filec_file_start_2
-
-		clr.b	filec_showdots(a4)
-filec_file_start_2:
-		btst.b	#FLAGBIT_LIST,filec_flag(a4)
-		bne	filec_file_fignore_ok
-
-		lea	word_fignore,a0
-		bsr	find_shellvar
-		move.l	d0,filec_fignore(a4)
-filec_file_fignore_ok:
-		bsr	filec_file_sub
-		bne	filec_error
-		bra	filec_find_done
-****************
-complete_username:
-		bsr	open_passwd
-		bmi	filec_find_done
-
-		move.l	d0,tmpfd(a5)
-		move.w	d0,d2				*  D2.W : passwd ファイル・ハンドル
-
-		lea	tmpword1+1,a0
-		bsr	strlen
-		move.l	d0,filec_patlen(a4)
 		move.b	#'/',filec_suffix(a4)
-
-pwd_buf = -(((PW_SIZE+1)+1)>>1<<1)
-
-		link	a6,#pwd_buf
-complete_username_loop:
-		movem.l	d1,-(a7)
-		move.w	d2,d0
-		lea	pwd_buf(a6),a0
-		lea	tmppwline,a1
-		move.l	#PW_LINESIZE,d1
-		bsr	fgetpwent
-		movem.l	(a7)+,d1
-		bne	complete_username_done0
-
-		movea.l	PW_NAME(a0),a0
-		lea	tmpword1+1,a1
-		move.l	filec_patlen(a4),d0
-		bsr	memcmp
-		bne	complete_username_continue
-
-		moveq	#' ',d0
-		bsr	filec_enter
-		bne	complete_username_done		*  D0.L == 1 .. error
-complete_username_continue:
-		DOS	_KEYSNS				*  To allow interrupt
-		bra	complete_username_loop
-
-complete_username_done0:
-		moveq	#-1,d0
-complete_username_done:
-		unlk	a6
-		bsr	close_tmpfd
-		bpl	filec_error
-
-		bra	filec_find_done
-****************
-complete_varname:
-		addq.l	#1,a0
-		cmpi.b	#'@',(a0)
-		beq	complete_shellvar
-
-		cmpi.b	#'%',(a0)
-		bne	complete_varname_2
-complete_environ:
-		bclr.b	#FLAGBIT_NOENV,filec_flag(a4)
-		bset.b	#FLAGBIT_NOSVAR,filec_flag(a4)
-		bra	complete_varname_1
-
-complete_shellvar:
-		bclr.b	#FLAGBIT_NOSVAR,filec_flag(a4)
-		bset.b	#FLAGBIT_NOENV,filec_flag(a4)
-complete_varname_1:
-		addq.l	#1,a0
-complete_varname_2:
-		cmpi.b	#'{',(a0)
-		bne	complete_varname_3
-
-		addq.l	#1,a0
-complete_varname_3:
-		cmpi.b	#'#',(a0)
-		beq	complete_varname_4
-
-		cmpi.b	#'?',(a0)
-		bne	complete_varname_start
-complete_varname_4:
-		addq.l	#1,a0
-complete_varname_start:
+		lea	tmpword1,a0
+		lea	1(a0),a1
+		bsr	strcpy
 		bsr	strlen
-		move.l	d0,filec_patlen(a4)
-		move.b	#$ff,filec_suffix(a4)		*  決して addsuffix しないことを示す
-		movea.l	a0,a1				*  A1 : 検索名の先頭アドレス
-		btst.b	#FLAGBIT_NOSVAR,filec_flag(a4)
-		bne	do_complete_varname_skip_shellvar
+		move.l	d0,filec_patlen(a4)		*!!
+		bsr	complete_username
+		bne	filec_static_rule_error
 
-		movea.l	shellvar_top(a5),a2
-		bsr	do_complete_varname_sub
-		bne	filec_error
-do_complete_varname_skip_shellvar:
-		btst.b	#FLAGBIT_NOENV,filec_flag(a4)
-		bne	do_complete_varname_skip_environ
+		moveq	#1,d0
+		rts
 
-		movea.l	env_top(a5),a2
-		bsr	do_complete_varname_sub
+filec_not_username:
+	*
+	*  ディレクトリ・スタックか？
+	*
+		lea	tmpword1,a0			*  tmpword1 : 元の単語
+		cmpi.b	#'=',(a0)
+		bne	filec_not_dirstack
+
+		lea	tmpword2+1,a0			*  tmpword2 : クオートを外した単語
+		bsr	find_slashes
+		bne	filec_not_dirstack
+
+		bsr	eol_newline
+		movem.l	d1/a4,-(a7)
+		moveq	#3,d4				*  -vl
+		lea	puts(pc),a3
+		lea	put_newline(pc),a4
+		bsr	print_dirstack
+		bsr	redraw_with_prompt
+		movem.l	(a7)+,d1/a4
+		moveq	#2,d0
+		rts
+
+filec_not_dirstack:
+	*
+	*  ユーザ名補完でもディレクトリ・スタックでもない
+	*
+		*  変数置換
+		lea	tmpword1,a0
+		lea	tmpword2,a1
+		clr.b	(a1)
+		moveq	#1,d0
+		movem.l	d1/a0-a1,-(a7)
+		move.w	#MAXWORDLEN+1,d1
+		bsr	subst_var
+		movem.l	(a7)+,d1/a0-a1
+		subq.l	#1,d0
+		bhi	filec_static_rule_error
+
+		btst.b	#FLAGBIT_NOSUBSTDIR,filec_flag(a4)
+		beq	filec_substdir
+
+		bsr	strcpy
+		bra	filec_strip_quotes
+
+filec_substdir:
+		*  ディレクトリ置換
+		exg	a0,a1
+		moveq	#0,d2
+		movem.l	d1/a0-a1,-(a7)
+		move.l	#MAXWORDLEN+1,d1
+		bsr	expand_tilde
+		movem.l	(a7)+,d1/a0-a1
+		tst.l	d0
+		bne	filec_static_rule_error
+
+		exg	a0,a1
+filec_strip_quotes:
+		bsr	strip_quotes
+		bsr	strlen
+		move.l	d0,filec_patlen(a4)		*!!
+		moveq	#0,d0
+		rts
+
+filec_static_rule_error:
+		moveq	#-1,d0
+		rts
+********************************
+filec_find_done_x:
 		bne	filec_error
-do_complete_varname_skip_environ:
-		bra	filec_find_done
-****************
 filec_find_done:
 		btst.b	#FLAGBIT_LIST,filec_flag(a4)
 		bne	filec_list			*  リスト表示へ
@@ -2064,10 +2658,10 @@ filec_numprecious_ok:
 		*  最初の曖昧でない部分を確定する
 		*
 		move.l	d1,-(a7)
-		lea	tmpargs,a0
+		movea.l	tmpargs(a5),a0
 		move.w	filec_numprecious(a4),d0
 		move.l	filec_patlen(a4),d1
-		move.b	flag_cifilec(a5),d2
+		move.b	filec_case_independent(a4),d2
 		bsr	common_spell
 		move.l	filec_minlen_precious(a4),d1
 		sub.l	filec_patlen(a4),d1
@@ -2075,61 +2669,250 @@ filec_numprecious_ok:
 		move.l	(a7)+,d1
 		move.l	d0,d2				*  D2.L : 共通部分の長さ
 		*
-		*  cifilec がセットされているならば，caseを現実のものに合わせるために
-		*  既存入力部分を上書きする
+		*  cifilec がセットされていれば，
+		*  一番短い候補を挿入候補として選ぶ．
 		*
-		lea	tmpargs,a1
-		adda.l	filec_patlen(a4),a1
-		tst.b	flag_cifilec(a5)
-		beq	filec_redraw_ok
+		movea.l	tmpargs(a5),a1
+		tst.b	filec_case_independent(a4)
+		beq	filec_select_word_ok
 
-		moveq	#0,d0
-		move.w	point(a6),d0
-		sub.l	filec_patlen(a4),d0
-		movea.l	line_top(a6),a1
-		adda.l	d0,a1
 		movem.l	d1-d2,-(a7)
-		move.l	filec_patlen(a4),d2
-filec_redraw_select_loop1:
-		lea	tmpargs,a0
+		movea.l	a1,a0
+		moveq	#-1,d2				*  D2.L := HUGEVAL
 		move.w	filec_numprecious(a4),d1
-		subq.w	#1,d1
-filec_redraw_select_loop2:
-		move.l	d2,d0
-		bsr	memcmp
-		beq	filec_redraw_select_ok
+		bra	filec_ci_select_word_start
 
+filec_ci_select_word_loop:
+		bsr	strlen
+		cmp.l	d2,d0
+		bhi	filec_ci_select_word_continue
+
+		movea.l	a0,a1
+		move.l	d0,d2
+filec_ci_select_word_continue:
 		bsr	strfor1
-		dbra	d1,filec_redraw_select_loop2
+filec_ci_select_word_start:
+		dbra	d1,filec_ci_select_word_loop
 
-		subq.l	#1,d2
-		bne	filec_redraw_select_loop1
+filec_ci_select_word_done:
+		*  さらに，既入力部分を上書きする．
 
-		lea	tmpargs,a0
-filec_redraw_select_ok:
-		movem.l	(a7)+,d1-d2
-		exg	a0,a1
-		move.l	filec_patlen(a4),d0
-		bsr	backward_cursor_x
-		move.l	filec_patlen(a4),d0
+		tst.l	filec_patlen(a4)
+		beq	filec_ci_redraw_done		*  既入力は無し
+
+		movea.l	line_top(a6),a0
+		adda.w	point(a6),a0			*  正しい
 		move.l	a0,-(a7)
-		bsr	memmovi
-		movea.l	(a7)+,a0
+		move.b	filec_quote(a4),d2
+		move.l	filec_patlen(a4),d1
+		adda.l	d1,a1
+filec_redraw_backup_loop:
+		cmp.l	#2,d1
+		blo	filec_redraw_backup_not_sjis
+
+		move.b	-2(a0),d0
+		bsr	issjis
+		bne	filec_redraw_backup_not_sjis
+
+		move.b	-(a1),-(a0)
+		subq.l	#1,d1
+		subq.l	#1,a0
+		bra	filec_redraw_backup_1
+
+filec_redraw_backup_not_sjis:
+		move.b	-(a0),d0
+		tst.b	d2
+		beq	filec_redraw_backup_not_in_quote
+
+		cmp.b	d2,d0
+		bne	filec_redraw_backup_1
+filec_redraw_backup_quote:
+		eor.b	d0,d2
+		bra	filec_redraw_backup_loop
+
+filec_redraw_backup_not_in_quote:
+		cmp.b	#'\',d0
+		beq	filec_redraw_backup_loop
+
+		cmp.b	#'"',d0
+		beq	filec_redraw_backup_quote
+
+		cmp.b	#"'",d0
+		beq	filec_redraw_backup_quote
+filec_redraw_backup_1:
+		move.b	-(a1),(a0)
+		subq.l	#1,d1
+		bne	filec_redraw_backup_loop
+
+		move.l	(a7)+,d0
+		sub.l	a0,d0
+		move.l	d0,-(a7)
+		bsr	backward_cursor_x
+		move.l	(a7)+,d0
 		bsr	write_chars
-filec_redraw_ok:
+filec_ci_redraw_done:
+		movem.l	(a7)+,d1-d2
+filec_select_word_ok:
 		*
 		*  完成部分を挿入する
 		*
+		adda.l	filec_patlen(a4),a1
+		move.l	d2,d3
+		movem.l	d1/a1,-(a7)
+		move.l	d2,d1
+		moveq	#0,d2
+filec_escape_completed:
+		subq.l	#1,d1
+		bcs	filec_escape_completed_done
+
+		moveq	#0,d0
+		move.b	(a1)+,d0
+		bsr	issjis
+		beq	filec_escape_completed_sjis
+
+		cmp.w	histchar1(a5),d0
+		beq	filec_escape_completed_with_escaping
+
+		cmp.b	#'"',d0
+		beq	filec_escape_completed_quote
+
+		cmp.b	#"'",d0
+		beq	filec_escape_completed_quote
+
+		cmp.b	#'$',d0
+		beq	filec_escape_completed_special
+
+		cmp.b	#'`',d0
+		beq	filec_escape_completed_special
+
+		tst.b	filec_quote(a4)
+		bne	filec_escape_completed_1
+
+		bsr	is_special
+		bne	filec_escape_completed_1
+filec_escape_completed_with_escaping:
+		addq.l	#2,d2
+		bra	filec_escape_completed
+
+filec_escape_completed_sjis:
+		addq.l	#1,d2
+		subq.l	#1,d1
+		bcs	filec_escape_completed_done
+
+		addq.l	#1,d2
+		lsl.w	#8,d0
+		move.b	(a1)+,d0
+		cmp.w	histchar1(a5),d0
+		bne	filec_escape_completed
+filec_escape_completed_1:
+		addq.l	#1,d2
+		bra	filec_escape_completed
+
+filec_escape_completed_special:
+		tst.b	filec_quote(a4)
+		beq	filec_escape_completed_with_escaping
+
+		cmpi.b	#'"',filec_quote(a4)
+		bne	filec_escape_completed_1
+
+		bra	filec_escape_completed_complex
+
+filec_escape_completed_quote:
+		tst.b	filec_quote(a4)
+		beq	filec_escape_completed_with_escaping
+
+		cmp.b	filec_quote(a4),d0
+		bne	filec_escape_completed_1
+filec_escape_completed_complex:
+		addq.l	#4,d2
+		bra	filec_escape_completed
+
+filec_escape_completed_done:
+		movem.l	(a7)+,d1/a1
 		bsr	open_columns
 		bcs	filec_error
 
-		move.l	d2,d0
 		move.l	a0,-(a7)
-		bsr	memmovi
+filec_insert:
+		subq.l	#1,d3
+		bcs	filec_insert_done
+
+		moveq	#0,d0
+		move.b	(a1)+,d0
+		bsr	issjis
+		beq	filec_insert_sjis
+
+		cmp.w	histchar1(a5),d0
+		beq	filec_insert_with_escaping
+
+		cmp.b	#'"',d0
+		beq	filec_insert_quote
+
+		cmp.b	#"'",d0
+		beq	filec_insert_quote
+
+		cmp.b	#'$',d0
+		beq	filec_insert_special
+
+		cmp.b	#'`',d0
+		beq	filec_insert_special
+
+		tst.b	filec_quote(a4)
+		bne	filec_insert_1
+
+		bsr	is_special
+		bne	filec_insert_1
+filec_insert_with_escaping:
+		move.b	#'\',(a0)+
+		bra	filec_insert_1
+
+filec_insert_special:
+		tst.b	filec_quote(a4)
+		beq	filec_insert_with_escaping
+
+		cmpi.b	#'"',filec_quote(a4)
+		bne	filec_insert_1
+
+		bra	filec_insert_complex
+
+filec_insert_quote:
+		tst.b	filec_quote(a4)
+		beq	filec_insert_with_escaping
+
+		cmp.b	filec_quote(a4),d0
+		bne	filec_insert_1
+filec_insert_complex:
+		move.b	filec_quote(a4),(a0)+
+		move.b	#'\',(a0)+
+		move.b	d0,(a0)+
+		move.b	filec_quote(a4),(a0)+
+		bra	filec_insert
+
+filec_insert_sjis:
+		tst.l	d3
+		beq	filec_insert_1
+
+		subq.l	#1,d3
+		lsl.w	#8,d0
+		move.b	(a1)+,d0
+		cmp.w	histchar1(a5),d0
+		bne	filec_insert_sjis_1
+
+		move.b	#'\',(a0)+
+filec_insert_sjis_1:
+		move.w	d0,-(a7)
+		lsr.w	#8,d0
+		move.b	d0,(a0)+
+		move.w	(a7)+,d0
+filec_insert_1:
+		move.b	d0,(a0)+
+		bra	filec_insert
+
+filec_insert_done:
 		movea.l	(a7)+,a0
 		bsr	post_insert_job
 
-		lea	tmpargs,a0
+		movea.l	tmpargs(a5),a0
 		move.w	filec_numprecious(a4),d0
 		bsr	is_all_same_word
 		beq	filec_match
@@ -2138,90 +2921,100 @@ filec_redraw_ok:
 		beq	filec_ambiguous
 
 		*  not unique exact match
-		*  set matchbeep=notuniq であるときにのみベルを鳴らす
 
-		bsr	find_matchbeep
-		beq	filec_notunique_nobeep
-		bpl	filec_match
+		*  unset matchbeep か set matchbeep=notuniq であるならベルを鳴らす
+		move.b	flag_matchbeep(a5),d0
+		beq	filec_notunique_beep
 
-		lea	word_notunique,a1
-		bsr	strcmp
+		subq.b	#3,d0
 		bne	filec_notunique_nobeep
-
+filec_notunique_beep:
 		bsr	beep
 filec_notunique_nobeep:
 		move.b	filec_exact_suffix(a4),d0
 		move.b	d0,filec_suffix(a4)
 filec_match:
-		btst.b	#7,filec_suffix(a4)
-		bne	filec_done
-
-		lea	word_addsuffix,a0		*  シェル変数 addsuffix が
-		bsr	find_shellvar			*  セットされて
-		beq	filec_done			*  いなければおしまい
+		move.b	flag_addsuffix(a5),d0		*  シェル変数 addsuffix が
+		beq	filec_done			*  セットされていなければおしまい
 
 		tst.l	d2				*  1文字も挿入しなかったならば
 		beq	filec_addsuffix			*  サフィックスを追加する
 
-		bsr	get_var_value			*  $@addsuffix[1] == exact でなければ
-		beq	filec_addsuffix			*  サフィックスを追加する
-
-		lea	word_exact,a1
-		bsr	strcmp
-		beq	filec_done
+		subq.b	#1,d0				*  $@addsuffix[1] == exact なら
+		beq	filec_done			*  今回はサフィックスを追加しない
 filec_addsuffix:
+		cmpi.b	#'/',filec_suffix(a4)
+		beq	filec_addsuffix_1
+
+		move.l	filec_program_suffix(a4),d0	*!!
+		beq	filec_addsuffix_1
+
+		movea.l	d0,a1
+		movea.l	a1,a0
+		move.w	filec_program_delimiter(a4),d0
+		bsr	jstrchr
+		move.l	a0,d2
+		sub.l	a1,d2
+		bne	filec_addsuffix_2
+
+		tst.b	(a0)
+		bne	filec_addsuffix_2
+filec_addsuffix_1:
+		lea	filec_suffix(a4),a1
+		tst.b	(a1)
+		beq	filec_done
+
 		moveq	#1,d2
+filec_addsuffix_2:
 		bsr	open_columns
 		bcs	filec_error
 
-		move.b	filec_suffix(a4),d0
-		move.b	d0,(a0)
+		move.l	d2,d0
+		move.l	a0,-(a7)
+		bsr	memmovi
+		movea.l	(a7)+,a0
 		bsr	post_insert_job
 		bra	filec_done
 
 
 filec_nomatch:
-		bsr	find_matchbeep
-		beq	filec_beep
-		bpl	filec_done
-
-		lea	word_nomatch,a1
-		bsr	strcmp
-		beq	filec_beep
-
-		lea	word_ambiguous,a1
-		bsr	strcmp
-		beq	filec_beep
-
-		lea	word_notunique,a1
-		bsr	strcmp
-		bne	filec_done
+		cmpi.b	#3,flag_matchbeep(a5)
+		bhi	filec_done			*  set matchbeep=other
 filec_beep:
-filec_error:
 		bsr	beep
 filec_done:
 		unlk	a4
 		bra	getline_x_1
 
+filec_perror:
+		bsr	eol_newline
+		cmpa.l	#0,a0
+		beq	filec_perror_1
+
+		bsr	puts
+		moveq	#':',d0
+		bsr	putc
+		bsr	put_space
+filec_perror_1:
+		movea.l	a1,a0
+		bsr	nputs
+		bsr	redraw_with_prompt
+filec_error:
+		bra	filec_beep
 
 filec_ambiguous:
-		bsr	find_matchbeep
-		beq	filec_ambiguous_beep
-		bpl	filec_ambiguous_nobeep
+		move.b	flag_matchbeep(a5),d0
+		beq	filec_ambiguous_beep		*  unset matchbeep
 
-		lea	word_ambiguous,a1
-		bsr	strcmp
-		beq	filec_ambiguous_beep
+		subq.b	#2,d0
+		beq	filec_ambiguous_beep		*  set matchbeep=ambiguous
 
-		lea	word_notunique,a1
-		bsr	strcmp
+		subq.b	#1,d0
 		bne	filec_ambiguous_nobeep
+		*  set matchbeep=notunique
 filec_ambiguous_beep:
 		bsr	beep
 filec_ambiguous_nobeep:
-		tst.l	d2
-		bne	filec_done
-
 		tst.b	flag_autolist(a5)
 		beq	filec_done
 filec_list:
@@ -2229,7 +3022,7 @@ filec_list:
 	*  リスト表示
 	*
 		move.w	filec_numentry(a4),d0
-		lea	tmpargs,a0
+		movea.l	tmpargs(a5),a0
 		move.l	a4,-(a7)
 		lea	cmpnames(pc),a4
 		bsr	sort_wordlist_x
@@ -2240,23 +3033,48 @@ filec_list:
 
 		addq.l	#2,filec_maxlen(a4)
 		*
-		*  79(行の桁数-1)を1項目の桁数で割って、1行あたりの項目数を暫定する
+		*  行の桁数を得る
 		*
-		moveq	#1,d2
-		move.l	filec_maxlen(a4),d0
-		moveq	#79,d3
-		cmp.l	d0,d3
-		blo	filec_list_width_ok
+		move.w	d6,d2				*  1行の項目数=エントリ数
+		moveq	#1,d3				*  行数=1行
+		moveq	#0,d4				*  1項目多い行数=0
+		move.l	d1,-(a7)
+		lea	word_columns,a0
+		bsr	svartol
+		exg	d0,d1
+		movem.l	(a7)+,d1
+		bmi	filec_list_height_ok
+		bne	columns_ok
 
-		move.l	d3,d2
-		divu	d0,d2				*  D2.W : 79 / 桁数 = 1行の項目数(暫定)
+		moveq	#80,d0
+columns_ok:
+		exg	d2,d3
+		tst.l	d0
+		bmi	filec_list_height_ok
+
+		subq.l	#1,d0				*  D0.L : 1行の桁数 - 1
+		bcs	filec_list_height_ok
+		*
+		*  1行に入る最大項目数を計算する -> D2.W
+		*
+		*      1行に入る最大項目数 = (行の桁数 - 1) / 1項目の最大桁数
+		*
+		move.l	filec_maxlen(a4),d3
+		move.l	d0,d2
+		divu	d3,d2
+		tst.w	d2
+		bne	filec_list_width_ok
+
+		moveq	#1,d2
 filec_list_width_ok:
 		*
-		*  何行になるかを求める
+		*  何行になるかを計算する -> D3.W
+		*
+		*      行数 = エントリ数 / 1行に入る最大項目数
 		*
 		moveq	#0,d3
 		move.w	d6,d3
-		divu	d2,d3				*  D3.W : エントリ数 / 1行の項目数 = 行数
+		divu	d2,d3
 		swap	d3
 		move.w	d3,d4
 		swap	d3
@@ -2270,23 +3088,23 @@ filec_list_width_ok:
 		*
 		addq.w	#1,d3
 		*
-		*  1行多くなったので、1行の項目数を計算し直す
+		*  1行多くなったので、行数をもとに 1行の項目数を再計算する
 		*
 		moveq	#0,d2
 		move.w	d6,d2
 		divu	d3,d2
 		swap	d2
-		move.w	d2,d4
+		move.w	d2,d4				*  D4.W : 1項目多い行数
 		swap	d2
 		tst.w	d4
 		beq	filec_list_height_ok
 		*
 		*  余りがある --- 1行の項目数はさらに1項目多い
-		*                 余り(D4.W)は1項目多い行数である
+		*                 余り(D4.W)はその1項目多い行数
 		*
 		addq.w	#1,d2
 filec_list_height_ok:
-		lea	tmpargs,a0
+		movea.l	tmpargs(a5),a0
 		movea.l	a0,a1				*  A1:最初の行の先頭項目
 		bsr	move_cursor_to_eol
 filec_list_loop1:
@@ -2330,26 +3148,639 @@ filec_list_done:
 		bsr	put_newline
 		bra	x_redraw_1
 ****************
-.xdef filec_enter
+cmpnames:
+		movem.l	d1/a0-a1,-(a7)
+cmpnames_loop:
+		moveq	#0,d0
+		tst.b	1(a0)
+		beq	cmpnames_1
 
-filec_enter:
-		movem.l	d1-d5/a0-a2,-(a7)
+		move.b	(a0)+,d0
+cmpnames_1:
+		moveq	#0,d1
+		tst.b	1(a1)
+		beq	cmpanames_2
+
+		move.b	(a1)+,d1
+cmpanames_2:
+		sub.l	d1,d0
+		bne	cmpnames_return
+
+		tst.b	d1
+		bne	cmpnames_loop
+
+		moveq	#0,d0
+cmpnames_return:
+		movem.l	(a7)+,d1/a0-a1
+		rts
+****************************************************************
+complete_fromlist:
+		lea	pick_fromlist(pc),a3
+complete_nonfile:
+		clr.w	filec_fignore(a4)
+		sf	filec_case_independent(a4)
+		lea	tmpword1,a1
+complete_nonfile_loop:
+		DOS	_KEYSNS				*  To allow interrupt
+		jsr	(a3)
+		bmi	return_0
+
+		move.l	filec_patlen(a4),d0
+		bsr	memcmp
+		bne	complete_nonfile_loop
+
+		bsr	filec_compare_pattern
+		bne	complete_nonfile_loop
+
+		moveq	#' ',d0
+		bsr	filec_enter
+		beq	complete_nonfile_loop
+
+		rts
+*
+pick_fromlist:
+		subq.l	#1,d2
+		bcs	return_minus
+
+		movea.l	a2,a0
+		bsr	strfor1
+		exg	a0,a2
+		bra	return_0
+****************************************************************
+complete_svarname:
+		movea.l	shellvar_top(a5),a2
+complete_varspace:
+		lea	pick_variables(pc),a3
+		bra	complete_nonfile
+*
+pick_variables:
+		cmpa.l	#0,a2
+		beq	return_minus
+
+		lea	var_body(a2),a0
+		movea.l	var_next(a2),a2
+		bra	return_0
+****************************************************************
+complete_envname:
+		movea.l	env_top(a5),a2
+		bra	complete_varspace
+****************************************************************
+complete_alias:
+		movea.l	alias_top(a5),a2
+		bra	complete_varspace
+****************************************************************
+complete_function:
+		movea.l	function_bot(a5),a2
+		lea	pick_functions(pc),a3
+		bra	complete_nonfile
+*
+pick_functions:
+		cmpa.l	#0,a2
+		beq	return_minus
+
+		lea	FUNC_NAME(a2),a0
+		movea.l	FUNC_PREV(a2),a2
+		bra	return_0
+****************************************************************
+complete_statements:
+		lea	statement_table,a2
+		lea	pick_builtins(pc),a3
+		bra	complete_nonfile
+*
+pick_builtins:
+		move.l	(a2),d0
+		beq	return_minus
+
+		movea.l	d0,a0
+		lea	10(a2),a2
+		bra	return_0
+****************************************************************
+complete_bindings:
+		lea	key_function_word_table,a2
+		lea	pick_bindings(pc),a3
+		bra	complete_nonfile
+*
+pick_bindings:
+		move.w	(a2)+,d0
+		bmi	return_minus
+
+		lea	key_function_names_top,a0
+		lea	(a0,d0.w),a0
+		bra	return_0
+****************************************************************
+complete_username:
+		bsr	open_passwd
+		bmi	return_0
+
+		move.l	d0,tmpfd(a5)
+		move.w	d0,d2				*  D2.W : passwd ファイル・ハンドル
+		lea	pick_usernames(pc),a3
+		bsr	complete_nonfile
+		bra	close_tmpfd
+*
+pick_usernames:
+		movem.l	d1/a1,-(a7)
+		move.w	d2,d0
+		lea	tmppwbuf,a0
+		lea	tmppwline,a1
+		move.l	#PW_LINESIZE,d1
+		bsr	fgetpwent
+		movem.l	(a7)+,d1/a1
+		bne	return_minus
+
+		movea.l	PW_NAME(a0),a0
+		bra	return_0
+****************************************************************
+complete_cmdname:
+		bsr	complete_file_init
+		bne	complete_cmdname_return
+
+		lea	tmpword1,a0
+		cmpa.l	a0,a1
+		bne	complete_cmdname_in_fixed_path
+
+		cmpi.b	#1,filec_command_position(a4)
+		bne	complete_cmdname_statement_ok
+		*
+		*  statements
+		*
+		bsr	complete_statements
+		bne	complete_cmdname_return
+complete_cmdname_statement_ok:
+		tst.b	flag_noalias(a5)
+		bne	complete_cmdname_alias_ok
+		*
+		*  aliases
+		*
+		bsr	complete_alias
+		bne	complete_cmdname_return
+complete_cmdname_alias_ok:
+		*
+		*  functions
+		*
+		bsr	complete_function
+		bne	complete_cmdname_return
+		*
+		*  executable files in each $file
+		*
+		lea	word_path,a0
+		bsr	find_shellvar
+		beq	return_0
+
+		bsr	get_var_value
+		move.l	a0,filec_files_path_ptr(a4)
+		move.w	d0,filec_files_path_count(a4)
+		bra	complete_file_3
+****************
+complete_cmdname_in_fixed_path:
+		move.b	#1,filec_file_findmode(a4)	*  1 : cmdfile on specified directory
+		bra	complete_file_2
+****************
+complete_directory:
+		move.b	#2,filec_file_findmode(a4)	*  2 : directory
+		bra	complete_file_1
+****************************************************************
+complete_file:
+		clr.b	filec_file_findmode(a4)		*  0 : all files
+complete_file_1:
+		bsr	complete_file_init
+		bne	complete_file_return
+complete_file_2:
+		clr.l	filec_files_path_ptr(a4)	*  0,1,2
+complete_file_3:					*  0,1,2,3
+		btst.b	#FLAGBIT_LIST,filec_flag(a4)
+		bne	complete_file_fignore_ok
+
+		lea	word_fignore,a0
+		bsr	get_shellvar
+		move.w	d0,filec_fignore(a4)
+		move.l	a0,filec_fignore_list(a4)
+complete_file_fignore_ok:
+		bsr	filec_files
+complete_file_loop:
+		bmi	return_0
+
+		move.l	d0,d2				*  D2.L : file mode
+
+		move.l	filec_patlen(a4),d0
+		beq	complete_file_check_dot
+
+		movem.l	d1,-(a7)
+		sf	d1
+		btst	#8,d2
+		bne	complete_file_compare	* nonfile
+
+		move.b	flag_cifilec(a5),d1
+complete_file_compare:
+		bsr	memxcmp
+		movem.l	(a7)+,d1
+		bne	complete_file_next
+		bra	complete_file_dot_ok
+
+complete_file_check_dot:
 		cmpi.b	#'.',(a0)
-		bne	filec_enter_1
+		bne	complete_file_dot_ok
 
-		tst.b	filec_showdots(a4)
-		bmi	filec_enter_1
-		beq	filec_enter_success		*  登録しない
+		move.b	flag_showdots(a5),d0
+		beq	complete_file_next		*  unset showdots
+
+		subq.b	#1,d0
+		bne	complete_file_dot_ok		*  set showdots=non-A
 
 		tst.b	1(a0)
-		beq	filec_enter_success
+		beq	complete_file_next
 
 		cmpi.b	#'.',1(a0)
-		bne	filec_enter_1
+		bne	complete_file_dot_ok
 
 		tst.b	2(a0)
-		beq	filec_enter_success
-filec_enter_1:
+		beq	complete_file_next
+complete_file_dot_ok:
+		tst.l	filec_files_path_ptr(a4)
+		beq	complete_file_normal
+		*
+		*  $path に従って検索されるディスク上のコマンド名補完
+		*
+		btst	#8,d2
+		bne	complete_file_matched_regular	*  builtin
+
+		tst.b	flag_reconlyexec(a5)
+		bne	filec_command_test_executable
+
+		tst.b	filec_file_path_fullpath(a4)
+		bne	complete_file_matched_regular
+filec_command_test_executable:
+		bsr	filec_check_mode
+		bmi	complete_file_next
+
+		btst	#MODEBIT_DIR,d2
+		bne	complete_file_command_dir
+
+		bsr	filec_file_test_executable
+		bne	complete_file_next
+		bra	complete_file_matched_regular
+
+complete_file_command_dir:
+		tst.b	filec_file_path_dot(a4)
+		beq	complete_file_next
+		bra	complete_file_matched_real_dir
+		*
+		*
+		*
+complete_file_normal:
+		btst	#MODEBIT_DIR,d2
+		bne	complete_file_matched_real_dir
+
+		btst	#MODEBIT_LNK,d2
+		bne	complete_file_normal_link
+** regular
+		moveq	#' ',d3
+		cmpi.b	#2,filec_file_findmode(a4)
+		beq	complete_file_next
+
+		tst.b	flag_listexec(a5)
+		bne	complete_file_check_exec
+complete_file_regular_1:
+		tst.b	filec_file_findmode(a4)
+		beq	complete_file_matched_nondir
+complete_file_check_exec:
+		bsr	filec_file_test_executable
+		beq	complete_file_matched_executable
+
+		tst.b	filec_file_findmode(a4)
+		beq	complete_file_matched_nondir
+		bra	complete_file_next
+
+** link
+complete_file_normal_link:
+		moveq	#'@',d3
+		bsr	filec_check_mode
+		bmi	complete_file_bad_link
+
+		btst	#MODEBIT_DIR,d2
+		bne	complete_file_link_to_dir
+
+		btst	#MODEBIT_VOL,d2
+		bne	complete_file_bad_link
+** link to regular
+		cmpi.b	#2,filec_file_findmode(a4)
+		beq	complete_file_next
+
+		bra	complete_file_regular_1
+
+** illegal link
+complete_file_bad_link:
+		tst.b	filec_file_findmode(a4)
+		bne	complete_file_next
+
+		tst.b	flag_listlinks(a5)
+		beq	complete_file_matched_nondir
+
+		moveq	#'&',d3
+		bra	complete_file_matched_nondir
+
+** link to directory
+complete_file_link_to_dir:
+		tst.b	flag_listlinks(a5)
+		beq	complete_file_matched_dir
+
+		moveq	#'>',d3
+		bra	complete_file_matched_dir
+
+** directory
+complete_file_matched_real_dir:
+		moveq	#'/',d3
+complete_file_matched_dir:
+		move.b	#'/',filec_suffix(a4)
+		bra	complete_file_matched
+*
+complete_file_matched_executable:
+		moveq	#'*',d3
+		bra	complete_file_matched_nondir
+*
+complete_file_matched_regular:
+		moveq	#' ',d3
+complete_file_matched_nondir:
+		move.b	#' ',filec_suffix(a4)
+		bsr	filec_compare_pattern
+		bne	complete_file_next
+complete_file_matched:
+		move.b	d3,d0
+		bsr	filec_enter
+		bne	complete_file_return
+complete_file_next:
+		DOS	_KEYSNS				*  To allow interrupt
+		bsr	filec_nfiles
+		bra	complete_file_loop
+
+complete_file_return:
+complete_cmdname_return:
+		rts
+****************
+complete_file_init:
+		move.b	flag_cifilec(a5),filec_case_independent(a4)
+		lea	tmpword1,a1
+		movea.l	a1,a0
+		bsr	builtin_dir_match
+		beq	complete_file_init_not_builtin
+
+		adda.l	d0,a0
+		bra	complete_file_init_copy_root
+
+complete_file_init_not_builtin:
+		*
+		*  パス名のディレクトリが存在するかどうかを調べる
+		*
+		*      パス名の途中のディレクトリが存在するかどうかを 1つ 1つ順に
+		*      検査する．
+		*
+		*      それぞれの名前のエントリがあれば良しとし，そのエントリの属
+		*      性がディレクトリであるかどうかは検査しない．エントリがディ
+		*      レクトリでなければ，いずれにしても補完候補は検索されないか
+		*      ら，検査する必要は無い．
+		*
+		*      flag_cifilec(B) が効く．
+		*      flag_cifilec(B) が 0 のときには，検索名の大文字と小文字は
+		*      区別される．さもなくば区別せずに検索し，最初に見つかったエ
+		*      ントリを採用する．その場合 (A0) のパス名は書き換えられる．
+		*
+		bclr	#31,d0
+		bsr	drvchkp
+		bmi	filec_check_path_fail
+
+		moveq	#MAXHEAD,d4			*  D4.L : filec_file_search_path の容量チェック
+		bsr	skip_root
+complete_file_init_copy_root:
+		movea.l	a0,a3
+		move.l	a3,d0
+		sub.l	a1,d0
+		sub.l	d0,d4
+		bcs	filec_check_path_fail
+
+		lea	filec_file_search_path(a4),a0
+		bsr	memmovi
+		movea.l	a0,a2
+		movea.l	a3,a0
+filec_check_path_loop:
+		clr.b	(a2)
+		bsr	skip_slashes
+		*
+		*  A0 : 現在着目しているエレメントの先頭
+		*  A2 : 検索名バッファのケツ
+		*
+		movea.l	a0,a3
+		bsr	find_slashes
+		beq	filec_check_path_done	*  OK
+
+		move.l	a0,d2
+		sub.l	a3,d2			*  D2.L : 現在着目しているエレメントの長さ
+		cmpi.b	#'.',(a3)
+		bne	scan_next_directory
+
+		cmp.l	#2,d2
+		bhi	scan_next_directory
+		blo	filec_check_path_loop
+
+		cmpi.b	#'.',1(a3)
+		bne	scan_next_directory
+
+		subq.l	#2,d4
+		bcs	filec_check_path_fail
+
+		move.b	#'.',(a2)+
+		move.b	#'.',(a2)+
+		cmpi.b	#2,flag_symlinks(a5)
+		beq	filec_check_path_ignore_links	*  set symlinks=ignore
+
+		cmpi.b	#3,flag_symlinks(a5)
+		bne	filec_check_path_continue
+		*  set symlinks=expand
+filec_check_path_ignore_links:
+		clr.b	(a2)
+		move.l	a0,-(a7)
+		lea	filec_file_search_path(a4),a1
+		lea	pathname_buf,a0
+		bsr	strcpy
+		moveq	#MAXPATH,d0
+		bsr	normalize_pathname
+		movea.l	(a7)+,a0
+		bmi	filec_check_path_fail
+
+		moveq	#MAXHEAD,d4
+		lea	filec_file_search_path(a4),a2
+		exg	a0,a2
+		bsr	strlen
+		exg	a0,a2
+		sub.l	d0,d4
+		bcs	filec_check_path_fail
+
+		adda.l	d0,a2
+		bra	filec_check_path_continue
+
+scan_next_directory:
+		lea	filec_file_search_path(a4),a0
+		bsr	contains_dos_wildcard
+		bne	filec_check_path_fail
+
+		move.w	#MODEVAL_ALL,-(a7)
+		move.l	a0,-(a7)
+		pea	filec_statbuf(a4)
+		movea.l	a2,a0
+		lea	dos_allfile,a1
+		bsr	strcpy
+		DOS	_FILES
+		lea	10(a7),a7
+filec_check_path_find_loop:
+		tst.l	d0
+		bmi	filec_check_path_fail
+
+		lea	filec_statbuf+ST_NAME(a4),a1
+		tst.b	(a1,d2.l)
+		bne	filec_check_path_findnext
+
+		movea.l	a3,a0
+		move.l	d2,d0
+		movem.l	d1,-(a7)
+		move.b	flag_cifilec(a5),d1
+		bsr	memxcmp
+		movem.l	(a7)+,d1
+		bne	filec_check_path_findnext
+
+		sub.l	d2,d4
+		bcs	filec_check_path_fail
+
+		exg	a0,a2
+		bsr	stpcpy				*  検索パス名を伸ばす
+		exg	a2,a0
+
+		movea.l	a3,a0
+		move.l	d2,d0
+		bsr	memmovi				*  見つかったエントリ名に置き替える
+filec_check_path_continue:
+		subq.l	#1,d4
+		bcs	filec_check_path_fail
+
+		move.b	#'/',(a2)+
+		bra	filec_check_path_loop
+
+filec_check_path_findnext:
+		pea	filec_statbuf(a4)
+		DOS	_NFILES
+		addq.l	#4,a7
+		bra	filec_check_path_find_loop
+
+filec_check_path_fail:
+complete_file_init_error:
+return_minus:
+		moveq	#-1,d0
+		rts
+
+filec_check_path_done:
+		movea.l	a3,a1				*  A1 : 照合パターン（ファイル部）
+		movea.l	a1,a0
+		bsr	strlen
+		move.l	d0,filec_patlen(a4)		*!!
+return_0:
+		moveq	#0,d0
+		rts
+****************
+filec_file_test_executable:
+		btst	#8,d2
+		bne	filec_file_test_executable_ok
+
+		btst	#MODEBIT_EXE,d2
+		bne	filec_file_test_executable_ok
+
+		move.l	a0,-(a7)
+		bsr	check_executable_suffix
+		movea.l	(a7)+,a0
+		subq.l	#1,d0
+		beq	filec_file_test_executable_ng	*  1:no ext
+
+		subq.l	#4,d0
+		blo	filec_file_test_executable_ok	*  2:.R, 3:.X, 4:BAT
+filec_file_test_executable_ng:
+		moveq	#-1,d0
+		rts
+
+filec_file_test_executable_ok:
+		moveq	#0,d0
+		rts
+****************
+path_buf = -(((MAXPATH+1)+1)>>1<<1)
+path_buf_2 = path_buf-(((MAXPATH+1)+1)>>1<<1)
+l_statbuf = path_buf_2-STATBUFSIZE
+pad = l_statbuf-0
+
+filec_check_mode:
+*  シンボリック・リンクならばリンク先のmodeを得る
+		link	a6,#pad
+		movem.l	a0-a3,-(a7)
+		btst	#MODEBIT_LNK,d2
+		beq	filec_check_mode_return
+
+		*  見つかったエントリのパス名を作る
+		move.l	a0,-(a7)
+		lea	path_buf(a6),a0
+		lea	filec_file_search_path(a4),a1
+		bsr	stpcpy
+		movea.l	(a7)+,a1
+		bsr	strcpy
+		lea	path_buf(a6),a1
+		lea	dos_allfile,a2
+		lea	path_buf_2(a6),a0
+		bsr	cat_pathname
+		bmi	filec_check_mode_nondir
+
+		bsr	get_fair_pathname		*  cat_pathname された結果で get_fair_pathname を呼んでエラーとなることはない
+		move.w	#MODEVAL_ALL,-(a7)		*  すべてのエントリを検索する
+		move.l	a0,-(a7)
+		pea	l_statbuf(a6)
+		DOS	_FILES
+		lea	10(a7),a7
+		tst.l	d0
+		bpl	filec_check_mode_directory
+
+		cmp.l	#ENOFILE,d0
+		beq	filec_check_mode_directory
+filec_check_mode_nondir:
+		lea	path_buf(a6),a0
+		lea	l_statbuf(a6),a1
+		bsr	stat
+		bmi	filec_check_mode_fail
+
+		moveq	#0,d2
+		move.b	ST_MODE(a1),d2			*  D2.L : リンクが示すファイルのmode
+		btst	#MODEBIT_LNK,d2
+		bne	filec_check_mode_fail
+filec_check_mode_return:
+		movem.l	(a7)+,a0-a3
+		unlk	a6
+		tst.l	d2
+		rts
+
+filec_check_mode_directory:
+		moveq	#MODEVAL_DIR,d2
+		bra	filec_check_mode_return
+
+filec_check_mode_fail:
+		moveq	#-1,d2
+		bra	filec_check_mode_return
+****************************************************************
+filec_compare_pattern:
+		tst.l	filec_pattern(a4)		*!!
+		beq	filec_compare_pattern_return
+
+		move.l	a1,-(a7)
+		movea.l	filec_pattern(a4),a1		*!!
+		st	d0
+		bsr	strpcmp
+		movea.l	(a7)+,a1
+filec_compare_pattern_return:
+		rts
+****************************************************************
+filec_enter:
+		movem.l	d1-d5/a0-a2,-(a7)
 		addq.w	#1,filec_numentry(a4)
 		bcs	filec_enter_error
 
@@ -2379,11 +3810,10 @@ filec_entry_2:
 		*
 		*  fignore に含まれているかどうかを調べる
 		*
-		move.l	filec_fignore(a4),d0
-		beq	filec_enter_ignored
+		move.w	filec_fignore(a4),d4
+		beq	not_ignore
 
-		bsr	get_var_value
-		move.w	d0,d4				*  D4.W : fignore の要素数
+		movea.l	filec_fignore_list(a4),a0
 		bra	check_fignore_start
 
 check_fignore_loop:
@@ -2410,14 +3840,14 @@ not_ignore:
 		move.l	d2,filec_minlen_precious(a4)
 filec_entry_3:
 		move.l	filec_buffer_ptr(a4),a1
-		lea	tmpargs,a0
+		movea.l	tmpargs(a5),a0
 		move.l	a1,d0
 		sub.l	a0,d0
 		movea.l	a1,a0
 		adda.l	d2,a0
 		addq.l	#2,a0
 		bsr	memmovd
-		lea	tmpargs,a0
+		movea.l	tmpargs(a5),a0
 		bra	filec_add_entry
 
 filec_enter_ignored:
@@ -2452,329 +3882,28 @@ filec_enter_return:
 filec_enter_error:
 		moveq	#1,d0
 		bra	filec_enter_return
-****************
-find_matchbeep:
-		lea	word_matchbeep,a0
-		bsr	find_shellvar
-		beq	find_matchbeep_return		*  D0.L == 0
-
-		bsr	get_var_value
-		beq	find_matchbeep_1
-
-		moveq	#-1,d0				*  D0.L == -1
-find_matchbeep_return:
-		rts
-
-find_matchbeep_1:
-		moveq	#1,d0				*  D0.L == 1
-		rts
-****************
-do_complete_varname_sub:
-		cmpa.l	#0,a2
-		beq	do_complete_varname_sub_done
-
-		lea	var_body(a2),a0
-		move.l	var_next(a2),a2
-		move.l	filec_patlen(a4),d0
-		bsr	memcmp
-		bne	do_complete_varname_sub_continue
-
-		moveq	#' ',d0
-		bsr	filec_enter
-		bne	do_complete_varname_sub_return
-
-do_complete_varname_sub_continue:
-		DOS	_KEYSNS				*  To allow interrupt
-		bra	do_complete_varname_sub
-
-do_complete_varname_sub_done:
-		moveq	#0,d0
-do_complete_varname_sub_return:
-		rts
-****************
-path_buf = -(((MAXPATH+1)+1)>>1<<1)
-l_statbuf = path_buf-STATBUFSIZE
-
-filec_file_sub:
-		link	a6,#l_statbuf
-		bsr	filec_files
-filec_file_sub_loop:
-		bmi	filec_file_sub_done
-
-		move.w	d0,d2				*  D2 : file mode
-		movem.l	d1,-(a7)
-		sf	d1
-		btst	#8,d2
-		bne	filec_file_compare
-
-		move.b	flag_cifilec(a5),d1
-filec_file_compare:
-		move.l	filec_patlen(a4),d0
-		bsr	memxcmp
-		movem.l	(a7)+,d1
-		bne	filec_file_sub_next
-filec_file_compare_ok:
-		clr.b	path_buf(a6)
-
-		*  unset symlinks なら MODEBIT_LNK を落としておく
-		tst.b	flag_symlinks(a5)
-		bne	filec_file_linkbit_ok
-
-		bclr	#MODEBIT_LNK,d2
-filec_file_linkbit_ok:
-		move.b	filec_command(a4),d0
-		beq	filec_file_sub_normal		*  0 : 一般的なファイル名補完
-
-		cmp.b	#5,d0
-		beq	filec_file_sub_normal		*  5 : ディレクトリ指定のコマンド名補完
-
-		*
-		*  ディレクトリ指定の無いコマンド置換
-		*
-		cmp.b	#4,d0
-		blo	filec_file_sub_regular		*  statement, alias, function
-
-		btst	#8,d2
-		bne	filec_file_sub_regular		*  builtin
-
-		tst.b	flag_reconlyexec(a5)
-		bne	filec_command_test_executable
-
-		move.l	a0,-(a7)
-		lea	tmpword1,a0
-		bsr	isfullpath
-		movea.l	(a7)+,a0
-		beq	filec_file_sub_regular		*  完全パス
-filec_command_test_executable:
-		bsr	filec_check_mode
-		bmi	filec_file_sub_next
-
-		btst	#MODEBIT_DIR,d0
-		bne	filec_file_sub_command_dir
-
-		bsr	filec_file_test_executable
-		bne	filec_file_sub_next
-		bra	filec_file_sub_regular
-
-filec_file_sub_command_dir:
-		move.l	a0,-(a7)
-		lea	tmpword1,a0
-		cmpi.b	#'.',(a0)
-		bne	filec_file_sub_command_dir_1
-
-		cmpi.b	#'/',1(a0)
-		beq	filec_file_sub_command_dir_1
-
-		cmpi.b	#'\',1(a0)
-filec_file_sub_command_dir_1
-		movea.l	(a7)+,a0
-		bne	filec_file_sub_next
-
-		moveq	#' ',d3
-		bra	filec_file_matched_dir
-
-		*
-
-filec_file_sub_normal:
-		btst	#MODEBIT_DIR,d2
-		bne	filec_file_sub_normal_dir
-
-		btst	#MODEBIT_LNK,d2
-		bne	filec_file_sub_normal_link
-** regular
-		moveq	#-1,d0
-		tst.b	filec_command(a4)
-		bne	filec_file_sub_regular_check_exec
-
-		move.b	flag_listexec(a5),d0
-		beq	filec_file_sub_regular
-filec_file_sub_regular_check_exec:
-		moveq	#'*',d3
-		bsr	filec_file_test_executable_1
-		beq	filec_file_matched_regular
-
-		tst.b	filec_command(a4)
-		beq	filec_file_sub_regular
-
-		bra	filec_file_sub_next
-** link
-filec_file_sub_normal_link:
-		moveq	#'@',d3
-		bsr	filec_check_mode
-		bmi	filec_file_bad_link
-
-		btst	#MODEBIT_DIR,d0
-		bne	filec_file_link_to_dir
-
-		btst	#MODEBIT_VOL,d0
-		bne	filec_file_bad_link
-
-		tst.b	filec_command(a4)
-		beq	filec_file_link_to_regular_ok
-
-		bsr	filec_file_test_executable
-		bne	filec_file_sub_next
-filec_file_link_to_regular_ok:
-		bra	filec_file_matched_regular
-
-filec_file_link_to_dir:
-		tst.b	flag_listlinks(a5)
-		beq	filec_file_link_to_dir_ok
-
-		moveq	#'>',d3
-filec_file_link_to_dir_ok:
-		bra	filec_file_matched_dir
-
-filec_file_bad_link:
-		tst.b	filec_command(a4)
-		bne	filec_file_sub_next
-
-		tst.b	flag_listlinks(a5)
-		beq	filec_file_matched_dir
-
-		moveq	#'&',d3
-		bra	filec_file_matched_regular
-** dir
-filec_file_sub_normal_dir:
-		moveq	#'/',d3
-filec_file_matched_dir:
-		move.b	#'/',filec_suffix(a4)
-		bra	filec_file_matched
-*
-filec_file_sub_regular:
-		moveq	#' ',d3
-filec_file_matched_regular:
-		move.b	#' ',filec_suffix(a4)
-filec_file_matched:
-		move.b	d3,d0
-		bsr	filec_enter
-		bne	filec_file_sub_return
-filec_file_sub_next:
-		DOS	_KEYSNS				*  To allow interrupt
-		bsr	filec_nfiles
-		bra	filec_file_sub_loop
-*
-filec_file_sub_done:
-		moveq	#0,d0
-filec_file_sub_return:
-		unlk	a6
-		rts
-****************
-*  見つかったエントリのパス名を作る
-make_pathname:
-		move.l	a1,-(a7)
-		lea	path_buf(a6),a1
-		tst.b	(a1)
-		bne	make_pathname_return
-
-		move.l	a0,-(a7)
-		movea.l	a1,a0
-		lea	tmpword1,a1
-		move.l	filec_dirlen(a4),d0
-		bsr	memmovi
-		movea.l	(a7)+,a1
-		bsr	strcpy
-make_pathname_return:
-		movea.l	(a7)+,a1
-		lea	path_buf(a6),a0
-		rts
-****************
-filec_check_mode:
-		movem.l	a0-a1,-(a7)
-		*  シンボリック・リンクならばリンク先のmodeを得る
-		move.l	d2,d0
-		btst	#MODEBIT_LNK,d2
-		beq	filec_check_mode_return
-
-		bsr	make_pathname
-		lea	l_statbuf(a6),a1
-		bsr	stat
-		bmi	filec_check_mode_return
-
-		moveq	#0,d0
-		move.b	ST_MODE(a1),d0			*  D0.L : リンクが示すファイルのmode
-filec_check_mode_return:
-		movem.l	(a7)+,a0-a1
-		tst.l	d0
-		rts
-****************
-filec_file_test_executable:
-		move.l	d0,d2
-		moveq	#-1,d0
-filec_file_test_executable_1:
-		move.l	d3,-(a7)
-		move.b	d0,d3
-		beq	filec_file_test_executable_ng
-
-		btst	#8,d2
-		bne	filec_file_test_executable_ok
-
-		tst.b	flag_execbit(a5)
-		beq	filec_file_test_executable_2
-
-		btst	#MODEBIT_EXE,d2
-		bne	filec_file_test_executable_ok
-filec_file_test_executable_2:
-		move.l	a0,-(a7)
-		bsr	check_executable_suffix
-		movea.l	(a7)+,a0
-		subq.l	#1,d0
-		beq	filec_file_test_magic		*  1:no ext
-
-		subq.l	#4,d0
-		blo	filec_file_test_executable_ok	*  2:.R, 3:.X, 4:BAT
-filec_file_test_magic:
-		tst.b	d3
-		bpl	filec_file_test_executable_ng
-
-		tst.b	flag_execbit(a5)
-		bne	filec_file_test_executable_ng
-
-		move.l	a0,-(a7)
-		bsr	make_pathname
-		bsr	test_command_file
-		movea.l	(a7)+,a0
-		bmi	filec_file_test_executable_return
-filec_file_test_executable_ok:
-		moveq	#0,d0
-filec_file_test_executable_return:
-		move.l	(a7)+,d3
-		tst.l	d0
-		rts
-
-filec_file_test_executable_ng:
-		moveq	#-1,d0
-		bra	filec_file_test_executable_return
-****************
+****************************************************************
 filec_files:
-		cmpi.b	#1,filec_command(a4)
-		beq	filec_nfiles_statement_first
-
-		cmpi.b	#2,filec_command(a4)
-		beq	filec_nfiles_alias_first
-filec_files_normal:
-		lea	tmpword1,a0
+		tst.l	filec_files_path_ptr(a4)
+		bne	filec_files_path_next
+filec_files_1:
+		lea	filec_file_search_path(a4),a0
 		bsr	builtin_dir_match
-		beq	filec_files_not_builtin
+		bne	filec_files_builtin
 
-		cmpi.b	#'/',(a0,d0.l)
-		beq	filec_files_builtin
-
-		cmpi.b	#'\',(a0,d0.l)
-		bne	filec_files_not_builtin
-filec_files_builtin:
-		lea	builtin_table,a0
-		move.l	a0,filec_files_builtin_ptr(a4)
-		bra	filec_nfiles_normal
-
-filec_files_not_builtin:
 		clr.l	filec_files_builtin_ptr(a4)
 		move.w	#MODEVAL_ALL,-(a7)
 		move.l	a0,-(a7)
+		bsr	strbot
+		move.l	a1,-(a7)
+		lea	dos_allfile,a1
+		bsr	strcpy
+		movea.l	(a7)+,a1
 		pea	filec_statbuf(a4)
 		DOS	_FILES
 		lea	10(a7),a7
-filec_files_normal_not_builtin_done:
+		clr.b	(a0)
+filec_files_done:
 		tst.l	d0
 		bmi	filec_files_return
 
@@ -2785,158 +3914,111 @@ filec_files_normal_not_builtin_done:
 		bne	filec_files_return
 
 		btst	#MODEBIT_VOL,d0
-		bne	filec_nfiles_normal_not_builtin
-filec_files_return:
-		tst.l	d0
-		rts
-
-filec_nfiles_normal_not_builtin:
+		beq	filec_files_return
+filec_nfiles_normal:
 		pea	filec_statbuf(a4)
 		DOS	_NFILES
 		addq.l	#4,a7
-		bra	filec_files_normal_not_builtin_done
+		bra	filec_files_done
+
+filec_files_return:
+		tst.l	d0
+		rts
+****************
+filec_nfiles_sub:
+		tst.l	filec_files_builtin_ptr(a4)
+		bne	filec_nfiles_builtin
+		bra	filec_nfiles_normal
 ****************
 filec_nfiles:
-		cmpi.b	#1,filec_command(a4)
-		beq	filec_nfiles_statement
-
-		cmpi.b	#2,filec_command(a4)
-		beq	filec_nfiles_alias
-
-		cmpi.b	#3,filec_command(a4)
-		beq	filec_nfiles_function
-
-		bsr	filec_nfiles_normal
+		bsr	filec_nfiles_sub
 		bpl	filec_files_return
 
-		cmpi.b	#4,filec_command(a4)
-		bne	filec_files_return
+		tst.l	filec_files_path_ptr(a4)
+		beq	filec_files_return
+filec_files_path_next:
+		DOS	_KEYSNS				*  To allow interrupt
+		subq.w	#1,filec_files_path_count(a4)
+		bcs	filec_files_nomore
 
-		bra	filec_files_command_file_next
+		movea.l	filec_files_path_ptr(a4),a0
+		move.l	a0,-(a7)
+		bsr	strfor1
+		move.l	a0,filec_files_path_ptr(a4)
+		movea.l	(a7)+,a0
+		bclr	#31,d0
+		bsr	drvchkp
+		bmi	filec_files_path_next
+
+		bsr	isfullpath
+		seq	filec_file_path_fullpath(a4)
+		bsr	is_dot
+		seq	filec_file_path_dot(a4)
+		move.l	a1,-(a7)
+		movea.l	a0,a1
+		bsr	is_builtin_dir
+		lea	filec_file_search_path(a4),a0
+		bne	filec_files_path_next_builtin
+
+		moveq	#MAXPATH,d0
+		cmpi.b	#2,flag_symlinks(a5)
+		bne	filec_files_path_next_ignore_links	*  set symilnks=ignore
+
+		cmpi.b	#3,flag_symlinks(a5)
+		bne	filec_files_path_next_ignore_links	*  set symilnks=expand
+
+		bsr	fair_pathname
+		scs	d0
+		bra	filec_files_path_next_1
+
+filec_files_path_next_ignore_links:
+		exg	a0,a1
+		bsr	normalize_pathname
+		smi	d0
+		bra	filec_files_path_next_1
+
+filec_files_path_next_builtin:
+		bsr	memmovi
+		clr.b	(a0)
+		sf	d0
+filec_files_path_next_1:
+		movea.l	(a7)+,a1
+		tst.b	d0
+		bne	filec_files_path_next
+
+		lea	filec_file_search_path(a4),a0
+		tst.b	(a0)
+		beq	filec_files_path_next_2
+
+		bsr	strlen
+		cmp.l	#MAXHEAD-1,d0
+		bhi	filec_files_fail
+
+		move.b	#'/',(a0,d0.l)
+		clr.b	1(a0,d0.l)
+filec_files_path_next_2:
+		bsr	filec_files_1
+		tst.l	d0
+		bmi	filec_files_path_next
+
+		rts
 ****************
-filec_nfiles_normal:
-		move.l	filec_files_builtin_ptr(a4),d0
-		beq	filec_nfiles_normal_not_builtin
-
-		movea.l	d0,a0
-		move.l	(a0),d0
-		beq	filec_files_nomore
-
-		lea	10(a0),a0
+filec_files_builtin:
+		lea	builtin_table,a0
 		move.l	a0,filec_files_builtin_ptr(a4)
-filec_files_builtin_set_return:
-		movea.l	d0,a0
-filec_files_builtin_return:
+filec_nfiles_builtin:
+		movea.l	filec_files_builtin_ptr(a4),a2
+		bsr	pick_builtins
+		move.l	a2,filec_files_builtin_ptr(a4)
+		tst.l	d0
+		bmi	filec_files_nomore
+
 		move.l	#$100|MODEVAL_EXE,d0
 		rts
 ****************
-filec_nfiles_statement_first:
-		lea	statement_table,a0
-		move.l	a0,filec_command_ptr(a4)
-filec_nfiles_statement:
-		move.l	filec_command_ptr(a4),a0
-		move.l	(a0),d0
-		beq	filec_nfiles_statement_nomore
-
-		lea	10(a0),a0
-		move.l	a0,filec_command_ptr(a4)
-		bra	filec_files_builtin_set_return
-
-filec_nfiles_statement_nomore:
-		addq.b	#1,filec_command(a4)
-filec_nfiles_alias_first:
-		tst.b	flag_noalias(a5)
-		bne	filec_nfiles_alias_nomore
-
-		move.l	alias_top(a5),filec_command_ptr(a4)
-filec_nfiles_alias:
-		move.l	filec_command_ptr(a4),d0
-		beq	filec_nfiles_alias_nomore
-
-		movea.l	d0,a0
-		move.l	var_next(a0),filec_command_ptr(a4)
-		lea	var_body(a0),a0
-		bra	filec_files_builtin_return
-
-filec_nfiles_alias_nomore:
-		addq.b	#1,filec_command(a4)
-		move.l	function_bot(a5),filec_command_ptr(a4)
-filec_nfiles_function:
-		move.l	filec_command_ptr(a4),d0
-		beq	filec_files_function_nomore
-
-		movea.l	d0,a0
-		move.l	FUNC_PREV(a0),filec_command_ptr(a4)
-		lea	FUNC_NAME(a0),a0
-		bra	filec_files_builtin_return
-
-filec_files_function_nomore:
-		addq.b	#1,filec_command(a4)
-		lea	word_path,a0
-		bsr	find_shellvar
-		beq	filec_files_nomore
-
-		bsr	get_var_value
-		move.l	a0,filec_command_ptr(a4)
-		move.w	d0,filec_command_path_count(a4)
-filec_files_command_file_next:
-		subq.w	#1,filec_command_path_count(a4)
-		bcs	filec_files_nomore
-
-		lea	tmpword1,a0
-		movem.l	a1-a3,-(a7)
-		lea	dos_allfile,a2
-		movea.l	filec_command_ptr(a4),a1
-		bsr	cat_pathname
-		move.l	a1,filec_command_ptr(a4)
-		movem.l	(a7)+,a1-a3
-		tst.l	d0
-		bmi	filec_files_command_file_next
-
-		bsr	drvchkp
-		bmi	filec_files_command_file_next
-
-		move.l	a1,-(a7)
-		bsr	headtail
-		movea.l	(a7)+,a1
-		cmp.l	#MAXHEAD,d0
-		bhi	filec_files_command_file_next
-
-		move.l	d0,filec_dirlen(a4)
-		bsr	filec_files_normal
-		tst.l	d0
-		bmi	filec_files_command_file_next
-
-		rts
-****************
 filec_files_nomore:
+filec_files_fail:
 		moveq	#-1,d0
-		rts
-*****************************************************************
-cmpnames:
-		movem.l	d1/a0-a1,-(a7)
-cmpnames_loop:
-		moveq	#0,d0
-		tst.b	1(a0)
-		beq	cmpnames_1
-
-		move.b	(a0)+,d0
-cmpnames_1:
-		moveq	#0,d1
-		tst.b	1(a1)
-		beq	cmpanames_2
-
-		move.b	(a1)+,d1
-cmpanames_2:
-		sub.l	d1,d0
-		bne	cmpnames_return
-
-		tst.b	d1
-		bne	cmpnames_loop
-
-		moveq	#0,d0
-cmpnames_return:
-		movem.l	(a7)+,d1/a0-a1
 		rts
 *****************************************************************
 getline_x_getletter:
@@ -3205,6 +4287,7 @@ backward_letter_done:
 *      D0.L   破壊
 *      D2.W   移動バイト数
 *      D3.L   カーソル移動幅
+*      CCR    TST.W D2
 *****************************************************************
 forward_letter:
 		moveq	#0,d2
@@ -3216,7 +4299,34 @@ forward_letter:
 		bsr	x_size_forward
 		add.w	d2,point(a6)
 forward_letter_done:
+		tst.w	d2
 		rts
+*****************************************************************
+next_wordchar:
+		bsr	is_point_wordchars
+		beq	next_wordchar_done
+
+		bsr	forward_letter
+		beq	next_wordchar_done
+
+		add.w	d2,d4
+		add.l	d3,d5
+		bra	next_wordchar
+
+next_wordchar_done:
+next_nonwordchar_done:
+		rts
+*****************************************************************
+next_nonwordchar:
+		bsr	is_point_wordchars
+		bne	next_nonwordchar_done
+
+		bsr	forward_letter
+		beq	next_nonwordchar_done
+
+		add.w	d2,d4
+		add.l	d3,d5
+		bra	next_nonwordchar
 *****************************************************************
 * backward_word - ポインタを1語戻す．カーソルは移動しない
 *
@@ -3229,58 +4339,6 @@ forward_letter_done:
 *      D3.L   カーソル移動幅
 *****************************************************************
 backward_word:
-
-.if 0
-
-		movem.l	d0/d4-d6/a0,-(a7)
-		moveq	#0,d4
-		moveq	#0,d5
-backward_word_1:
-		tst.w	point(a6)
-		beq	backward_word_done
-
-		bsr	backward_letter
-		add.w	d2,d4
-		add.l	d3,d5
-
-		bsr	is_point_space
-		beq	backward_word_1
-
-		bsr	is_special_character
-		move.b	(a0),d6
-backward_word_3:
-		tst.w	point(a6)
-		beq	backward_word_done
-
-		bsr	backward_letter
-		add.w	d2,d4
-		add.l	d3,d5
-
-		bsr	is_point_space
-		beq	backward_word_5
-
-		tst.b	d6
-		beq	backward_word_4
-
-		cmp.b	d6,d0
-		beq	backward_word_3
-		bra	backward_word_5
-
-backward_word_4:
-		bsr	is_special_character
-		beq	backward_word_3
-backward_word_5:
-		bsr	forward_letter
-		sub.w	d2,d4
-		sub.l	d3,d5
-backward_word_done:
-		move.w	d4,d2
-		move.l	d5,d3
-		movem.l	(a7)+,d0/d4-d6/a0
-		rts
-
-.else
-
 		movem.l	d0/d4-d5/a0,-(a7)
 		moveq	#0,d4
 		moveq	#0,d5
@@ -3313,10 +4371,8 @@ backward_word_done:
 		move.l	d5,d3
 		movem.l	(a7)+,d0/d4-d5/a0
 		rts
-
-.endif
 *****************************************************************
-* forward_word - ポインタを1語進める．カーソルは移動しない
+* forward_word, next_word - ポインタを1語進める．カーソルは移動しない
 *
 * CALL
 *      none
@@ -3327,125 +4383,32 @@ backward_word_done:
 *      D3.L   カーソル移動幅
 *****************************************************************
 forward_word:
-
-.if 0
-
-		movem.l	d0/d4-d6/a0,-(a7)
-		moveq	#0,d4
-		moveq	#0,d5
-forward_word_1:
-		move.w	point(a6),d0
-		cmp.w	nbytes(a6),d0
-		beq	forward_word_done
-
-		bsr	is_point_space
-		bne	forward_word_2
-
-		bsr	forward_letter
-		add.w	d2,d4
-		add.l	d3,d5
-		bra	forward_word_1
-
-forward_word_2:
-		bsr	is_special_character
-		move.b	(a0),d6
-forward_word_3:
-		bsr	forward_letter
-		add.w	d2,d4
-		add.l	d3,d5
-		move.w	point(a6),d0
-		cmp.w	nbytes(a6),d0
-		beq	forward_word_done
-
-		bsr	is_point_space
-		beq	forward_word_done
-
-		tst.b	d6
-		beq	forward_word_4
-
-		cmp.b	d6,d0
-		beq	forward_word_3
-		bra	forward_word_done
-
-forward_word_4:
-		bsr	is_special_character
-		beq	forward_word_3
-forward_word_done:
-		move.w	d4,d2
-		move.l	d5,d3
-		movem.l	(a7)+,d0/d4-d6/a0
-		rts
-
-.else
-
 		movem.l	d0/d4-d5/a0,-(a7)
 		moveq	#0,d4
 		moveq	#0,d5
-forward_word_1:
-		move.w	point(a6),d0
-		cmp.w	nbytes(a6),d0
-		beq	forward_word_done
-
-		bsr	is_point_wordchars
-		beq	forward_word_2
-
-		bsr	forward_letter
-		add.w	d2,d4
-		add.l	d3,d5
-		bra	forward_word_1
-
-forward_word_2:
-		bsr	forward_letter
-		add.w	d2,d4
-		add.l	d3,d5
-		move.w	point(a6),d0
-		cmp.w	nbytes(a6),d0
-		beq	forward_word_done
-
-		bsr	is_point_wordchars
-		beq	forward_word_2
-forward_word_done:
+		bsr	next_wordchar
+		bsr	next_nonwordchar
 		move.w	d4,d2
 		move.l	d5,d3
 		movem.l	(a7)+,d0/d4-d5/a0
 		rts
-
-.endif
 *****************************************************************
-.if 0
-
-is_point_space:
-		move.w	point(a6),d0
-		movea.l	line_top(a6),a0
-		move.b	(a0,d0.w),d0
-		bra	isspace2
-
-is_special_character:
-		and.w	#$ff,d0
-		lea	x_special_characters,a0
-		bra	strchr				*  x_special_characters にシフトJIS文字は無い
-
-.else
-
 is_point_wordchars:
 		move.w	point(a6),d0
-is_dot_wordchars:
 		movea.l	line_top(a6),a0
 		move.b	(a0,d0.w),d0
 		bsr	issjis
-		beq	is_dot_wordchars_return
+		beq	is_point_wordchars_return
 
 		bsr	isalnum
-		beq	is_dot_wordchars_return
+		beq	is_point_wordchars_return
 
 		movea.l	wordchars(a5),a0
 		bsr	strchr
 		seq	d0
 		tst.b	d0
-is_dot_wordchars_return:
+is_point_wordchars_return:
 		rts
-
-.endif
 *****************************************************************
 * move_letter_backward - ポインタを1文字戻し、カーソルも左に移動する
 * move_word_backward - ポインタを1語戻し、カーソルも左に移動する
@@ -3598,7 +4561,7 @@ post_insert_1:
 copy_region_to_buffer:
 		movem.l	d1/d3/a0-a1,-(a7)
 		move.b	d0,d1
-		lea	linecutbuf(a5),a0
+		movea.l	linecutbuf(a5),a0
 		tst.b	killing(a6)
 		bne	copy_region_to_buffer_1
 
@@ -3623,7 +4586,7 @@ copy_region_to_buffer_2:
 		suba.w	d2,a1				*  正しい
 		move.l	d3,d0
 		bsr	memmovd
-		lea	linecutbuf(a5),a0
+		movea.l	linecutbuf(a5),a0
 copy_region_to_buffer_3:
 		movea.l	line_top(a6),a1
 		lea	(a1,d4.w),a1
@@ -3971,14 +4934,8 @@ prompt_request:
 ****************
 prompt_status:
 		lea	word_status,a0
-		movem.l	d1,-(a7)
-		bsr	svartol
-		exg	d0,d1
-		cmp.l	#5,d1
-		movem.l	(a7)+,d1
-		beq	prompt_digit
-
-		lea	msg_no_status,a0
+		bsr	get_shellvar
+		beq	prompt_loop
 		bra	prompt_string
 ****************
 *  %! : current event number of history
@@ -4021,6 +4978,7 @@ prompt_cwd_abbrev:
 ****************
 prompt_week_word:
 		DOS	_GETDATE
+		clr.w	d0
 		swap	d0
 		and.w	#%111,d0
 		lea	english_week,a0
@@ -4033,14 +4991,17 @@ prompt_week_word:
 *  %h : month word
 ****************
 prompt_month_word:
-		DOS	_GETDATE
-		lsr.l	#5,d0
-		and.l	#%1111,d0
-		subq.l	#1,d0
-		lea	month_word_table,a0
+		bsr	get_month
+		lea	month_words,a0
 prompt_name_in_table:
 		bsr	strforn
 		bra	prompt_string
+
+get_month:
+		DOS	_GETDATE
+		lsr.l	#5,d0
+		and.l	#%1111,d0
+		rts
 ****************
 *  %y : year
 ****************
@@ -4056,19 +5017,15 @@ prompt_year:
 		cmp.l	#2,d4
 		bhi	prompt_digit
 
-		move.l	d1,-(a7)
-		moveq	#100,d1
-		bsr	divul
-		move.l	d1,d0
-		move.l	(a7)+,d1
+		divu	#100,d0
+		clr.w	d0
+		swap	d0
 		bra	prompt_digit
 ****************
 *  %m : month of year
 ****************
 prompt_month_of_year:
-		DOS	_GETDATE
-		lsr.l	#5,d0
-		and.l	#%1111,d0
+		bsr	get_month
 		bra	prompt_digit
 ****************
 *  %d : day of month
@@ -4082,8 +5039,8 @@ prompt_day_of_month:
 ****************
 prompt_hour:
 		DOS	_GETTIM2
-		lsr.l	#8,d0
-		lsr.l	#8,d0
+		clr.w	d0
+		swap	d0
 		and.l	#%11111,d0
 		bra	prompt_digit
 ****************
@@ -4102,153 +5059,6 @@ prompt_second:
 		and.l	#%111111,d0
 		bra	prompt_digit
 *****************************************************************
-* test_directory - パス名のディレクトリが存在するかどうかを調べる
-*
-* CALL
-*      A0     パス名
-*
-* RETURN
-*      D0.L   存在するならば0
-*      CCR    TST.L D0
-*
-* NOTE
-*      / のみが許され、\ は許さない。
-*      flag_cifilec(B) が効く。
-*      flag_cifilec(B) が０のときには、検索名の大文字と小文字は
-*      区別される。さもなくば区別せずに検索し、１番最初に見つかった
-*      エントリを採用する。その際、(A0) のパス名は書き換えられる。
-****************************************************************
-statbuf = -STATBUFSIZE
-l_statbuf = statbuf-STATBUFSIZE
-searchnamebuf = statbuf-(((MAXPATH+1)+1)>>1<<1)
-
-test_directory:
-		link	a6,#searchnamebuf
-		movem.l	d1-d3/a0-a3,-(a7)
-		lea	searchnamebuf(a6),a2
-get_firstdir_restart:
-		movea.l	a0,a3
-		move.b	(a0)+,d0
-		beq	get_firstdir_done
-
-		cmpi.b	#':',(a0)
-		bne	get_firstdir_no_drive
-
-		move.b	d0,(a2)+
-		move.b	(a0)+,(a2)+
-		movea.l	a0,a3
-		bsr	drvchk
-		bmi	test_directory_return
-
-		move.b	(a0)+,d0
-		beq	get_firstdir_done
-get_firstdir_no_drive:
-		cmp.b	#'/',d0
-		bne	get_firstdir_done
-
-		move.b	d0,(a2)+
-		movea.l	a0,a3
-get_firstdir_done:
-		clr.b	(a2)
-		lea	searchnamebuf(a6),a0
-test_directory_loop:
-		*
-		*  A2 : 検索名バッファのケツ
-		*  A3 : 現在着目しているエレメントの先頭
-		*
-		movea.l	a3,a0				*  現在着目しているエレメントの後ろに
-		moveq	#'/',d0				*  / が
-		bsr	strchr				*  あるか？  （'/' にシフトJISの考慮は不要）
-		beq	test_directory_true		*  無い .. true
-
-		move.l	a0,d2
-		sub.l	a3,d2
-		*
-		*  A4   : 現在着目しているエレメントの末尾
-		*  D2.L : 現在着目しているエレメントの長さ
-		*
-		move.w	#MODEVAL_ALL,-(a7)
-		pea	searchnamebuf(a6)
-		pea	statbuf(a6)
-		movea.l	a2,a0
-		lea	dos_allfile,a1
-		bsr	strcpy
-		DOS	_FILES
-		lea	10(a7),a7
-test_directory_find_loop:
-		tst.l	d0
-		bmi	test_directory_return		*  エントリが無い .. false
-
-		move.b	statbuf+ST_MODE(a6),d3
-		btst	#MODEBIT_DIR,d3
-		bne	test_directory_2
-
-		btst	#MODEBIT_VOL,d3
-		bne	test_directory_findnext
-
-		tst.b	flag_symlinks(a5)
-		beq	test_directory_findnext
-
-		btst	#MODEBIT_LNK,d3
-		beq	test_directory_findnext
-test_directory_2:
-		lea	statbuf+ST_NAME(a6),a1
-		tst.b	(a1,d2.l)
-		bne	test_directory_findnext
-
-		movea.l	a3,a0
-		move.l	d2,d0
-		move.b	flag_cifilec(a5),d1
-		bsr	memxcmp
-		bne	test_directory_findnext
-
-		exg	a0,a2
-		bsr	stpcpy
-		exg	a2,a0
-
-		btst	#MODEBIT_DIR,d3
-		bne	test_directory_found
-
-		tst.b	flag_symlinks(a5)
-		beq	test_directory_fail
-
-		btst	#MODEBIT_LNK,d3
-		beq	test_directory_fail
-
-		lea	searchnamebuf(a6),a0
-		lea	l_statbuf(a6),a1
-		bsr	stat
-		bmi	test_directory_fail
-
-		btst.b	#MODEBIT_DIR,l_statbuf+ST_MODE(a6)
-		beq	test_directory_fail
-test_directory_found:
-		lea	statbuf+ST_NAME(a6),a1
-		movea.l	a3,a0
-		move.l	d2,d0
-		bsr	memmovi
-		movea.l	a0,a3
-		move.b	(a3)+,(a2)+
-		bra	test_directory_loop
-
-test_directory_findnext:
-		pea	statbuf(a6)
-		DOS	_NFILES
-		addq.l	#4,a7
-		bra	test_directory_find_loop
-
-test_directory_fail:
-		moveq	#-1,d0
-		bra	test_directory_return
-
-test_directory_true:
-		moveq	#0,d0
-test_directory_return:
-		movem.l	(a7)+,d1-d3/a0-a3
-		unlk	a6
-		tst.l	d0
-		rts
-*****************************************************************
 .data
 
 .even
@@ -4262,6 +5072,7 @@ key_function_jump_table:
 		dc.l	x_abort
 		dc.l	x_eof
 		dc.l	x_accept_line
+		dc.l	x_keyboard_quit
 		dc.l	x_quoted_insert
 		dc.l	x_redraw
 		dc.l	x_clear_and_redraw
@@ -4274,6 +5085,7 @@ key_function_jump_table:
 		dc.l	x_forward_char
 		dc.l	x_backward_word
 		dc.l	x_forward_word
+		dc.l	x_next_word
 		dc.l	x_del_back_char
 		dc.l	x_del_for_char
 		dc.l	x_kill_back_word
@@ -4284,12 +5096,15 @@ key_function_jump_table:
 		dc.l	x_kill_region
 		dc.l	x_copy_region
 		dc.l	x_yank
+		dc.l	x_change_case
 		dc.l	x_upcase_char
 		dc.l	x_downcase_char
 		dc.l	x_upcase_word
 		dc.l	x_downcase_word
 		dc.l	x_upcase_region
 		dc.l	x_downcase_region
+		dc.l	x_capitalize_word
+		dc.l	x_transpose_gosling
 		dc.l	x_transpose_chars
 		dc.l	x_transpose_words
 		dc.l	x_history_search_backward
@@ -4297,41 +5112,30 @@ key_function_jump_table:
 		dc.l	x_history_search_backward_circular
 		dc.l	x_history_search_forward_circular
 		dc.l	x_complete
-		dc.l	x_complete_command
-		dc.l	x_complete_file
-		dc.l	x_complete_variable
-		dc.l	x_complete_environment_variable
-		dc.l	x_complete_shell_variable
+		dc.l	x_complete_raw
 		dc.l	x_list
-		dc.l	x_list_command
-		dc.l	x_list_file
-		dc.l	x_list_variable
-		dc.l	x_list_environment_variable
-		dc.l	x_list_shell_variable
+		dc.l	x_list_raw
 		dc.l	x_list_or_eof
 		dc.l	x_del_for_char_or_list
 		dc.l	x_del_for_char_or_list_or_eof
 		dc.l	x_copy_prev_word
+		dc.l	x_insert_last_word
 		dc.l	x_up_history
 		dc.l	x_down_history
 		dc.l	x_quit_history
 
-word_fignore:		dc.b	'fignore',0
-word_matchbeep:		dc.b	'matchbeep',0
-word_ambiguous:		dc.b	'ambiguous',0
-word_notunique:		dc.b	'notunique',0
-word_addsuffix:		dc.b	'addsuffix',0
-word_showdots:		dc.b	'showdots',0
+word_separators:	dc.b	' ',HT,'><)(;&|',0
 
-str_A:			dc.b	'-A',0
-
-filec_separators:	dc.b	'"',"'",'`^='
-word_separators:	dc.b	' ',HT
-x_special_characters:	dc.b	'<>)'
-x_command_separators_1:	dc.b	'('
-x_command_separators_2:	dc.b	';&|',0
-
-month_word_table:
+english_week:
+		dc.b	'Sunday',0
+		dc.b	'Monday',0
+		dc.b	'Tuesday',0
+		dc.b	'Wednesday',0
+		dc.b	'Thursday',0
+		dc.b	'Friday',0
+		dc.b	'Saturday',0
+month_words:
+		dc.b	0
 		dc.b	'January',0
 		dc.b	'February',0
 		dc.b	'March',0
@@ -4346,16 +5150,6 @@ month_word_table:
 		dc.b	'December',0
 		dc.b	0
 		dc.b	0
-		dc.b	0
-
-english_week:
-		dc.b	'Sunday',0
-		dc.b	'Monday',0
-		dc.b	'Tuesday',0
-		dc.b	'Wednesday',0
-		dc.b	'Thursday',0
-		dc.b	'Friday',0
-		dc.b	'Saturday',0
 		dc.b	0
 
 japanese_week:
@@ -4379,7 +5173,10 @@ msg_i_search:		dc.b	'i-search: ',0
 msg_i_search_colon:	dc.b	' : ',0
 .endif
 
-msg_no_status:	dc.b	'(status is unset)',0
+msg_completion_syntax_error:	dc.b	'補完プログラムの構文が誤りです',0
+msg_completion_not_found:	dc.b	'この補完プログラムは定義されていません',0
+msg_completion_program_loop:	dc.b	'補完プログラムの分岐が多すぎます',0
+
 word_sorry:	dc.b	'(%R is not available yet)',0
 word_percent:	dc.b	'%',0
 
