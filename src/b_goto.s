@@ -9,11 +9,10 @@
 .include ../src/source.h
 .include ../src/loop.h
 
-.xref isspace
+.xref isspace2
 .xref strlen
 .xref strspc
 .xref memcmp
-.xref skip_space
 .xref enputs1
 .xref loop_stack_p
 .xref abort_loops
@@ -149,7 +148,7 @@ search_label_skip_space:
 
 		addq.l	#1,d1
 search_label_skip_space_1:
-		bsr	isspace
+		bsr	isspace2
 		beq	search_label_skip_space
 
 		subq.l	#1,a0
@@ -198,4 +197,3 @@ msg_cant_from_terminal:		dc.b	'標準入力からは制御できません',0
 msg_cannot_goto_on_terminal:	dc.b	'標準入力モードでは goto は実行できません',0
 
 .end
-

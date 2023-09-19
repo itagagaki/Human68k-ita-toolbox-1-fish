@@ -1,12 +1,12 @@
 * b_srand.s
 * Itagaki Fumihiko 19-Oct-91  Create.
 
+.include iocscall.h
 .include irandom.h
 .include ../src/fish.h
 
 .xref atou
 .xref init_irandom
-.xref getitimer
 .xref too_many_args
 .xref badly_formed_number
 .xref too_large_number
@@ -39,7 +39,7 @@ cmd_srand:
 		bra	do_srand
 
 with_timer:
-		bsr	getitimer
+		IOCS	_ONTIME
 do_srand:
 		moveq	#RND_POOLSIZE,d1
 		lea	irandom_struct(a5),a0

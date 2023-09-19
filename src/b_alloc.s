@@ -8,7 +8,7 @@
 .xref utoa
 .xref putc
 .xref nputs
-.xref printfi
+.xref printu
 .xref mulul
 .xref divul
 .xref too_many_args
@@ -71,20 +71,17 @@ free_skip:
 		bra	pool_loop
 
 pool_end:
-		lea	utoa(pc),a0			*  符号なし10進変換で
-		lea	putc(pc),a1			*  標準出力に
-		suba.l	a2,a2				*  prefixなしで
 		moveq	#0,d1				*  右詰めで
 		moveq	#' ',d2				*  padはスペースで
 		moveq	#10,d3				*  少なくとも10文字の幅に
 		moveq	#1,d4				*  少なくとも1桁の数字を
 		move.l	d7,d0
-		bsr	printfi
+		bsr	printu
 		move.l	d6,d0
-		bsr	printfi
+		bsr	printu
 		move.l	d7,d0
 		sub.l	d6,d0
-		bsr	printfi
+		bsr	printu
 		move.l	d6,d0
 		moveq	#100,d1
 		bsr	mulul
@@ -92,7 +89,7 @@ pool_end:
 		bsr	divul
 		moveq	#0,d1				*  右詰めで
 		moveq	#5,d3				*  少なくとも 5文字の幅に
-		bsr	printfi
+		bsr	printu
 		lea	msg_percent,a0
 		bsr	nputs
 		bra	lake_loop

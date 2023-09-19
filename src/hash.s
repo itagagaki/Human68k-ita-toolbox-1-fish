@@ -5,7 +5,9 @@
 .include limits.h
 .include stat.h
 
+.if 0
 .xref toupper
+.endif
 .xref utoa
 .xref strlen
 .xref strfor1
@@ -13,7 +15,7 @@
 .xref putc
 .xref puts
 .xref nputs
-.xref printfi
+.xref printu
 .xref mulul
 .xref divul
 .xref word_path
@@ -46,9 +48,31 @@
 .xdef hash
 
 hash:
+.if	1
+* NEW
+		movem.l	d1-d2/a0,-(a7)
+		moveq	#0,d1			* D1 : hashval
+		move.w	#7,d2			* 8文字まで
+hash_loop:
+		moveq	#0,d0
+		move.b	(a0)+,d0
+		beq	hash_done
+
+		cmp.b	#'.',d0
+		beq	hash_done
+
+		or.b	#$20,d0
+		mulu	#241,d0
+		add.l	d0,d1
+		dbra	d2,hash_loop
+hash_done:
+		move.l	d1,d0
+		movem.l	(a7)+,d1-d2/a0
+.else
+* OLD
 		movem.l	d1-d4/a0,-(a7)
 		moveq	#0,d2			* D2 : hashval
-		move.l	#4999,d3		* D3 : base
+ 		move.l	#4999,d3		* D3 : base
 		move.w	#7,d4			* 8文字まで
 hash_loop:
 		moveq	#0,d0
@@ -75,8 +99,9 @@ hash_loop:
 		dbra	d4,hash_loop
 hash_done:
 		move.l	d2,d0
-		and.l	#$3ff,d0
 		movem.l	(a7)+,d1-d4/a0
+.endif
+		and.l	#$3ff,d0
 		rts
 ****************************************************************
 * rehash
@@ -142,7 +167,7 @@ rehash_loop:
 
 		movea.l	a1,a3
 
-		move.w	#MODEVAL_FILE,-(a7)	* ボリューム・ラベルとディレクトリ以外
+		move.w	#MODEVAL_ALL,-(a7)
 		move.l	a0,-(a7)
 		pea	files_buf(a6)
 		DOS	_FILES
@@ -151,9 +176,16 @@ rehash_real_directory_loop:
 		tst.l	d0
 		bmi	rehash_real_directory_done
 
+		move.b	files_buf+ST_MODE(a6),d0
+		and.b	#MODEVAL_DIR|MODEVAL_VOL,d0
+		bne	rehash_real_directory_next
+
+		*  これ以上の検査は、遅くなるので、やらない。
+
 		lea	files_buf+ST_NAME(a6),a0
 		bsr	hash
 		bset.b	d2,(a4,d0.l)
+rehash_real_directory_next:
 		pea	files_buf(a6)
 		DOS	_NFILES
 		addq.l	#4,a7
@@ -219,8 +251,6 @@ cmd_hashstat:
 		moveq	#' ',d2				*  padは空白で
 		moveq	#1,d3				*  少なくとも 1文字の幅に
 		moveq	#1,d4				*  少なくとも 1桁の数字を
-		lea	putc(pc),a1			*  標準出力に
-		suba.l	a2,a2				*  prefixなしで
 		lea	msg_status,a0
 		bsr	puts
 		lea	msg_on,a0
@@ -233,13 +263,11 @@ put_status:
 		lea	msg_hits,a0
 		bsr	puts
 		move.l	hash_hits(a5),d0
-		lea	utoa(pc),a0
-		bsr	printfi
+		bsr	printu
 		lea	msg_misses,a0
 		bsr	puts
 		move.l	hash_misses(a5),d0
-		lea	utoa(pc),a0
-		bsr	printfi
+		bsr	printu
 		lea	msg_ratio,a0
 		bsr	puts
 
@@ -253,8 +281,7 @@ put_status:
 		bsr	divul
 cmd_hashstat_2:
 		moveq	#0,d1				*  右詰めで
-		lea	utoa(pc),a0
-		bsr	printfi
+		bsr	printu
 		lea	msg_percent,a0
 		bsr	nputs
 cmd_hashstat_done:
@@ -272,4 +299,3 @@ msg_ratio:	dc.b	'回, ヒット率: ',0
 msg_percent:	dc.b	'%',0
 
 .end
-

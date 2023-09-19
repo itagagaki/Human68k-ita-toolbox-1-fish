@@ -4,7 +4,7 @@
 * Itagaki Fumihiko 27-Aug-90  Create.
 
 .xref expression
-.xref just_set_status
+.xref set_status
 .xref too_many_args
 
 .xref exitflag
@@ -33,7 +33,7 @@ cmd_return:
 		bne	too_many_args
 
 		move.l	d1,d0
-		bsr	just_set_status
+		bsr	set_status
 success_return:
 		st	exitflag(a5)
 		moveq	#0,d0
@@ -41,4 +41,3 @@ cmd_return_return:
 		rts
 
 .end
-

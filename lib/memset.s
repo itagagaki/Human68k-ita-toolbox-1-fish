@@ -18,15 +18,19 @@
 
 memset:
 		movem.l	d1/a0,-(a7)
-		tst.l	d1
-		beq	memset_done
-memset_loop:
+		bra	low_continue
+
+high_loop:
+		swap	d1
+low_loop:
 		move.b	d0,(a0)+
-		subq.l	#1,d1
-		bne	memset_loop
-memset_done:
+low_continue:
+		dbra	d1,low_loop
+
+		swap	d1
+		dbra	d1,high_loop
+
 		movem.l	(a7)+,d1/a0
 		rts
 
 .end
-

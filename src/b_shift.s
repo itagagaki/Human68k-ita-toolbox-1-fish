@@ -36,6 +36,7 @@ cmd_shift:
 shift_var:
 		movea.l	a0,a2
 		bsr	find_shellvar
+		movea.l	a2,a0
 		beq	undefined
 
 		bsr	get_var_value

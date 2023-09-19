@@ -15,26 +15,28 @@
 *      ZF     1 on true
 *****************************************************************
 .xdef isspace
+.xdef isspace3
+.xdef isspace2
+.xdef isspace1
 
 isspace:
-		cmp.b	#' ',d0
+		cmp.b	#VT,d0		*  $0b
 		beq	return
 
-		cmp.b	#HT,d0
+		cmp.b	#FS,d0		*  $0c
+		beq	return
+isspace3:
+		cmp.b	#CR,d0		*  $0d
 		beq	return
 
-		cmp.b	#LF,d0
+		cmp.b	#LF,d0		*  $0a
 		beq	return
-
-		cmp.b	#VT,d0
+isspace2:
+		cmp.b	#HT,d0		*  $09
 		beq	return
-
-		cmp.b	#FS,d0
-		beq	return
-
-		cmp.b	#CR,d0
+isspace1:
+		cmp.b	#' ',d0		*  $20
 return:
 		rts
 
 .end
-

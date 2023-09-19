@@ -53,6 +53,7 @@
 *               * ここまでの間，A0 とD0.L を破壊してはならない．
 *
 *		lea	cmdline,a1
+*		lea	cmdname,a2
 *		move.l	#CMDLINE_SIZE,d1
 *		bsr	SetHUPAIR
 *		bmi	too_long	*  負が返ったらエラー
@@ -74,6 +75,8 @@
 *
 *
 *		.data
+*	cmdname:	dc.b	'cmd',0
+*
 *		.even
 *	nwords_1:	dc.l	2
 *	wordlist_1:	dc.b	'arg1',0

@@ -1,7 +1,7 @@
 * strspc.s
 * Itagaki Fumihiko 14-Jul-90  Create.
 
-.xref isspace
+.xref isspace3
 
 .text
 
@@ -22,7 +22,7 @@ loop:
 		move.b	(a0)+,d0
 		beq	done
 
-		jsr	isspace
+		jsr	isspace3
 		bne	loop
 done:
 		subq.l	#1,a0
@@ -30,4 +30,3 @@ done:
 		rts
 
 .end
-

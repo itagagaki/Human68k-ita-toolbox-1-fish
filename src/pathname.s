@@ -104,7 +104,7 @@ split_pathname_return:
 *      A1     $SYSROOT下のパス名
 *
 * RETURN
-*      長さが MAXPATH を超えた場合には負数
+*      CCR    エラーならば MI
 *****************************************************************
 .xdef make_sys_pathname
 
@@ -130,7 +130,6 @@ make_sys_pathname_return:
 
 word_sysroot:		dc.b	'SYSROOT'
 str_nul:		dc.b	0
-
 *****************************************************************
 
 .end

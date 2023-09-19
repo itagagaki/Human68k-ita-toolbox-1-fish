@@ -19,6 +19,7 @@
 *     -h <name>
 *     -s <name>
 *     -v <name>
+*     -l <name>
 *     -c <name>
 *     -b <name>
 *     -i <name>
@@ -87,9 +88,7 @@ termsize equ MAXWORDLEN*2+1
 .xref strlen
 .xref strcmp
 .xref strpcmp
-.xref strcpy
 .xref strfor1
-.xref skip_space
 .xref enputs1
 .xref escape_quoted
 .xref expand_a_word
@@ -102,7 +101,7 @@ termsize equ MAXWORDLEN*2+1
 .xref divsl
 .xref mulsl
 .xref drvchk
-.xref fork
+.xref fork_and_wait
 .xref command_error
 .xref expression_syntax_error
 .xref cannot_because_no_memory
@@ -132,7 +131,7 @@ termsize equ MAXWORDLEN*2+1
 .xdef expression
 
 expression:
-		movem.l	d2-d6/a1-a3,-(a7)
+		movem.l	d2-d6/a1-a4,-(a7)
 		st	d6
 		bsr	alloc_term
 		bne	expression_return
@@ -147,7 +146,7 @@ expression:
 expression_done:
 		bsr	free_term
 expression_return:
-		movem.l	(a7)+,d2-d6/a1-a3
+		movem.l	(a7)+,d2-d6/a1-a4
 		rts
 ****************************************************************
 * subexpression - 式を評価する
@@ -730,7 +729,10 @@ primary_command_count_break:
 
 			moveq	#1,d1
 			sf	d2
-			jsr	fork
+			move.l	a1,-(a7)
+			lea	return(pc),a1
+			jsr	fork_and_wait
+			movea.l	(a7)+,a1
 			tst.l	d0
 			bsr	eq1_ne0
 primary_command_done:
@@ -745,138 +747,141 @@ primary_not_command:
 **
 		cmp.b	#'-',d0
 		bne	primary_not_file_examination
+		*{
+			lea	1(a0),a4
+			tst.b	(a4)
+			beq	expression_syntax_error
 
-		tst.b	2(a0)
-		bne	primary_not_file_examination
-
-		move.b	1(a0),d0
-		cmp.b	#'z',d0				*  -z : csh
-		beq	primary_file_zero
-
-		cmp.b	#'t',d0
-		beq	primary_isatty
-
-		moveq	#6,d2
-		cmp.b	#'i',d0
-		beq	primary_device_io
-
-		moveq	#7,d2
-		cmp.b	#'o',d0
-		beq	primary_device_io
-
-		sf	d3
-		cmp.b	#'b',d0
-		beq	primary_devicetype
-
-		moveq	#MODEVAL_DIR,d2
-		cmp.b	#'d',d0				*  -d : csh
-		beq	primary_file_mode
-
-		moveq	#MODEVAL_ARC,d2
-		cmp.b	#'a',d0				*  -a : fish
-		beq	primary_file_mode
-
-		moveq	#MODEVAL_HID,d2
-		cmp.b	#'h',d0				*  -h : fish
-		beq	primary_file_mode
-
-		moveq	#MODEVAL_SYS,d2
-		cmp.b	#'s',d0				*  -s : fish
-		beq	primary_file_mode
-
-		moveq	#MODEVAL_VOL,d2
-		cmp.b	#'v',d0				*  -v : fish
-		beq	primary_file_mode
-
-		st	d3
-		cmp.b	#'c',d0
-		beq	primary_devicetype
-
-		moveq	#MODEVAL_RDO,d2
-		cmp.b	#'w',d0				*  -w : csh
-		beq	primary_file_mode
-
-		moveq	#MODEVAL_VOL+MODEVAL_DIR,d2
-		cmp.b	#'f',d0				*  -f : csh
-		beq	primary_file_mode
-
-		moveq	#0,d2
-		cmp.b	#'e',d0				*  -e : csh
-		bne	primary_not_file_examination
-		* {
-primary_file_mode:
-			bsr	stat_operand
-			bpl	return
-
-			moveq	#0,d1
-			move.b	tmpstatbuf+ST_MODE,d1
-			and.b	d2,d1
-switchable_booltoa:
-			tst.b	d3
-			beq	booltoa
-
-			tst.b	d1
-			bra	eq1_ne0
-
-primary_file_zero:
-			bsr	stat_operand
-			bpl	return
-
-			tst.l	tmpstatbuf+ST_SIZE
-			bra	eq1_ne0
-
-primary_device_io:
 			bsr	next_token__expand
-			bne	expr_error
+			bne	return
 
 			tst.b	d6
 			beq	success
+file_examination_loop:
+			move.b	(a4)+,d0
+			beq	store_1
 
-			exg	a0,a1
-			moveq	#2,d0
-			bsr	tfopen
-			exg	a0,a1
+			cmp.b	#'z',d0
+			beq	primary_file_zero
+
+			cmp.b	#'t',d0
+			beq	primary_isatty
+
+			cmp.b	#'l',d0
+			beq	primary_file_mode_link
+
+			sf	d3
+			cmp.b	#'c',d0
+			beq	primary_devicetype
+
+			moveq	#MODEVAL_DIR,d2
+			cmp.b	#'d',d0
+			beq	primary_file_mode
+
+			moveq	#MODEVAL_VOL,d2
+			cmp.b	#'v',d0
+			beq	primary_file_mode
+
+			moveq	#MODEVAL_ARC,d2
+			cmp.b	#'a',d0
+			beq	primary_file_mode
+
+			moveq	#MODEVAL_HID,d2
+			cmp.b	#'h',d0
+			beq	primary_file_mode
+
+			moveq	#MODEVAL_SYS,d2
+			cmp.b	#'s',d0
+			beq	primary_file_mode
+
+			moveq	#MODEVAL_EXE,d2
+			cmp.b	#'x',d0
+			beq	primary_file_mode
+
+			moveq	#6,d2
+			cmp.b	#'i',d0
+			beq	primary_device_io
+
+			moveq	#7,d2
+			cmp.b	#'o',d0
+			beq	primary_device_io
+
+			st	d3
+			cmp.b	#'b',d0
+			beq	primary_devicetype
+
+			moveq	#MODEVAL_RDO,d2
+			cmp.b	#'w',d0
+			beq	primary_file_mode
+
+			moveq	#MODEVAL_DIR|MODEVAL_VOL,d2
+			cmp.b	#'f',d0
+			beq	primary_file_mode
+
+			moveq	#0,d2
+			cmp.b	#'e',d0
+			bne	expression_syntax_error
+primary_file_mode:
+			bsr	stat_operand_x
+			bpl	return
+
+			move.b	tmpstatbuf+ST_MODE,d1
+			and.b	d2,d1
+file_examination_booltoa:
+			tst.b	d1
+			sne	d1			*  d1.b = d1.b ? $ff : $00
+			tst.b	d3
+			beq	file_examination_booltoa_1
+
+			not.b	d1
+file_examination_booltoa_1:
+			tst.b	d1
+file_examination_continue:
+			beq	store_0
+			bra	file_examination_loop
+
+primary_file_mode_link:
+			move.w	#-1,-(a7)
+			move.l	a1,-(a7)
+			DOS	_CHMOD
+			addq.l	#6,a7
 			tst.l	d0
 			bmi	store_0
 
-			exg	d0,d2
-			move.w	d2,-(a7)
-			move.w	d0,-(a7)
+			btst	#MODEBIT_LNK,d0
+			bra	file_examination_continue
+
+primary_file_zero:
+			bsr	stat_operand_x
+			bpl	return
+
+			tst.l	tmpstatbuf+ST_SIZE
+			seq	d1
+			bra	file_examination_booltoa_1
+
+primary_device_io:
+			bsr	open_device
+			bmi	success
+
+			move.w	d0,-(a7)		*  handle
+			move.w	d2,-(a7)		*  mode
 			DOS	_IOCTRL
 			addq.l	#4,a7
-			move.l	d0,d1
-			move.w	d2,d0
+			tst.l	d0
+			sne	d0
+primary_device_1:
+			exg	d0,d1
 			bsr	fclose
-			bra	booltoa
+			bra	file_examination_booltoa
 
 primary_devicetype:
-			bsr	next_token__expand
-			bne	expr_error
+			bsr	open_device
+			bmi	success
 
-			tst.b	d6
-			beq	success
-
-			exg	a0,a1
-			moveq	#2,d0
-			bsr	tfopen
-			exg	a0,a1
-			move.l	d0,d2
-			bmi	store_0
-
-			moveq	#0,d1
 			bsr	isblkdev
-			seq	d1
-			move.w	d2,d0
-			bsr	fclose
-			bra	switchable_booltoa
+			bra	primary_device_1
 
 primary_isatty:
-			bsr	next_token__expand
-			bne	expr_error
-
-			tst.b	d6
-			beq	success
-
 			bsr	expr_atoi
 			bne	expr_error
 
@@ -894,8 +899,21 @@ primary_isatty:
 			beq	store_0			*  Not a character device.
 
 			and.l	#3,d1			*  ttyin or ttyout
-			bra	booltoa
+			bra	file_examination_continue
 		*}
+
+open_device:
+			exg	a0,a1
+			moveq	#2,d0
+			bsr	tfopen
+			exg	a0,a1
+			move.l	d0,d1
+			bpl	open_device_return
+
+			bsr	store_0
+			moveq	#-1,d0
+open_device_return:
+			rts
 
 primary_not_file_examination:
 **
@@ -903,7 +921,7 @@ primary_not_file_examination:
 **
 		move.l	a1,-(a7)
 		lea	token_sizeof,a1
-		bsr	strcmp
+		jsr	strcmp
 		movea.l	(a7)+,a1
 		bne	primary_not_sizeof
 		*{
@@ -920,7 +938,7 @@ primary_not_sizeof:
 **
 		move.l	a1,-(a7)
 		lea	token_timeof,a1
-		bsr	strcmp
+		jsr	strcmp
 		movea.l	(a7)+,a1
 		bne	primary_not_timeof
 		*{
@@ -939,7 +957,7 @@ primary_not_timeof:
 **
 		move.l	a1,-(a7)
 		lea	token_freeof,a1
-		bsr	strcmp
+		jsr	strcmp
 		movea.l	(a7)+,a1
 		bne	primary_not_freeof
 		*{
@@ -990,7 +1008,7 @@ primary_not_freeof:
 **
 		move.l	a1,-(a7)
 		lea	token_strlen,a1
-		bsr	strcmp
+		jsr	strcmp
 		movea.l	(a7)+,a1
 		bne	primary_not_strlen
 		*{
@@ -1001,7 +1019,7 @@ primary_not_freeof:
 			beq	success
 
 			exg	a0,a1
-			bsr	strlen
+			jsr	strlen
 			exg	a0,a1
 			move.l	d0,d1
 			bra	expr_itoa
@@ -1031,7 +1049,7 @@ next_token__expand:
 		beq	expr_expand_ok
 expr_expand_a_word:
 		move.l	#MAXWORDLEN,d1
-		bsr	expand_a_word
+		jsr	expand_a_word
 		bpl	expr_expand_ok
 
 		cmp.l	#-1,d0
@@ -1062,7 +1080,7 @@ stat_operand:
 
 		tst.b	d6
 		beq	success
-
+stat_operand_x:
 		movem.l	a0-a1,-(a7)
 		movea.l	a1,a0
 		lea	tmpstatbuf,a1
@@ -1084,7 +1102,7 @@ operator_loop:
 		tst.b	(a1)
 		beq	no_operator
 
-		bsr	strcmp
+		jsr	strcmp
 		beq	operator_return
 
 		addq.b	#1,d5
@@ -1316,7 +1334,7 @@ expr_itoa:
 		exg	a0,a1
 		move.l	d1,-(a7)
 		moveq	#0,d1				*  正数に + やスペースはつけない
-		bsr	itoa
+		jsr	itoa
 		move.l	(a7)+,d1
 		exg	a0,a1
 		bra	success
@@ -1428,4 +1446,3 @@ msg_mod_by_0:			dc.b	'0での剰余があります',0
 msg_cannot_eval_expression:	dc.b	'式を評価できません',0
 
 .end
-

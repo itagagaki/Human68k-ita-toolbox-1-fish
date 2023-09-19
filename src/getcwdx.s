@@ -8,8 +8,7 @@
 .xref strfor1
 .xref isfullpath
 .xref getcwd
-.xref find_shellvar
-.xref get_var_value
+.xref get_shellvar
 .xref word_home
 
 .text
@@ -57,7 +56,7 @@ abbrev_directory:
 		movem.l	a0-a1,-(a7)
 		lea	(a0,d0.l),a1
 		move.b	#'~',(a0)+
-		bsr	strcpy
+		jsr	strcpy
 		movem.l	(a7)+,a0-a1
 		moveq	#1,d0
 return:
@@ -69,7 +68,8 @@ return:
 *      A0     ディレクトリ名
 *
 * RETURN
-*      D0.L   $home下ならば、~に続くべき部分までのオフセット
+*      D0.L   $home下であり、$home がルート・ディレクトリでなけ
+*             れば、~に続くべき部分までのオフセット
 *             そうでなければ 0
 *
 *      CCR    TST.L D0
@@ -87,14 +87,14 @@ is_under_home:
 		bne	is_under_home_return	*  ではない
 
 		lea	word_home,a0		*  シェル変数 home
-		bsr	find_shellvar		*  は
-		beq	is_under_home_return	*  は無い
-
-		bsr	get_var_value
-		beq	is_under_home_return	*  $#home は 0 である
+		bsr	get_shellvar		*  は
+		beq	is_under_home_return	*  は無いか空である
 
 		bsr	isfullpath		*  $home[1] は絶対パス名
 		bne	is_under_home_return	*  ではない
+
+		tst.b	3(a0)			*  $home[1] は
+		beq	is_under_home_return	*  ルート・ディレクトリである
 
 		move.b	(a0),d0			*  $home[1] のドライブ名
 		bsr	toupper			*  を大文字にして
@@ -110,7 +110,7 @@ is_under_home_compare_loop:
 		move.b	(a0)+,d0
 		beq	is_under_home_check_bottom
 
-		bsr	issjis
+		jsr	issjis
 		beq	is_under_home_compare_sjis
 
 		bsr	tolower
@@ -134,7 +134,7 @@ is_under_home_compare_ank:
 is_under_home_compare_sjis:
 		move.b	d0,d1
 		move.b	(a1)+,d0
-		bsr	issjis
+		jsr	issjis
 		bne	is_under_home_return
 
 		cmp.b	d1,d0
@@ -167,4 +167,3 @@ is_under_home_return:
 ****************************************************************
 
 .end
-

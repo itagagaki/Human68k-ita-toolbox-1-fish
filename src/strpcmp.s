@@ -230,4 +230,3 @@ ismatch_list_missing_blaket:
 msg_missing_blaket:	dc.b	'] ‚ª‚ ‚è‚Ü‚¹‚ñ',0
 
 .end
-

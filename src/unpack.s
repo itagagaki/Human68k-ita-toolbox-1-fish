@@ -4,11 +4,13 @@
 .include limits.h
 .include pwd.h
 .include ../src/fish.h
+.include ../src/dirstack.h
 
 .xref iscsym
 .xref atou
 .xref qstrchr
 .xref strfor1
+.xref strmove
 .xref memmovi
 .xref no_close_brace
 .xref open_passwd
@@ -17,8 +19,7 @@
 .xref getcwd
 .xref get_dstack_d0
 .xref word_home
-.xref find_shellvar
-.xref get_var_value
+.xref get_shellvar
 .xref copyhead
 .xref strlen
 .xref pre_perror
@@ -28,9 +29,10 @@
 .xref too_many_words
 .xref dstack_not_deep
 
-.xref tmpline
+.xref tmppwline
 
-.xref dstack
+.xref tmpline
+.xref dirstack
 .xref tmpfd
 
 .text
@@ -64,8 +66,18 @@
 ****************************************************************
 unpack1:
 		move.l	a0,-(a7)
+unpack1_1:
 		moveq	#'{',d0
 		bsr	qstrchr
+		tst.b	(a0)+
+		beq	unpack1_2
+
+		cmpi.b	#'}',(a0)+
+		beq	unpack1_1
+
+		subq.l	#1,a0
+unpack1_2:
+		subq.l	#1,a0
 		move.l	a0,d0
 		movea.l	(a7)+,a0
 		sub.l	a0,d0
@@ -204,26 +216,17 @@ unpack_word:
 		tst.w	d7
 		beq	unpack_word_return
 
-		moveq	#2,d6
 		cmpi.b	#'{',(a0)
 		bne	unpack_word_go
 
 		tst.b	1(a0)
-		beq	unpack_word_dont
-
-		cmpi.b	#'}',1(a0)
 		bne	unpack_word_go
-
-		tst.b	2(a0)
-		bne	unpack_word_go
-
-		addq.w	#1,d6
 unpack_word_dont:
 		moveq	#-2,d0
-		sub.w	d6,d1
+		subq.w	#2,d1
 		bcs	unpack_word_return
 
-		move.l	d6,d0
+		moveq	#2,d0
 		exg	a0,a1
 		bsr	memmovi
 		exg	a0,a1
@@ -291,7 +294,7 @@ cwd_buf = pwd_buf-(((MAXPATH+1)+1)>>1<<1)
 
 expand_tilde:
 		link	a6,#cwd_buf
-		movem.l	d4-d6/a2-a3,-(a7)
+		movem.l	d4-d6/a2,-(a7)
 		move.w	d1,d6
 		move.w	#MAXWORDLEN,d5
 		movea.l	a0,a2
@@ -315,9 +318,11 @@ maybe_directory_stack:
 
 maybe_directory_stack_bottom:
 		addq.l	#1,a0
-		movea.l	dstack(a5),a2
+		move.l	a0,-(a7)
+		movea.l	dirstack(a5),a0
 		moveq	#0,d1
-		move.w	8(a2),d1		*  D1.L : ディレクトリ・スタックの要素数
+		move.w	dirstack_nelement(a0),d1	*  D1.L : ディレクトリ・スタックの要素数
+		movea.l	(a7)+,a0
 		moveq	#0,d0
 maybe_directory_stack_check_slash:
 		move.l	d0,d4
@@ -331,9 +336,15 @@ maybe_directory_stack_check_slash:
 		move.l	d1,d0
 		beq	expand_tilde_cwd
 
+		move.l	d2,-(a7)
 		bsr	get_dstack_d0
-		bhi	expand_tilde_dstack_not_deep
+		move.l	d2,d0
+		move.l	(a7)+,d2
+		tst.l	d0
+		bmi	expand_tilde_dstack_not_deep
 
+		movea.l	dirstack(a5),a0
+		lea	(a0,d0.l),a0
 		bra	expand_tilde_copy_dir
 ****************
 expand_tilde_cwd:
@@ -356,8 +367,7 @@ skip_username_loop:
 		bne	expand_tilde_go
 
 		addq.l	#1,a2				*  A2 は ~ の次を指す
-		move.l	a0,d1
-		sub.l	a2,d1				*  D1.L : username の長さ
+		cmpa.l	a2,a0				*  D1.L : username の長さ
 		beq	expand_tilde_myhome
 ****************
 		exg	a0,a2				*  A0 : ユーザ名の先頭  A2 : ユーザ名の次
@@ -366,26 +376,29 @@ skip_username_loop:
 		bmi	expand_tilde_unknown_user	*  パスワード・ファイルが無い
 
 		move.l	d0,tmpfd(a5)
-		movem.l	a0-a1,-(a7)
-		movea.l	a0,a1
+		movem.l	d2/a0-a1,-(a7)
+		move.b	(a2),d2
+		clr.b	(a2)
+		move.l	a2,-(a7)
+		movea.l	a0,a2
 		lea	pwd_buf(a6),a0
+		lea	tmppwline,a1
+		move.l	#PW_LINESIZE,d1
 		bsr	fgetpwnam
-		movem.l	(a7)+,a0-a1
+		movea.l	(a7)+,a2
+		move.b	d2,(a2)
+		movem.l	(a7)+,d2/a0-a1
 		bsr	close_tmpfd
-		tst.l	d0
 		bne	expand_tilde_unknown_user
 
 		lea	pwd_buf(a6),a0
-		lea	PW_DIR(a0),a0
+		movea.l	PW_DIR(a0),a0
 		bra	expand_tilde_copy_dir
 ****************
 expand_tilde_myhome:
 		lea	word_home,a0			*  シェル変数 home が
-		bsr	find_shellvar			*  定義されて
-		beq	expand_tilde_go			*  いなければ、~以降をコピーするのみ
-
-		bsr	get_var_value
-		beq	expand_tilde_go			*  $#home が 0 ならば、~以降をコピーするのみ
+		bsr	get_shellvar			*  定義されていないか空ならば
+		beq	expand_tilde_go			*  ~以降をコピーするのみ
 ****************
 expand_tilde_copy_dir:
 		move.w	d6,d0
@@ -423,12 +436,12 @@ expand_tilde_go:
 		bcs	expand_tilde_buffer_over
 
 		exg	a0,a1
-		bsr	memmovi
+		bsr	strmove
 		exg	a0,a1
 		moveq	#0,d0
 expand_tilde_return:
 		move.w	d6,d1
-		movem.l	(a7)+,d4-d6/a2-a3
+		movem.l	(a7)+,d4-d6/a2
 		unlk	a6
 		tst.l	d0
 		rts
@@ -507,7 +520,6 @@ unpack_wordlist_continue:
 expand_tilde_wordlist_loop:
 		bsr	expand_tilde
 		bmi	unpack_wordlist_error
-
 expand_tilde_wordlist_continue:
 		dbra	d4,expand_tilde_wordlist_loop
 ****************
@@ -546,4 +558,3 @@ unpack_wordlist_error_return:
 msg_unknown_user:	dc.b	'このようなユーザは登録されていません',0
 
 .end
-

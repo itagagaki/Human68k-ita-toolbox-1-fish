@@ -26,7 +26,7 @@
 scanchar2:
 		moveq	#0,d0
 		move.b	(a0)+,d0
-		bsr	issjis
+		jsr	issjis
 		bne	done
 
 		lsl.w	#8,d0
@@ -36,4 +36,3 @@ done:
 		rts
 
 .end
-

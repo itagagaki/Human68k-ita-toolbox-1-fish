@@ -55,13 +55,18 @@ padlen_ok:
 	*
 	*  文字列を出力する
 	*
-		tst.l	d4
-		beq	string_done
-string_loop:
+		bra	string_low_continue
+
+string_high_loop:
+		swap	d4
+string_low_loop:
 		move.b	(a0)+,d0
 		jsr	(a1)
-		subq.l	#1,d4
-		bne	string_loop
+string_low_continue:
+		dbra	d4,string_low_loop
+
+		swap	d4
+		dbra	d4,string_high_loop
 string_done:
 	*
 	*  右側をpadする
@@ -80,17 +85,22 @@ pad:
 		btst	#0,d1			*  pad方向が違うならば
 		bne	pad_return		*  padしない
 
-		tst.l	d3			*  padするバイト数が 0 ならば
-		beq	pad_return		*  padしない
-
 		move.b	d2,d0
-pad_loop:
+		bra	pad_low_continue
+
+pad_high_loop:
+		swap	d3
+pad_low_loop:
 		jsr	(a1)
-		subq.l	#1,d3
-		bne	pad_loop
+pad_low_continue:
+		dbra	d3,pad_low_loop
+
+		swap	d3
+		dbra	d3,pad_high_loop
+
+		moveq	#0,d3
 pad_return:
 		rts
 ****************
 
 .end
-

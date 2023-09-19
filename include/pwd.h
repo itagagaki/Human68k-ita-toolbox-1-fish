@@ -1,16 +1,15 @@
-PW_NAME_SIZE	equ	8
-PW_PASSWD_SIZE	equ	13
-PW_GECOS_SIZE	equ	98+1+98+1+98+1+98
-PW_DIR_SIZE	equ	MAXPATH
-PW_SHELL_SIZE	equ	MAXPATH
+.offset 0
+PW_NAME:	ds.l	1
+PW_PASSWD:	ds.l	1
+PW_UID:		ds.l	1
+PW_GID:		ds.l	1
+PW_QUOTA:	ds.l	1
+PW_COMMENT:	ds.l	1
+PW_GECOS:	ds.l	1
+PW_DIR:		ds.l	1
+PW_SHELL:	ds.l	1
+.even
+PW_SIZE:
 
-PW_NAME		equ	0			*  ds.b PW_NAME_SIZE+1
-PW_PASSWD	equ	PW_NAME+10		*  ds.b PW_PASSWD_SIZE+1
-PW_UID		equ	PW_PASSWD+14		*  ds.w 1
-PW_GID		equ	PW_UID+2		*  ds.w 1
-PW_GECOS	equ	PW_GID+2		*  ds.b PW_GECOS_SIZE+1
-PW_DIR		equ	PW_GECOS+396		*  ds.b PW_DIR_SIZE+1
-PW_SHELL	equ	PW_DIR+MAXPATH+2	*  ds.b PW_SHELL_SIZE+1
-
-PW_SIZE		equ	PW_SHELL+MAXPATH+2
+PW_LINESIZE	equ	1024
 

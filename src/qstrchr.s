@@ -73,4 +73,3 @@ qstrchr_break:
 		rts
 
 .end
-

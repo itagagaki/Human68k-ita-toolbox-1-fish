@@ -97,7 +97,8 @@ fieldpadlen_ok:
 		cmp.b	#'0',d2
 		beq	left_justify_zeropad
 
-		bsr	pad_field			*  フィールドをpadする
+		move.b	d2,d0
+		bsr	pad				*  フィールドをpadする
 		bsr	sign_and_prefix			*  符号とprefixを出力する
 		bsr	digits				*  数字桁を出力する
 		bra	done
@@ -107,7 +108,8 @@ left_justify_zeropad:
 	*  右詰め．'0'でpad
 	*
 		bsr	sign_and_prefix			*  符号とprefixを出力する
-		bsr	pad_field			*  フィールドをpadする
+		move.b	d2,d0
+		bsr	pad				*  フィールドをpadする
 		bsr	digits				*  数字桁を出力する
 		bra	done
 
@@ -156,19 +158,17 @@ puts:
 		jsr	(a1)
 		bra	puts
 ****************
-pad_field:
-		move.b	d2,d0
-pad:
-		tst.l	d3
-		beq	pad_done
-pad_loop:
+pad_high_loop:
+		swap	d3
+pad_low_loop:
 		jsr	(a1)
-		subq.l	#1,d3
-		bne	pad_loop
-pad_done:
+pad:
+		dbra	d3,pad_low_loop
+
+		swap	d3
+		dbra	d3,pad_high_loop
 puts_done:
 		rts
 ****************
 
 .end
-

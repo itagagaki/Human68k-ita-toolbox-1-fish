@@ -12,6 +12,8 @@
 .xref strcpy
 .xref strcmp
 
+.xref dos_allfile
+
 .text
 
 ****************************************************************
@@ -54,13 +56,14 @@ stat:
 
 		tst.b	2(a1)
 		bne	stat_normal
+		*  . と .. は *.* で検索する（さもなくば検索されない）
 stat_special:
 		movea.l	a1,a2				*  A2 : tail part of search pathname
 		movea.l	a0,a1				*  A1 : top of search pathname
 		link	a6,#searchnamebuf
 		lea	searchnamebuf(a6),a0
 		bsr	memmovi
-		lea	allfile,a1			*  "*.*" で検索する（さもなくば検索されない）
+		lea	dos_allfile,a1
 		bsr	strcpy
 		move.w	#MODEVAL_ALL,-(a7)		*  すべてのエントリを検索する
 		pea	searchnamebuf(a6)
@@ -97,9 +100,4 @@ stat_return:
 		movem.l	(a7)+,a0-a3
 		rts
 ****************************************************************
-.data
-
-allfile:	dc.b	'*.*',0
-
 .end
-

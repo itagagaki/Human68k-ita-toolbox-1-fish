@@ -12,14 +12,19 @@
 .xref escape_quoted
 .xref flagvarptr
 .xref too_few_args
+
+.xref default_wordchars
+
 .xref tmpword1
 
 .xref word_histchars
+.xref word_wordchars
 
 .xref alias_top
 .xref shellvar_top
 .xref histchar1
 .xref histchar2
+.xref wordchars
 
 .text
 
@@ -48,6 +53,7 @@ unsetvar_loop:
 		bsr	strpcmp
 		bne	notmatch
 ****************
+		move.l	a1,-(a7)
 		tst.b	d1
 		bne	delete_entry
 
@@ -59,15 +65,24 @@ unsetvar_loop:
 		bra	delete_entry
 
 not_flagvar:
-		move.l	a1,-(a7)
 		lea	word_histchars,a1
 		bsr	strcmp
-		movea.l	(a7)+,a1
-		bne	delete_entry
+		bne	not_histchars
 
 		move.w	#'!',histchar1(a5)
 		move.w	#'^',histchar2(a5)
+		bra	delete_entry
+
+not_histchars:
+		lea	word_wordchars,a1
+		bsr	strcmp
+		bne	not_wordchars
+
+		lea	default_wordchars,a1
+		move.l	a1,wordchars(a5)
+not_wordchars:
 delete_entry:
+		movea.l	(a7)+,a1
 		move.l	var_next(a2),(a3)
 		move.l	a2,d0
 		bsr	free
@@ -118,4 +133,3 @@ loop:
 		rts
 
 .end
-

@@ -6,4 +6,3 @@ MAXHEAD		equ	66		*      A:/foo/bar/baz/quux/
 MAXTAIL		equ	22		*                          filename.extension
 MAXPATH 	equ	88		*      A:/foo/bar/baz/quux/filename.extension
 MAXDIRDEPTH	equ	32		*  /:0, /file:1, /dir1/file:2, /dir1/dir2/file:3, ...
-

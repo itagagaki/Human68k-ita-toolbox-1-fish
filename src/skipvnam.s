@@ -21,7 +21,7 @@
 
 skip_varname:
 		move.b	(a0)+,d0
-		bsr	iscsymf
+		jsr	iscsymf
 		beq	loop
 
 		jsr	issjis
@@ -31,7 +31,7 @@ loop_sjis:
 		beq	done
 loop:
 		move.b	(a0)+,d0
-		bsr	iscsym
+		jsr	iscsym
 		beq	loop
 
 		jsr	issjis
@@ -41,4 +41,3 @@ done:
 		rts
 
 .end
-

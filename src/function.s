@@ -12,6 +12,7 @@
 
 .xref strlen
 .xref strcpy
+.xref strcmp
 .xref memcmp
 .xref memmovi
 .xref strpcmp
@@ -25,6 +26,7 @@
 .xref puts
 .xref nputs
 .xref enputs1
+.xref put_space
 .xref put_tab
 .xref put_newline
 .xref getline
@@ -43,6 +45,7 @@
 .xref syntax_error
 .xref word_close_brace
 .xref paren_pair
+.xref word_sub
 
 .xref save_sourceptr
 .xref tmpword1
@@ -51,6 +54,7 @@
 .xref funcdef_status
 .xref funcdef_topptr
 .xref funcdef_size
+.xref functype
 .xref funcname
 .xref function_root
 .xref function_bot
@@ -142,6 +146,7 @@ unlink_function_return:
 * CALL
 *      A1     関数名の先頭アドレス（31バイト以下であること）
 *      A2     関数リンクの根ポインタのアドレス
+*      D0.B   関数タイプ
 *      D1.L   関数本体の長さ（バイト）
 *
 * RETURN
@@ -149,10 +154,9 @@ unlink_function_return:
 *             メモリ不足で確保できなかったならば 0．
 *      CCR    TST.L D0
 *****************************************************************
-.xdef link_function
-
 link_function:
-		movem.l	a0/a3,-(a7)
+		movem.l	d2/a0/a3,-(a7)
+		move.b	d0,d2
 		movea.l	a1,a0
 		bsr	find_function
 		beq	link_function_1
@@ -182,11 +186,12 @@ link_function_3:
 		clr.l	FUNC_PREV(a3)
 		move.l	a3,(a2)
 
+		move.b	d2,FUNC_TYPE(a3)
 		lea	FUNC_NAME(a3),a0
 		bsr	strcpy
 		move.l	a3,d0
 link_function_return:
-		movem.l	(a7)+,a0/a3
+		movem.l	(a7)+,d2/a0/a3
 		rts
 *****************************************************************
 * enter_function - 関数を定義する
@@ -195,6 +200,7 @@ link_function_return:
 *      A0     関数本体の先頭アドレス
 *      A1     関数名の先頭アドレス（31バイト以下であること）
 *      A2     関数リンクの根ポインタのアドレス
+*      D0.B   関数タイプ
 *      D1.L   関数本体の長さ（バイト）
 *
 * RETURN
@@ -232,6 +238,13 @@ enter_function_return:
 list_1_function:
 		movem.l	d0-d2/a0-a1,-(a7)
 		movea.l	a0,a1
+		btst.b	#FUNCTYPEBIT_SUB,FUNC_TYPE(a1)
+		beq	list_1_function_no_sub
+
+		lea	word_sub,a0
+		bsr	puts
+		bsr	put_space
+list_1_function_no_sub:
 		lea	FUNC_NAME(a1),a0
 		bsr	puts
 		lea	str_beginfunc,a0
@@ -363,8 +376,27 @@ undefun_done1:
 * function
 *****************************************************************
 .xdef state_function
+.xdef state_sub_function
+.xdef state_nonsub_function
 
 state_function:
+		move.w	d0,d1
+		beq	syntax_error
+
+		lea	word_sub,a1
+		bsr	strcmp
+		exg	d0,d1
+		bne	state_nonsub_function
+
+		bsr	strfor1
+		subq.w	#1,d0
+state_sub_function:
+		move.b	#FUNCTYPEVAL_SUB,functype(a5)
+		bra	funcdef
+
+state_nonsub_function:
+		clr.b	functype(a5)
+funcdef:
 		move.w	d0,d1
 		beq	syntax_error
 
@@ -475,10 +507,7 @@ do_defun:
 		move.l	current_source(a5),d0
 		beq	defun_terminal
 
-		move.l	funcdef_size(a5),d1
-		lea	funcname(a5),a1
-		lea	function_root(a5),a2
-		bsr	link_function
+		bsr	do_defun_link
 		beq	defun_no_memory
 
 		movea.l	d0,a0
@@ -499,6 +528,7 @@ make_function_body_script_loop:
 		move.w	#MAXLINELEN,d1
 		suba.l	a1,a1
 		st	d2
+		st	d3
 		lea	getline_phigical(pc),a2
 		bsr	getline
 		movea.l	(a7)+,a0
@@ -550,10 +580,7 @@ defun_static:
 		movea.l	HIST_PREV(a4),a4
 defun_history:
 		movea.l	a0,a3
-		move.l	funcdef_size(a5),d1
-		lea	funcname(a5),a1
-		lea	function_root(a5),a2
-		bsr	link_function
+		bsr	do_defun_link
 		beq	defun_no_memory
 
 		movea.l	d0,a0
@@ -593,6 +620,13 @@ defun_no_memory:
 		lea	msg_cannot_defun,a0
 		bsr	cannot_because_no_memory
 		bra	defun_return
+
+do_defun_link:
+		move.l	funcdef_size(a5),d1
+		move.b	functype(a5),d0
+		lea	funcname(a5),a1
+		lea	function_root(a5),a2
+		bra	link_function
 ****************************************************************
 .data
 
@@ -605,4 +639,3 @@ msg_no_func:		dc.b	'この関数は定義されていません',0
 msg_not_in_funcdef:	dc.b	'関数定義は開始していません',0
 
 .end
-

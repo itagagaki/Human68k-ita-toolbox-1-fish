@@ -13,6 +13,7 @@
 .xref nputs
 .xref cputs
 .xref put_space
+.xref search_command_0
 .xref search_command
 .xref findvar
 .xref find_function
@@ -160,9 +161,8 @@ not_function:
 		bne	search_all_path
 
 		lea	command_name(a6),a0
-		suba.l	a4,a4
 		exg	a0,a1
-		bsr	search_command
+		bsr	search_command_0
 		exg	a0,a1
 		cmp.l	#-1,d0
 		beq	not_a_file
@@ -284,4 +284,3 @@ word_builtin:		dc.b	'builtin',0
 word_file:		dc.b	'file',0
 
 .end
-

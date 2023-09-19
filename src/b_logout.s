@@ -38,4 +38,3 @@ dont_logout:
 msg_not_login_shell:	dc.b	'ログイン・シェルではありません',0
 
 .end
-

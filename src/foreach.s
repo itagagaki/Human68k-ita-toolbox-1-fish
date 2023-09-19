@@ -64,7 +64,7 @@ state_foreach:
 		bmi	continue_read_loops
 
 		cmpi.b	#2,loop_status(a5)
-		bhs	continue_foreach
+		bge	continue_foreach
 
 		bsr	while_foreach_init
 		bne	return
@@ -221,7 +221,7 @@ set_next_loop_level_ok:
 
 		move.b	#-2,loop_status(a5)
 set_condition_ok:
-free_loop_store:
+		free_loop_store:
 		bsr	loop_stack_p
 		lea	LOOPINFO_STORE(a1),a0
 		bra	xfreep
@@ -429,4 +429,3 @@ msg_cannot_while_foreach:	dc.b	' while/'
 msg_cannot_foreach:		dc.b	'foreach Çé¿çsÇ≈Ç´Ç‹ÇπÇÒ',0
 
 .end
-

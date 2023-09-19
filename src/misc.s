@@ -4,16 +4,20 @@
 .xref iscntrl
 .xref isodigit
 .xref issjis
+.xref utoa
 .xref strlen
 .xref strcpy
+.xref strpcmp
+.xref strfor1
 .xref xmalloc
 .xref scan_octal
+.xref printfi
 .xref str_newline
 
 .text
 
 *****************************************************************
-* isttyin - 入力が端末であるかどうかを調べる
+* isnotttyin - 入力が端末であるかどうかを調べる
 *
 * CALL
 *      D0.W   ファイル・ハンドル
@@ -23,18 +27,6 @@
 *             上位は破壊
 *      CCR    TST.B D0
 *****************************************************************
-.xdef isttyin
-
-isttyin:
-		move.w	d0,-(a7)
-		clr.w	-(a7)
-		DOS	_IOCTRL
-		addq.l	#4,a7
-		and.b	#$81,d0
-		cmp.b	#$81,d0
-		seq	d0
-		tst.b	d0
-		rts
 ****************************************************************
 * isblkdev - キャラクタ・デバイスかどうかを調べる
 *
@@ -42,18 +34,22 @@ isttyin:
 *      D0.W   ファイル・ハンドル
 *
 * RETURN
-*      D0.L   下位バイトはブロック・デバイスならば $00，キャラクタ・デバイスならば $80
+*      D0.L   下位バイトはブロック・デバイスならば $00，キャラクタ・デバイスならば $FF
 *             上位は破壊
 *      CCR    TST.B D0
 *****************************************************************
+.xdef isnotttyin
 .xdef isblkdev
 
+isnotttyin:
 isblkdev:
 		move.w	d0,-(a7)
 		clr.w	-(a7)
 		DOS	_IOCTRL
 		addq.l	#4,a7
-		and.b	#$80,d0
+		btst	#7,d0
+		sne	d0
+		tst.b	d0
 		rts
 *****************************************************************
 * xcputs -
@@ -227,6 +223,17 @@ put_tab:
 		move.l	(a7)+,d0
 		rts
 *****************************************************************
+.xdef printu
+
+printu:
+		movem.l	a0-a2,-(a7)
+		lea	utoa(pc),a0			*  符号なし10進変換
+		lea	putc(pc),a1
+		suba.l	a2,a2
+		bsr	printfi
+		movem.l	(a7)+,a0-a2
+		rts
+*****************************************************************
 .xdef basic_escape_sequence
 
 basic_escape_sequence:
@@ -322,7 +329,7 @@ putsex_escape_2:
 
 putsex_octal:
 		moveq	#2,d0
-		bsr	scan_octal
+		jsr	scan_octal
 		bra	putsex_normal
 
 putsex_escape_normal:
@@ -405,6 +412,40 @@ strdup:
 strdup_return:
 		rts
 *****************************************************************
+* wordlistpcmp - 文字列が単語リスト中のどれかのパターンにマッチ
+*                するかどうかを調べる
+*
+* CALL
+*      A0     単語リストの先頭アドレス
+*      D0.W   単語リストの単語数
+*      A1     文字列
+*
+* RETURN
+*      A0     マッチしたパターンの先頭アドレス
+*      CCR    マッチするものがあったならば Z
+*****************************************************************
+.xdef wordlistpcmp
+
+wordlistpcmp:
+		movem.l	d0-d1,-(a7)
+		move.w	d0,d1
+		bra	wordlistpcmp_continue
+
+wordlistpcmp_loop:
+		moveq	#0,d0
+		exg	a0,a1
+		bsr	strpcmp
+		exg	a0,a1
+		beq	wordlistpcmp_return	*  現状の作業ディレクトリを受け入れる
+
+		bsr	strfor1
+wordlistpcmp_continue:
+		dbra	d1,wordlistpcmp_loop
+
+		moveq	#1,d0
+wordlistpcmp_return:
+		movem.l	(a7)+,d0-d1
+		rts
+*****************************************************************
 
 .end
-

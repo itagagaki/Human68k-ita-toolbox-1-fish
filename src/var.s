@@ -70,19 +70,20 @@ freevar_done:
 * dupvar - 変数（シェル変数，別名）を複製する
 *
 * CALL
-*      A0     変数リストの根
+*      A4     source BSS top
+*      A5     destination BSS top
+*      D0.W   根のポインタのBSSオフセット
 *
 * RETURN
-*      D0.L   複製した変数リストの根
-*             途中でメモリが不足したならば -1
-*
+*      D0.L   成功なら (A5,D0.W)．途中でメモリが不足したならば -1
 *      CCR    TST.L D0
 ****************************************************************
 .xdef dupvar
 
 dupvar:
-		movem.l	d1-d2/a0-a3,-(a7)
-		movea.l	a0,a2				*  A2 : source
+		movem.l	d1-d3/a0-a3,-(a7)
+		move.w	d0,d3
+		movea.l	(a4,d3.w),a2			*  A2 : source
 		moveq	#0,d2				*  D2 : 複製したリストの根
 dupvar_loop:
 		cmpa.l	#0,a2
@@ -122,9 +123,10 @@ dupvar_fail:
 		bra	dupvar_return
 
 dupvar_done:
+		move.l	d2,(a5,d3.w)
 		move.l	d2,d0
 dupvar_return:
-		movem.l	(a7)+,d1-d2/a0-a3
+		movem.l	(a7)+,d1-d3/a0-a3
 		rts
 ****************************************************************
 * findvar - 変数（シェル変数，別名）を探す
@@ -197,8 +199,12 @@ find_shellvar:
 		movea.l	(a7)+,a1
 		rts
 ****************************************************************
+.xdef get_shellvar
 .xdef get_var_value
 
+get_shellvar:
+		bsr	find_shellvar
+		beq	get_shellvar_return
 get_var_value:
 		movea.l	d0,a0
 		moveq	#0,d0
@@ -206,6 +212,7 @@ get_var_value:
 		lea	var_body(a0),a0
 		bsr	strfor1
 		tst.l	d0
+get_shellvar_return:
 		rts
 ****************************************************************
 * allocvar - 変数ノードを確保する

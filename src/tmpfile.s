@@ -6,15 +6,14 @@
 .include chrcode.h
 .include stat.h
 
-.xref find_shellvar
-.xref get_var_value
+.xref get_shellvar
 .xref strfor1
 .xref cat_pathname
 .xref drvchkp
+.xref stat
 .xref strcpy
-.xref enputs1
+.xref enputs
 .xref perror
-.xref perror1
 .xref create_normal_file
 .xref word_temp
 
@@ -37,10 +36,7 @@ tmpname:
 		movem.l	d1-d2/a1-a4,-(a7)
 		movea.l	a0,a2
 		lea	word_temp,a0
-		bsr	find_shellvar
-		beq	notemp
-
-		bsr	get_var_value
+		bsr	get_shellvar
 		beq	notemp
 
 		tst.b	(a0)
@@ -52,13 +48,17 @@ tmpname:
 		lea	suffix,a2			* A2 : suffix
 		bsr	cat_pathname
 		movea.l	a0,a2
-		bmi	tmpname_error
+		bmi	invalid_temp
 
 		bsr	drvchkp
-		bmi	tmpname_error
+		bmi	invalid_temp
 
 		movea.l	a3,a0
 		bra	put_pid
+
+invalid_temp:
+		lea	msg_invalid_temp,a0
+		bra	tmpname_errorp
 ****************
 notemp:
 		suba.l	a4,a4
@@ -85,12 +85,10 @@ put_pid_loop:
 		move.b	(a3,d1.l),(a1)+
 		dbra	d2,put_pid_loop
 scanloop:
-		move.w	#MODEVAL_ALL,-(a7)
-		move.l	a2,-(a7)
-		pea	statbuf(a6)
-		DOS	_FILES
-		lea	10(a7),a7
-		tst.l	d0
+		lea	statbuf(a6),a1
+		exg	a0,a2
+		bsr	stat
+		exg	a0,a2
 		bmi	tmpname_fixed
 
 		moveq	#1,d0
@@ -104,21 +102,24 @@ increment:
 		dbra	d0,increment
 tmpname_error:
 		lea	msg_cannot_create_tmpname,a0
-		bsr	enputs1
-		bra	tmpname_return
+tmpname_errorp:
+		bsr	enputs
+		bra	tmpname_return_1
 
 tmpname_fixed:
 		cmp.l	#ENOFILE,d0
-		beq	tmpname_ok
+		beq	tmpname_return_0
 
 		move.l	a4,d1
 		beq	tmpname_error
 
 		movea.l	a4,a0
-		bsr	perror1
+		bsr	perror
+tmpname_return_1:
+		moveq	#1,d0
 		bra	tmpname_return
 
-tmpname_ok:
+tmpname_return_0:
 		moveq	#0,d0
 tmpname_return:
 		movea.l	a2,a0
@@ -162,6 +163,7 @@ tmpfile_error:
 suffix:				dc.b	'#sh00000.00#',0
 hexa_decimal_table:		dc.b	'0123456789ABCDEF',0
 msg_cannot_create_tmpname:	dc.b	'一時ファイル名を生成できません',0
+msg_invalid_temp:		dc.b	'シェル変数 temp の設定が無効です',0
 
 .end
 

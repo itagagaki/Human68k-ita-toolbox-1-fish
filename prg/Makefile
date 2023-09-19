@@ -1,17 +1,17 @@
 #! A:/bin/MAKE.X -f
 #  Makefile for fish.x
 
-#AS	= \bin\AS -i $(INCLUDE)
-AS	= \usr\pds\HAS -l -i $(INCLUDE)
-#LK	= \bin\LK -p -i
-LK	= \usr\pds\hlk -p ${@|basename}.map
-LIB	= \bin\LIB
-BIND	= \bin\BIND
+#AS	= A:\bin\AS -i $(INCLUDE)
+AS	= A:\usr\pds\HAS -l -i $(INCLUDE)
+#LK	= A:\bin\LK -p -i
+LK	= A:\usr\pds\hlk -p ${@|basename}.map
+LIB	= A:\bin\LIB
+BIND	= A:\bin\BIND
 INSTALL = copy
-STRIP   = \usr\pds\strip
-TOUCH   = \bin\TOUCH
+STRIP   = A:\usr\pds\strip
+TOUCH   = A:\bin\TOUCH
 CP      = copy
-RM      = -\usr\local\bin\rm -f
+RM      = -A:\usr\local\bin\rm -f
 
 LKFLAG_STRIP = -x
 
@@ -21,21 +21,22 @@ EXTLIBS = ../lib/ita.l ../extlib/Extmalloc.a
 
 ###
 
-FILES	= main.o state.l builtin1.l builtin2.l subst.l var.l misc.l string.l dir_io.l
+FILES	      = main.o subst.l var.l misc.l string.l dir_io.l state.l \
+		builtin1.l builtin2.l
 
-OBJS_BUILTIN1 = b_alias.o b_alloc.o b_bind.o b_dirs.o b_echo.o b_eval.o \
-                b_exit.o b_glob.o b_goto.o b_history.o b_logout.o \
-                b_printf.o b_repeat.o b_return.o b_setenv.o
+OBJS_BUILTIN1 = b_alias.o b_alloc.o b_apply.o b_bind.o b_dirs.o b_echo.o \
+		b_eval.o b_exec.o b_exit.o b_glob.o b_goto.o b_history.o \
+		b_logout.o b_printf.o b_repeat.o b_return.o b_setenv.o
 
 OBJS_BUILTIN2 = b_set.o b_shift.o b_source.o b_srand.o b_time.o b_unset.o \
-                b_unsetenv.o b_which.o
+		b_unsetenv.o b_which.o b_xargs.o
 
 OBJS_MISC     = chkwild.o echo.o error.o expr.o file.o f_getenv.o \
-                getcwdx.o getline.o malloc.o misc.o hash.o passwd.o quote.o \
-                skippar.o tmpfile.o wordlist.o
+		getcwdx.o getline.o malloc.o misc.o hash.o passwd.o \
+		quote.o skippar.o tmpfile.o wordlist.o
 
-OBJS_SUBST    = enterhis.o expwords.o glob.o modify.o substali.o substcom.o \
-                substhis.o substvar.o unpack.o
+OBJS_SUBST    = enterhis.o expwords.o glob.o modify.o substali.o \
+		substcom.o substhis.o substvar.o unpack.o
 
 OBJS_VAR      = var.o f_setenv.o flagvar.o setsvar.o svartou.o
 
@@ -108,9 +109,12 @@ fish_loader.o main.o b_ctty.o b_dirs.o b_eval.o b_source.o b_srand.o \
 expr.o getline.o glob.o ifthen.o malloc.o modify.o substcom.o substhis.o \
 substvar.o switchcase.o unpack.o wordlist.o : fish.h
 
-main.o b_set.o b_unset.o b_setenv.o b_unsetenv.o f_getenv.o f_setenv.o var.o : var.h
+main.o b_set.o b_unset.o b_setenv.o b_unsetenv.o f_getenv.o f_setenv.o \
+var.o : var.h
 
-main.o foreach.o getline.o b_goto.o substvar.o : source.h
+main.o b_source.o foreach.o getline.o b_goto.o substvar.o : source.h
+
+main.o b_dirs.o unpack.o : dirstack.h
 
 main.o function.o : function.h
 
@@ -142,4 +146,3 @@ clean::
 	$(RM) *.l
 
 ###
-

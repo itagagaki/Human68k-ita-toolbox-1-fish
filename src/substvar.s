@@ -7,13 +7,11 @@
 .include ../src/modify.h
 
 .xref isdigit
-.xref isspace
+.xref isspace2
 .xref issjis
 .xref strlen
-.xref jstrchr
-.xref strfor1
+.xref strchr
 .xref strforn
-.xref skip_space
 .xref copy_wordlist
 .xref atou
 .xref utoa
@@ -22,7 +20,7 @@
 .xref find_shellvar
 .xref get_var_value
 .xref modify
-.xref getline_file
+.xref getline_stdin
 .xref xmallocp
 .xref xfree
 .xref xfreep
@@ -46,6 +44,7 @@
 .xref not_execute
 .xref current_source
 .xref tmpgetlinebufp
+.xref var_line_eof
 
 .text
 
@@ -194,9 +193,11 @@ modifier_pointer = word_to-4
 modify_status = modifier_pointer-1
 quote_word = modify_status-1
 eval_option = quote_word-1		*  $@  $%  フラグ
-braceflag = eval_option-1		*  {}フラグ
-special = braceflag-1			*  $0 $i $# $? $$ $< フラグ
-mode = special-1
+braceflag = eval_option-1		*  {}  フラグ
+sharp_question= braceflag-1		*  $#  $?  フラグ
+special = sharp_question-1		*  $$  $<  $,  $0  フラグ
+digit = special-1			*  $i  フラグ
+mode = digit-1
 not_expand = mode-1
 pad = not_expand-1			*  偶数に合わせる
 
@@ -205,7 +206,7 @@ expand_var:
 		move.b	d7,mode(a6)
 		movem.l	d6-d7/a2-a4,-(a7)
 		clr.l	allocated_by_modify(a6)
-		clr.b	quote_word(a6)
+		sf	quote_word(a6)
 		move.l	#1,word_from(a6)	* 展開する最初の単語の番号
 		move.l	#-1,word_to(a6)		* 展開する最後の単語の番号  -1:最後の単語
 		cmpi.b	#'@',(a0)
@@ -227,75 +228,113 @@ expand_var_check_open_brace:
 		move.b	(a0)+,braceflag(a6)
 expand_var_no_brace:
 		sf	not_expand(a6)
+		clr.b	sharp_question(a6)
 		clr.b	special(a6)
+		sf	digit(a6)
 		move.b	(a0),d0
 		cmp.b	#'#',d0					*   $#...
 		beq	expand_var_sharp_question
 
 		cmp.b	#'?',d0					*   $?...
-		beq	expand_var_sharp_question
+		bne	expand_var_no_sharp_question
+expand_var_sharp_question:
+		move.b	(a0)+,sharp_question(a6)
+		move.b	(a0),d0
+expand_var_no_sharp_question:
+		movea.l	a0,a2					*  A2 : top of name
+		cmpi.b	#'%',eval_option(a6)
+		beq	expand_var_get_varname_env
 
 		tst.b	eval_option(a6)
-		bne	expand_var_get_varname
+		bne	expand_var_get_varname_shvar
 
-		cmp.b	#'<',d0					*   $<
-		beq	expand_var_special
+		cmpi.b	#'#',sharp_question(a6)
+		beq	expand_var_get_varname_shvar
+
+		tst.b	sharp_question(a6)
+		bne	expand_var_question_isspecial
+
+		cmp.b	#'*',d0					*   $*
+		beq	expand_var_argv
 
 		cmp.b	#'$',d0					*   $$
 		beq	expand_var_special
 
 		cmp.b	#',',d0					*   $,
 		beq	expand_var_special
-
-		cmp.b	#'0',d0					*   $0
+expand_var_question_isspecial:
+		cmp.b	#'<',d0					*   $<
 		beq	expand_var_special
+expand_var_get_varname:
+		bsr	isdigit
+		bne	expand_var_get_varname_shvar
 
-		cmp.b	#'*',d0					*   $*
-		beq	expand_var_argv
-
-		bsr	isdigit					*   $1 ... $9
-		bne	expand_var_get_varname
-****************
-expand_var_argv_i:
-		moveq	#0,d0
-		move.b	(a0),d0
-		move.b	d0,special(a6)
-		sub.b	#'0',d0
+		st	digit(a6)
+		move.l	d1,-(a7)
+		bsr	atou
+		move.l	d1,d0
+		move.l	(a7)+,d1
 		move.l	d0,word_from(a6)
 		move.l	d0,word_to(a6)
-****************
+		beq	expand_var_zero
+
+		*  $i
+		tst.b	sharp_question(a6)
+		bne	expand_var_syntax_error
+		bra	expand_var_argv_1
+
 expand_var_argv:
+		*  $*
+		addq.l	#1,a0
+expand_var_argv_1:
 		lea	word_argv,a2
 		lea	dummy,a3
-		addq.l	#1,a0
-		bra	expand_var_check_modifier
-****************
+		bra	expand_var_start
+
+expand_var_zero:
+		*  $0
+		move.b	#'0',special(a6)
+		bra	expand_var_start
+
 expand_var_special:
 		move.b	(a0)+,special(a6)
-		bra	expand_var_check_modifier
-****************
-expand_var_sharp_question:
-		move.b	(a0)+,special(a6)
-****************
-expand_var_get_varname:
-		movea.l	a0,a2					* A2 : top of name
+		bra	expand_var_start
+
+expand_var_get_varname_shvar:
 		bsr	skip_varname
-		cmpa.l	a2,a0
-		bne	expand_var_get_varname_ok
+		bra	expand_var_get_varname_ok
 
-		cmpi.b	#'?',special(a6)
-		bne	expand_var_syntax_error
+expand_var_get_varname_env:
+		move.b	(a0)+,d0
+		beq	expand_var_get_varname_env_done
 
-		cmpi.b	#'0',(a0)+
-		bne	expand_var_syntax_error
+		cmp.b	#'}',d0
+		beq	expand_var_get_varname_env_done
+
+		cmp.b	#':',d0
+		beq	expand_var_get_varname_env_done
+
+		bsr	issjis
+		bne	expand_var_get_varname_env
+
+		move.b	(a0)+,d0
+		bne	expand_var_get_varname_env
+expand_var_get_varname_env_done:
+		subq.l	#1,a0
 expand_var_get_varname_ok:
+		cmpa.l	a2,a0
+		beq	expand_var_syntax_error
+
 		movea.l	a0,a3					* A3 : bottom of name
 
+		tst.b	sharp_question(a6)
+		bne	expand_var_start
+
 		tst.b	special(a6)
-		bne	expand_var_check_modifier
+		bne	expand_var_start
 
 		cmp.b	#'[',d0
-		bne	expand_var_check_modifier
+		bne	expand_var_start
 
 		addq.l	#1,a0
 
@@ -317,7 +356,7 @@ expand_var_get_varname_ok:
 		move.l	#1,word_from(a6)
 		move.l	#-1,word_to(a6)
 		tst.b	not_execute(a5)
-		bne	expand_var_check_modifier
+		bne	expand_var_start
 
 		lea	indexbuf(a6),a4
 		move.b	(a4)+,d0
@@ -381,22 +420,62 @@ selecter_fixed:
 		tst.b	(a4)
 		bne	expand_var_subscript_error
 ****************
-expand_var_check_modifier:
+expand_var_start:
 		move.l	a0,source_pointer(a6)
 		tst.b	not_execute(a5)
 		bne	expand_var_start_var
 
 		cmpi.b	#'0',special(a6)
-		bne	not_argv0
+		bne	not_zero
 		* {
 			move.l	current_source(a5),d0
+			cmpi.b	#'?',sharp_question(a6)
+			beq	is_defined_zero
+
+			tst.l	d0
 			beq	no_file_for_doller0
 
 			movea.l	d0,a0
 			lea	SOURCE_HEADER_SIZE(a0),a0
 			bra	expand_var_1word
+
+is_defined_zero:
+			tst.l	d0
+			sne	d0
+			bra	do_expand_bool
 		* }
-not_argv0:
+not_zero:
+		cmpi.b	#'<',special(a6)
+		bne	not_gets
+		* {
+			cmpi.b	#'?',sharp_question(a6)
+			beq	do_expand_line_is_eof
+
+			lea	tmpgetlinebufp(a5),a0
+			move.l	#MAXLINELEN+1,d0
+			bsr	xmallocp
+			beq	cannot_getline
+
+			movea.l	d0,a0
+			move.w	#MAXLINELEN,d1
+			move.l	a1,-(a7)
+			suba.l	a1,a1
+			bsr	getline_stdin
+			movea.l	(a7)+,a1
+			smi	var_line_eof(a5)
+			neg.l	d0
+			bmi	expand_var_buffer_over
+
+			movea.l	tmpgetlinebufp(a5),a0
+			st	quote_word(a6)
+			bra	expand_var_1word
+
+do_expand_line_is_eof:
+			tst.b	var_line_eof(a5)
+			seq	d0
+			bra	do_expand_bool
+		* }
+not_gets:
 		cmpi.b	#'$',special(a6)
 		bne	not_pid
 		* {
@@ -412,63 +491,55 @@ not_pid:
 			bra	expand_var_utoa
 		* }
 not_random:
-		cmpi.b	#'<',special(a6)
-		bne	not_gets
-		* {
-			lea	tmpgetlinebufp(a5),a0
-			move.l	#MAXLINELEN+1,d0
-			bsr	xmallocp
-			beq	cannot_getline
+		movea.l	a2,a0
+		move.b	(a3),d7
+		clr.b	(a3)
+		cmpi.b	#'%',eval_option(a6)
+		beq	try_env
 
-			movea.l	d0,a0
-			move.w	#MAXLINELEN,d1
-			move.l	a1,-(a7)
-			suba.l	a1,a1
-			moveq	#0,d0			*  stdin
-			bsr	getline_file
-			movea.l	(a7)+,a1
-			bmi	expand_var_null
-			bne	expand_var_buffer_over
+		move.l	a0,-(a7)
+		bsr	find_shellvar
+		movea.l	(a7)+,a0
+		bne	eval_var_found
 
-			movea.l	tmpgetlinebufp(a5),a0
-			move.b	#1,quote_word(a6)
-			bra	expand_var_1word
-		* }
-not_gets:
-		cmpi.b	#'?',special(a6)
+		cmpi.b	#'@',eval_option(a6)
+		beq	eval_var_undefined
+try_env:
+		move.l	a0,-(a7)
+		bsr	fish_getenv
+		movea.l	(a7)+,a0
+		beq	eval_var_undefined
+eval_var_found:
+		bsr	get_var_value
+		bra	eval_var_done
+
+eval_var_undefined:
+		moveq	#-1,d0
+eval_var_done:
+		move.b	d7,(a3)
+		cmpi.b	#'?',sharp_question(a6)
 		bne	expand_not_question
-		* {
-			lea	indexbuf(a6),a0
-			move.b	#'1',(a0)
-			clr.b	1(a0)
 
-			tst.b	eval_option(a6)
-			bne	do_expand_defined_1
+		tst.l	d0
+		spl	d0
+do_expand_bool:
+		lea	indexbuf(a6),a0
+		move.b	#'1',(a0)
+		clr.b	1(a0)
+		tst.b	d0
+		bne	expand_var_1word
 
-			cmpi.b	#'0',(a2)
-			bne	do_expand_defined_1
+		move.b	#'0',(a0)
+		bra	expand_var_1word
 
-			tst.l	current_source(a5)
-			bne	expand_var_1word
-			bra	do_expand_defined_2
-
-do_expand_defined_1:
-			bsr	eval_sub
-			lea	indexbuf(a6),a0
-			bpl	do_expand_defined_3
-do_expand_defined_2:
-			move.b	#'0',(a0)
-do_expand_defined_3:
-			bra	expand_var_1word
-		* }
 expand_not_question:
-		bsr	eval_sub
+		tst.l	d0
 		bpl	var_found
 		* {
-			move.b	special(a6),d0
-			bsr	isdigit
-			beq	expand_var_null
+			tst.b	digit(a6)
+			bne	expand_var_null
 
+			move.b	(a3),d7
 			clr.b	(a3)
 			movea.l	a2,a0
 			bsr	undefined
@@ -476,8 +547,8 @@ expand_not_question:
 			bra	expand_var_syntax_error_return
 		* }
 var_found:
-		cmpi.b	#'#',special(a6)
-		bne	expand_not_sharp
+		tst.b	sharp_question(a6)
+		beq	expand_not_sharp
 		* {
 expand_var_utoa:
 			lea	indexbuf(a6),a0
@@ -495,7 +566,7 @@ index2_fixed:
 		cmp.l	word_to(a6),d0
 		bhs	range_ok
 
-		tst.b	special(a6)
+		tst.b	digit(a6)
 		bne	expand_var_null
 out_of_range:
 		lea	msg_subscript_out_of_range,a2
@@ -589,7 +660,7 @@ expand_var_loop2:
 		btst.b	#MODIFYSTATBIT_Q,modify_status(a6)	*  :q では
 		bne	expand_var_dup1_mode0			*  空白を保存する
 
-		bsr	isspace					*  空白文字でなければ
+		bsr	isspace2				*  空白文字でなければ
 		bne	expand_var_dup1_mode0			*  コピーを続ける
 
 		bsr	terminate_word
@@ -613,7 +684,7 @@ expand_var_dup1_mode1:
 		move.l	a0,-(a7)
 		lea	characters_to_be_escaped_3,a0		*  ` "
 expand_var_dup_character_check:
-		bsr	jstrchr
+		bsr	strchr					*  いずれもシフトJIS文字は含んでいない
 		movea.l	(a7)+,a0
 		beq	expand_var_dup1
 
@@ -711,36 +782,6 @@ expand_var_misc_error_return:
 		moveq	#-4,d0
 		bra	expand_var_return
 ****************************************************************
-eval_sub:
-		movea.l	a2,a0
-		move.b	(a3),d7
-		clr.b	(a3)
-		cmpi.b	#'%',eval_option(a6)
-		beq	try_env
-
-		move.l	a0,-(a7)
-		bsr	find_shellvar
-		movea.l	(a7)+,a0
-		bne	eval_sub_var_found
-
-		cmpi.b	#'@',eval_option(a6)
-		beq	eval_var_undefined
-try_env:
-		move.l	a0,-(a7)
-		bsr	fish_getenv
-		movea.l	(a7)+,a0
-		beq	eval_var_undefined
-eval_sub_var_found:
-		bsr	get_var_value
-		bra	eval_var_done
-
-eval_var_undefined:
-		moveq	#-1,d0
-eval_var_done:
-		move.b	d7,(a3)
-		tst.l	d0
-		rts
-****************************************************************
 * subst_var - １語について変数置換をする
 *             ""の中では置換するが、''および``の中では置換しない
 *             \$.. や ..$ は置換せず、そのまま
@@ -836,7 +877,7 @@ subst_var_check_doller:
 		move.b	(a0),d0
 		beq	subst_var_dup_doller
 
-		bsr	isspace
+		bsr	isspace2
 		beq	subst_var_dup_doller
 
 		movem.l	d7,-(a7)
@@ -943,7 +984,7 @@ subst_var_2_loop:
 		cmp.b	d6,d0
 		beq	subst_var_2_dup_doller
 
-		bsr	isspace
+		bsr	isspace2
 		beq	subst_var_2_dup_doller
 
 		bsr	expand_var
@@ -1079,4 +1120,3 @@ characters_to_be_escaped_3:	dc.b	'`"'
 str_nul:			dc.b	0
 
 .end
-

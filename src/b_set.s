@@ -58,24 +58,23 @@ OP_DECREMENT	equ	13
 *       set
 *            定義されているすべてのシェル変数とそれらの値を表示する
 *
-*       set name
+*       name
+*       name=
+*       name=word
+*       name= ( wordlist )
+*       name = word
+*       name = ( wordlist )
 *
-*       set name=word
-*       set name= word
-*       set name = word
-*
-*       set name[index]=word
-*       set name[index]= word
-*       set name[index] = word
-*
-*       set name= (wordlist)
-*       set name = (wordlist)
+*       name[index]
+*       name[index]=
+*       name[index]=word
+*       name[index] = word
 ****************************************************************
 .xdef cmd_set
 
 cmd_set:
-		move.w	d0,d7			* 引数が無いなら
-		beq	set_disp		* シェル変数のリストを表示
+		move.w	d0,d7				* 引数が無いなら
+		beq	set_disp			* シェル変数のリストを表示
 set_loop:
 		tst.w	d7
 		beq	set_success_return
@@ -83,30 +82,42 @@ set_loop:
 		bsr	scan_name_and_index
 		bne	cmd_set_return
 
+		sf	d3				*  D3 : ()フラグ
 		cmpi.b	#'=',(a0)
-		beq	cmd_set_op_found
+		bne	cmd_set_not_includes_equal
 
+		clr.b	(a0)+
+		tst.b	(a0)
+		bne	set_single_word
+
+		addq.l	#1,a0
+		subq.w	#1,d7
+		beq	set_nul_word
+
+		cmpi.b	#'(',(a0)
+		bne	set_nul_word
+		bra	set_wordlist
+
+cmd_set_not_includes_equal:
 		tst.b	(a0)+
 		bne	syntax_error
 
 		subq.w	#1,d7
-		beq	set_nul_string
+		beq	set_nul_word
 
 		cmpi.b	#'=',(a0)
-		bne	set_nul_string
-cmd_set_op_found:
-		clr.b	(a0)+
-		tst.b	(a0)
-		bne	value_found
+		bne	set_nul_word
 
+		tst.b	1(a0)
+		bne	set_nul_word
+
+		bsr	strfor1
 		subq.w	#1,d7
-		beq	syntax_error
+		beq	set_nul_word
 
-		addq.l	#1,a0
-value_found:
 		cmpi.b	#'(',(a0)
 		bne	set_single_word
-
+set_wordlist:
 		tst.l	d2
 		bpl	syntax_error
 
@@ -118,48 +129,56 @@ value_found:
 		bmi	syntax_error
 
 		sub.w	d0,d7
+		st	d3
+		bra	set_arg_word
+
+set_nul_word:
+		lea	str_nul,a1
+		moveq	#1,d0
 		bra	set_value
 
 set_single_word:
 		movea.l	a0,a1
-		move.l	a1,d6				* D6.L : 展開前の値を指すポインタ
 		moveq	#1,d0
-set_value:
+set_arg_word:
 		bsr	strfor1
 		subq.w	#1,d7
+set_value:
 		movea.l	a0,a4				* A4 : 次の引数を指すポインタ
+		move.l	a1,d6				* D6.L : 展開前の値を指すポインタ
 		lea	tmpargs,a0
 		bsr	expand_wordlist
 		bmi	cmd_set_return
 
 		movea.l	a0,a1				* A1 : value wordlist
-		tst.l	d2				* [index]形式でなければ
-		bmi	do_set_one			* name に A1 を設定する
+		tst.l	d2				* [index]形式か？
+		bpl	do_set_a_element
 
-		cmp.w	#1,d0				* [index]形式なのに単語数が
-		bhi	set_ambiguous			* １個を超えるならエラー
-		beq	do_set_a_element		* １個ならばＯＫ
+		tst.b	d3
+		bne	do_set_one
 
-		clr.b	(a1)				* 0個ならば "\0" とする
-do_set_a_element:
-		bsr	set_a_element
-		bra	cmd_set_next
+		tst.w	d0
+		bne	do_set_one
 
-set_nul_string:
-		tst.l	d2
-		bpl	syntax_error
-
-		movea.l	a0,a4
-		lea	str_nul,a1
+		clr.b	(a1)
 		moveq	#1,d0
 do_set_one:
 		bsr	do_set
+		bra	cmd_set_next
+
+do_set_a_element:
+		cmp.w	#1,d0				* [index]形式なのに単語数が
+		bhi	set_ambiguous			* １個を超えるならエラー
+		beq	do_set_a_element_1		* １個ならばＯＫ
+
+		clr.b	(a1)				* 0個ならば "\0" とする
+do_set_a_element_1:
+		bsr	set_a_element
 cmd_set_next:
 		bne	cmd_set_return
 
 		movea.l	a4,a0
 		bra	set_loop
-
 
 set_ambiguous:
 		movea.l	d6,a0
@@ -561,6 +580,7 @@ scan_assign_operator_return:
 set_a_element:
 		movea.l	a2,a0				*  A0 : name
 		bsr	find_shellvar
+		movea.l	a2,a0
 		beq	undefined
 
 		tst.l	d2

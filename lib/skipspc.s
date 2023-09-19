@@ -1,7 +1,7 @@
 * skipspc.s
 * Itagaki Fumihiko 14-Jul-90  Create.
 
-.xref isspace
+.xref isspace2
 
 .text
 
@@ -20,7 +20,7 @@ skip_space:
 		move.w	d0,-(a7)
 loop:
 		move.b	(a0)+,d0
-		jsr	isspace
+		jsr	isspace2
 		beq	loop
 
 		subq.l	#1,a0
@@ -28,4 +28,3 @@ loop:
 		rts
 
 .end
-

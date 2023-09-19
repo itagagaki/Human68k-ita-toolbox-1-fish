@@ -7,10 +7,10 @@
 
 .xref memmovi
 .xref wordlistlen
-.xref enputs
 .xref xmalloc
 .xref free
 .xref parse_history_value
+.xref cannot_because_no_memory
 
 .xref history_top
 .xref history_bot
@@ -77,7 +77,7 @@ enter_history_return:
 no_space:
 		sf	loop_fail(a5)
 		lea	msg_cannot_enter_history,a0
-		bsr	enputs
+		bsr	cannot_because_no_memory
 		bra	enter_history_return
 ****************************************************************
 .xdef delete_old_history

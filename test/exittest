@@ -1,4 +1,0 @@
-#! /home/fish/prg/fish_main
-echo "1"
-echo "2-1";exit;echo "2-2"
-

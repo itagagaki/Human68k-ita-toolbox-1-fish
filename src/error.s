@@ -43,7 +43,6 @@ command_error:
 		bsr	perror_command_name
 enputs1:
 		bsr	enputs
-return_1:
 		moveq	#1,d0
 		rts
 ****************************************************************
@@ -204,12 +203,6 @@ pre_perror:
 		bsr	eputs
 		movea.l	(a7)+,a0
 		rts
-****************************************************************
-.xdef perror1
-
-perror1:
-		bsr	perror
-		bra	return_1
 ****************************************************************
 .xdef perror
 

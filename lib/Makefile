@@ -1,25 +1,24 @@
 #! A:/bin/MAKE.X -f
 #  Makefile for italib.l
 
-AS	= \usr\pds\HAS.X -l -i $(INCLUDE)
-LIB	= \bin\LIB.X
-RM      = -\usr\local\bin\rm -f
+AS	= A:\usr\pds\HAS.X -l -i $(INCLUDE)
+LIB	= A:\bin\LIB.X
+RM      = -A:\usr\local\bin\rm -f
 
 INCLUDE = ../include
 
 OBJS = \
-	DecHUPAIR.o EncHUPAIR.o atou.o bsltosl.o catpath.o chdir.o \
-	contwild.o cryptch.o decpass.o divul.o drvchk.o encpass.o \
-	fclose.o fgetc.o fgetpwent.o fgetpwnam.o getcwd.o getenv.o \
-	getpass.o headtail.o irandom.o isalnum.o isalpha.o isatty.o \
-	iscntrl.o iscsym.o isdigit.o isfullpath.o islower.o isodigit.o\
-	isspace.o issjis.o isupper.o itoa.o memicmp.o memmovd.o \
-	memmovi.o memset.o memxcmp.o minmaxul.o muldivsl.o mulul.o \
-	printfi.o printfs.o remove.o reverse.o rotate.o setenv.o \
-	skipspc.o sltobsl.o stpcpy.o strazbot.o strazcpy.o strbot.o \
-	strchr.o strcmp.o strcpy.o strfor1.o strforn.o stricmp.o \
-	strlen.o strmem.o strmove.o strspc.o tfopen.o tolower.o \
-	toupper.o utoa.o utoao.o utoax.o
+	DecHUPAIR.o EncHUPAIR.o atoi.o atou.o bsltosl.o catpath.o chdir.o \
+	contwild.o crypt.o csleep.o divul.o drvchk.o fclose.o fgetc.o \
+	fgets.o fgetpwent.o fgetpwnam.o getcwd.o getenv.o getpass.o \
+	headtail.o irandom.o isalnum.o isalpha.o isatty.o iscntrl.o \
+	iscsym.o isdigit.o isfullpath.o islower.o isodigit.o isspace.o \
+	issjis.o isupper.o itoa.o memicmp.o memmovd.o memmovi.o memset.o \
+	memxcmp.o minmaxul.o muldivsl.o mulul.o printfi.o printfs.o \
+	remove.o reverse.o rotate.o setenv.o skipspc.o sltobsl.o stpcpy.o \
+	strazbot.o strazcpy.o strbot.o strchr.o strcmp.o strcpy.o \
+	strfor1.o strforn.o stricmp.o strlen.o strmem.o strmove.o strspc.o \
+	tfopen.o tolower.o toupper.o utoa.o utoao.o utoax.o
 
 define newline
 

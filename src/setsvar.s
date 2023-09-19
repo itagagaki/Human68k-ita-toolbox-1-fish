@@ -6,18 +6,18 @@
 .xref strcmp
 .xref strpcmp
 .xref strcpy
+.xref stpcpy
 .xref strfor1
 .xref sltobsl
 .xref rehash
 .xref setvar
-.xref find_shellvar
 .xref get_var_value
 .xref fish_setenv
 .xref flagvarptr
 .xref is_builtin_dir
 .xref insufficient_memory
 .xref str_nul
-.xref str_current_dir
+.xref word_listexec
 .xref word_path
 .xref word_temp
 .xref word_user
@@ -34,6 +34,7 @@
 .xref shellvar_top
 .xref histchar1
 .xref histchar2
+.xref wordchars
 
 .text
 
@@ -51,28 +52,38 @@
 *      CCR    TST.L D0
 ****************************************************************
 .xdef set_shellvar
-.xdef set_shellvar_nul
 
-set_shellvar_nul:
-		lea	str_nul,a1
-		moveq	#1,d0
 set_shellvar:
-		movem.l	d1-d4/a0-a4,-(a7)
-		movea.l	a1,a2				*  A2 : value
-		movea.l	a0,a1				*  A1 : name
-		move.w	d0,d2				*  D2.W : number of words
+		movem.l	d1-d3/a0-a3,-(a7)
+		movea.l	a1,a2				*  A2 : セットする値（単語リスト）
+		movea.l	a0,a1				*  A1 : シェル変数名
+		move.w	d0,d2				*  D2.W : 単語数
 		lea	shellvar_top(a5),a0
 		bsr	setvar
 		beq	no_space_in_shellvar
 
-		movea.l	d0,a3				*  A3 : セットした変数の先頭アドレス
+		bsr	get_var_value
+		movea.l	a0,a2				*  A2 : セットした変数の最初の値のアドレス
 ****************
 		movea.l	a1,a0
 		bsr	flagvarptr
 		beq	not_flagvar
 
-		movea.l	d0,a0
-		st	(a0)
+		movea.l	d0,a3
+		st	(a3)
+		lea	word_listexec,a0
+		bsr	strcmp
+		bne	set_svar_return0
+
+		tst.w	d2
+		beq	set_svar_return0
+
+		movea.l	a2,a1
+		lea	word_quick,a0
+		bsr	strcmp
+		bne	set_svar_return0
+
+		neg.b	(a3)
 		bra	set_svar_return0
 ****************
 not_flagvar:
@@ -95,103 +106,82 @@ not_flagvar:
 
 		move.w	d0,histchar2(a5)
 		bra	set_svar_return0
+**
+get_histchar:
+			move.b	(a2)+,d0
+			beq	get_histchar_return
+
+			bsr	issjis
+			bne	get_histchar_return
+
+			lsl.w	#8,d0
+			move.b	(a2)+,d0
+			bne	get_histchar_return
+
+			clr.w	d0
+get_histchar_return:
+			rts
 ****************
 not_histchars:
+		lea	word_wordchars,a0
+		bsr	strcmp
+		bne	not_wordchars
+
+		tst.w	d2
+		bne	set_wordchars
+
+		lea	str_nul,a2
+set_wordchars:
+		move.l	a2,wordchars(a5)
+		bra	set_svar_return0
+****************
+not_wordchars:
 		tst.b	d1				*  エクスポートが禁止されているならば
 		beq	set_svar_return0		*  完了
 
-		lea	export_table-6,a2
+		lea	word_path,a0
+		bsr	strcmp
+		bne	not_path
+
+		bsr	rehash
+
+		movea.l	a2,a0				*  A0 : シェル変数 path の値
+		lea	word_path,a1
+		bsr	export_path
+		bra	set_svar_return_x
+****************
+not_path:
+		lea	export_table-6,a3
 compare_export_loop:
-		addq.l	#6,a2
-		move.l	(a2)+,d0
+		addq.l	#6,a3
+		move.l	(a3)+,d0
 		beq	set_svar_return0
 
 		movea.l	d0,a0
 		bsr	strcmp
 		bne	compare_export_loop
 
-		move.l	a3,d0
-		bsr	get_var_value			*  A0   : シェル変数の値
-		movea.l	(a2)+,a3			*  A3   : 環境変数名
-		move.w	(a2),d3				*  D3.B : フラグ
-		lea	tmpargs,a2			*  A2   : バッファ
-		btst	#1,d3
-		bne	export_path
-
+		lea	tmpargs,a0			*  A0 : バッファ
+		clr.b	(a0)
 		tst.w	d2
 		beq	do_export
 
-		moveq	#0,d2
-		bra	dup_a_word
-****************
-export_path:
-		bsr	rehash
-
-		move.l	a0,-(a7)
-		lea	word_notexportpath,a0
-		bsr	find_shellvar
-		movea.l	(a7)+,a0
-		movea.l	d0,a4
-		bra	export_build_path_continue
-****************
-export_build_path_loop:
-		lea	str_current_dir,a1
-		bsr	strcmp
-		beq	export_build_path_ignore_this
-
-		bsr	is_builtin_dir
-		beq	export_build_path_ignore_this
-
-		move.l	a4,d0
-		beq	not_notexportpath
-
-		exg	a0,a1
-		bsr	get_var_value
-		exg	a0,a1				*  A1 : $notexportpath
-		move.w	d0,d4				*  D4 : $#notexportpath
-		bra	check_notexportpath_continue
-
-check_notexportpath_loop:
-		moveq	#0,d0
-		bsr	strpcmp
-		beq	export_build_path_ignore_this
-
-		exg	a0,a1
-		bsr	strfor1
-		exg	a0,a1
-check_notexportpath_continue:
-		dbra	d4,check_notexportpath_loop
-not_notexportpath:
-		tst.b	d1
-		bne	dup_a_word
-
-		move.b	#';',(a2)+
-dup_a_word:
-		movea.l	a0,a1
-		exg	a0,a2
+		movea.l	a2,a1				*  A1 : シェル変数の値
 		bsr	strcpy
-		btst	#0,d3
-		beq	dup_a_word_done
+		tst.w	4(a3)
+		beq	do_export
 
 		bsr	sltobsl
-dup_a_word_done:
-		adda.l	d0,a0
-		exg	a0,a2
-		moveq	#0,d1
-export_build_path_ignore_this:
-		bsr	strfor1
-export_build_path_continue:
-		dbra	d2,export_build_path_loop
 do_export:
-		clr.b	(a2)
-		lea	tmpargs,a1
-		movea.l	a3,a0
+		movea.l	a0,a1
+		movea.l	(a3),a0				*  A0 : 環境変数名
 		bsr	fish_setenv
+set_svar_return_x:
 		beq	set_svar_return1
 set_svar_return0:
 		moveq	#0,d0
 set_svar_return:
-		movem.l	(a7)+,d1-d4/a0-a4
+		movem.l	(a7)+,d1-d3/a0-a3
 		rts
 ****************
 no_space_in_shellvar:
@@ -200,19 +190,59 @@ set_svar_return1:
 		moveq	#1,d0
 		bra	set_svar_return
 ****************************************************************
-get_histchar:
-		move.b	(a2)+,d0
-		beq	get_histchar_return
+export_path:
+		movem.l	d2/a0,-(a7)
+		move.l	a1,-(a7)
+		lea	tmpargs,a2			*  A2 : バッファ
+		clr.b	(a2)
+		st	d1				*  D1 : first flag
+		bra	export_build_path_continue
 
-		bsr	issjis
-		bne	get_histchar_return
+export_build_path_loop:
+		bsr	is_builtin_dir
+		beq	ignore
 
-		lsl.w	#8,d0
-		move.b	(a2)+,d0
-		bne	get_histchar_return
+		tst.b	d1
+		bne	dup_a_word
 
-		clr.w	d0
-get_histchar_return:
+		move.b	#';',(a2)+
+dup_a_word:
+		movea.l	a0,a1
+		exg	a0,a2
+		bsr	stpcpy
+		exg	a0,a2
+		sf	d1
+ignore:
+		bsr	strfor1
+export_build_path_continue:
+		dbra	d2,export_build_path_loop
+
+		lea	tmpargs,a0
+		bsr	sltobsl
+		movea.l	a0,a1
+		movea.l	(a7)+,a0
+		bsr	fish_setenv
+		movem.l	(a7)+,d2/a0
+		rts
+****************************************************************
+* set_shellvar_nul - シェル変数に空文字列をセットする．exportはしない
+*
+* CALL
+*      A0     変数名の先頭アドレス
+*
+* RETURN
+*      D0.L   0:成功  1:失敗
+*      CCR    TST.L D0
+****************************************************************
+.xdef set_shellvar_nul
+
+set_shellvar_nul:
+		movem.l	d1/a1,-(a7)
+		lea	str_nul,a1
+		moveq	#1,d0
+		sf	d1
+		bsr	set_shellvar
+		movem.l	(a7)+,d1/a1
 		rts
 ****************************************************************
 * set_shellvar_num - シェル変数に数値を定義する
@@ -223,8 +253,7 @@ get_histchar_return:
 *      D1.B   0 : exportしない
 *
 * RETURN
-*      D0.L   0:成功  1:失敗
-*      CCR    TST.L D0
+*      none
 ****************************************************************
 .xdef set_shellvar_num
 
@@ -249,20 +278,17 @@ set_shellvar_num:
 .data
 
 .xdef word_histchars
+.xdef word_wordchars
 
 .even
 export_table:
-		dc.l	word_path
-		dc.l	word_path
-		dc.w	1+2
-
 		dc.l	word_temp
 		dc.l	word_temp
 		dc.w	1
 
 		dc.l	word_home
 		dc.l	word_upper_home
-		dc.w	1
+		dc.w	0
 
 		dc.l	word_user
 		dc.l	word_upper_user
@@ -279,7 +305,7 @@ export_table:
 		dc.l	0
 
 word_histchars:		dc.b	'histchars',0
-word_notexportpath:	dc.b	'notexportpath',0
+word_wordchars:		dc.b	'wordchars',0
+word_quick:		dc.b	'quick',0
 
 .end
-

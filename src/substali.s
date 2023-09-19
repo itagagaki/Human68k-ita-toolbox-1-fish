@@ -138,7 +138,7 @@ subst_alias_loop:
 		tst.b	1(a0)
 		beq	dup_args			*  サブシェルならば置換しない
 subst_alias_1:
-		cmpi.b	#'\',(a0)			*  コマンド名が '\' を含むなら
+		cmpi.b	#'\',(a0)			*  コマンド名の最初の文字が '\' でエスケープされているなら
 		beq	dup_args			*  別名置換しない
 
 		move.l	a1,-(a7)			*  バッファ・ポインタを退避
@@ -201,7 +201,7 @@ not_allow_more_alias:
 		bra	expand_alias_start
 
 expand_alias_loop:
-		move.w	d6,d3
+		sf	d0
 		bsr	subst_history
 		or.b	d0,d6
 		moveq	#1,d0
@@ -261,4 +261,3 @@ subst_alias_over:
 		bra	subst_alias_return
 ****************************************************************
 .end
-

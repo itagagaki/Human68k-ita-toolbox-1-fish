@@ -6,27 +6,26 @@
 .include ../src/history.h
 
 .xref isdigit
-.xref isspace
+.xref isspace2
 .xref issjis
 .xref atou
 .xref utoa
-.xref jstrchr
+.xref strchr
 .xref strlen
 .xref strfor1
 .xref strforn
+.xref memcmp
 .xref strmem
 .xref memmovi
-.xref skip_space
 .xref make_wordlist
 .xref scanchar2
 .xref eputs
-.xref ecputs
 .xref enputs
 .xref xmallocp
 .xref free
 .xref xfreep
 .xref modify
-.xref is_word_separator
+.xref perror_command_name
 .xref pre_perror
 .xref syntax_error
 .xref cannot_because_no_memory
@@ -122,65 +121,7 @@ wordlistmem_done:
 		movem.l	(a7)+,d1/d3-d4
 		rts
 ****************************************************************
-* histcmp
-*
-* CALL
-*      A0     履歴イベントのボディ
-*      A1     比較文字列
-*      D0.L   比較文字列の長さ
-*
-* RETURN
-*      D0.L   一致したとき、実際に一致したバイト数
-*      CCR    一致すれば EQ
-****************************************************************
-histcmp:
-		movem.l	d1-d2/a0-a2,-(a7)
-		movea.l	a0,a2
-		move.l	d0,d1
-		beq	histcmp_break
-histcmp_loop1:
-		move.b	(a1),d0
-		bsr	isspace
-		bne	histcmp_2
-
-		addq.l	#1,a1
-		subq.l	#1,d1
-		beq	histcmp_break
-
-		bra	histcmp_loop1
-
-histcmp_2:
-		move.b	(a0),d0
-		bsr	is_word_separator
-		sne	d2
-histcmp_loop2:
-		move.b	(a0)+,d0
-		beq	histcmp_nul
-
-		cmp.b	(a1)+,d0
-		bne	histcmp_break
-
-		subq.l	#1,d1
-		beq	histcmp_break
-
-		bra	histcmp_loop2
-
-histcmp_nul:
-		tst.b	d2
-		beq	histcmp_loop1
-
-		move.b	(a1),d0
-		bsr	is_word_separator
-		beq	histcmp_loop1
-histcmp_break:
-		sne	d1
-		move.l	a0,d0
-		sub.l	a2,d0
-		tst.b	d1
-		movem.l	(a7)+,d1-d2/a0-a2
-		rts
-****************************************************************
-* search_up_history - ある文字列を含む履歴を遡って検索する
+* search_event - 履歴イベントを探す
 *
 * CALL
 *      A0     検索文字列
@@ -190,134 +131,88 @@ histcmp_break:
 *
 * RETURN
 *      CCR    見つかったならば NE
-*
-*      見つかったとき
-*
-*      A1     見つかったイベントを指す
-*      D2.L   部分マッチングのとき、マッチした単語の番号
-*      D3.L   先頭マッチングのとき、実際にマッチしたバイト数
-*
-*      見つからなかったとき
-*
-*      D2-D3  破壊
+*      A1     見つかったイベントを指す．見つからなければ CALL のまま
+*      D2.L   部分マッチングのとき、マッチした単語の番号．さもなくば破壊
 ****************************************************************
-.xdef search_up_history
-
-search_up_history:
-		movem.l	d0-d1/d4-d5/a0/a2-a3,-(a7)
+search_event:
+		movem.l	d0-d1/d3-d5/a0/a2-a3,-(a7)
 		movea.l	a1,a3				* A1 を A3 に退避
 		movea.l	a1,a2				* A2 : 履歴ポインタ
 		movea.l	a0,a1				* A1 : 検索文字列
 		move.l	d0,d3				* D3 : 検索文字列の長さ
 		move.b	d2,d4				* D4 : 0=先頭  非0=部分
 		moveq	#-1,d2				* D2.L = -1 .. :%は無効
-search_up_history_loop:
+search_event_loop:
 		cmpa.l	#0,a2
-		beq	search_up_history_fail
+		beq	search_event_fail
 
 		move.w	HIST_NWORDS(a2),d5		* D5 : このイベントの語数
-		beq	search_up_history_continue
+		beq	search_event_continue
 
 		lea	HIST_BODY(a2),a0
 		tst.b	d4
-		bne	search_up_history_part_match
+		bne	search_event_part_match
 
 		move.l	d3,d0
-		bsr	histcmp
-		bne	search_up_history_continue
+		bsr	memcmp
+		bne	search_event_continue
+		bra	search_event_found
 
-		move.l	d0,d3
-		bra	search_up_history_found
-
-search_up_history_part_match:
+search_event_part_match:
 		move.w	d5,d0
 		move.l	d3,d1
 		moveq	#0,d2
 		bsr	wordlistmem
-		bne	search_up_history_found
-search_up_history_continue:
+		bne	search_event_found
+search_event_continue:
 		movea.l	HIST_PREV(a2),a2
-		bra	search_up_history_loop
+		bra	search_event_loop
 
-search_up_history_found:
+search_event_found:
 		movea.l	a2,a1				*  A1 : 見つかったイベント
 		cmpa.l	#0,a1
-		bra	search_up_history_return
+		bra	search_event_return
 
-search_up_history_fail:
+search_event_fail:
 		movea.l	a3,a1				*  A1 を元に戻す
-search_up_history_return:
-		movem.l	(a7)+,d0-d1/d4-d5/a0/a2-a3
+search_event_return:
+		movem.l	(a7)+,d0-d1/d3-d5/a0/a2-a3
+		rts
+*****************************************************************
+is_special_word_selecter:
+		move.l	a0,-(a7)
+		lea	special_word_selecters,a0
+		bsr	strchr				*  special_word_sepecters にシフトJIS文字は無い
+		movea.l	(a7)+,a0
 		rts
 ****************************************************************
-* search_down_history - ある文字列を含む履歴を降順に検索する
-*
-* CALL
-*      A0     検索文字列
-*      D0.L   検索文字列の長さ
-*      A1     検索を開始するイベントを指す
-*      D2.B   0 = 先頭マッチング   非0 = 部分マッチング
-*
-* RETURN
-*      CCR    見つかったならば NE
-*
-*      見つかったとき
-*
-*      A1     見つかったイベントを指す
-*      D2.L   部分マッチングのとき、マッチした単語の番号
-*      D3.L   先頭マッチングのとき、実際にマッチしたバイト数
-*
-*      見つからなかったとき
-*
-*      D2-D3  破壊
-****************************************************************
-.xdef search_down_history
+get_wordno:
+		moveq	#1,d1
+		cmp.b	#'^',d0
+		beq	get_wordno_return
 
-search_down_history:
-		movem.l	d0-d1/d4-d5/a0/a2-a3,-(a7)
-		movea.l	a1,a3				* A1 を A3 に退避
-		movea.l	a1,a2				* A2 : 履歴ポインタ
-		movea.l	a0,a1				* A1 : 検索文字列
-		move.l	d0,d3				* D3 : 検索文字列の長さ
-		move.b	d2,d4				* D4 : 0=先頭  非0=部分
-		moveq	#-1,d2				* D2.L = -1 .. :%は無効
-search_down_history_loop:
-		cmpa.l	#0,a2
-		beq	search_down_history_fail
+		moveq	#-1,d1
+		cmp.b	#'$',d0
+		beq	get_wordno_return
 
-		move.w	HIST_NWORDS(a2),d5		* D5 : このイベントの語数
-		beq	search_down_history_continue
+		moveq	#-3,d1
+		cmp.b	#'%',d0
+		beq	get_wordno_return
 
-		lea	HIST_BODY(a2),a0
-		tst.b	d4
-		bne	search_down_history_part_match
+		subq.l	#1,a0
+		bsr	atou
+		bmi	get_wordno_no_wordno
+		bne	get_wordno_overflow
 
-		move.l	d3,d0
-		bsr	histcmp
-		bne	search_down_history_continue
+		cmp.l	#MAXWORDS,d1
+		bls	get_wordno_return
+get_wordno_overflow:
+		move.l	#MAXWORDS,d1
+get_wordno_return:
+		rts
 
-		move.l	d0,d3
-		bra	search_down_history_found
-
-search_down_history_part_match:
-		move.w	d5,d0
-		move.l	d3,d1
-		moveq	#0,d2
-		bsr	wordlistmem
-		bne	search_down_history_found
-search_down_history_continue:
-		movea.l	HIST_NEXT(a2),a2
-		bra	search_down_history_loop
-
-search_down_history_found:
-		movea.l	a2,a1				*  A1 : 見つかったイベント
-		cmpa.l	#0,a1
-		bra	search_down_history_return
-
-search_down_history_fail:
-		movea.l	a3,a1				*  A1 を元に戻す
-search_down_history_return:
-		movem.l	(a7)+,d0-d1/d4-d5/a0/a2-a3
+get_wordno_no_wordno:
+		moveq	#-2,d1
 		rts
 ****************************************************************
 * parse_word_selecter - 単語選択子を解析する
@@ -371,11 +266,11 @@ parse_word_selecter:
 		moveq	#-1,d2				* 終点単語番号 := -1 : 最後まで
 		moveq	#0,d0
 		move.b	(a0)+,d0
-		bsr	is_special_word_selecter
-		bne	get_word_selecter
-
 		cmp.b	#':',d0
 		beq	parse_word_selecter_1
+
+		bsr	is_special_word_selecter
+		bne	get_word_selecter
 
 		subq.l	#1,a0
 		bra	parse_word_selecter_done_0
@@ -472,6 +367,7 @@ fix_wordno_last_of_last:
 *      D3.L   置換ステータス
 *             bit1 : エラー・メッセージを表示しない
 *             bit4 : ^str1^str2^flag^ の展開である
+*             bit5 : apply での !! 展開である
 *
 * RETURN
 *      A1     格納した分だけ進む
@@ -481,6 +377,7 @@ fix_wordno_last_of_last:
 *             bit0 : 実行しない
 *             bit1 : 表示も実行もしない
 *             bit2 : 登録も表示も実行もしない
+*             bit5 : apply で引数が足りなかった
 *****************************************************************
 expand_history:
 		movem.l	d2-d5/d7/a0,-(a7)
@@ -490,11 +387,14 @@ expand_history:
 
 		move.l	d1,-(a7)
 		moveq	#0,d3
-		move.l	d0,d3				*  D3.L : このイベントの単語数
+		move.w	d0,d3				*  D3.L : このイベントの単語数
 		move.l	d2,d4				*  D4.L : % の単語番号（-1:該当なし）
 		exg	a0,a2
 		bsr	parse_word_selecter		*  D1.L : 始点番号  D2.L : 終点番号
 		exg	a0,a2
+		btst	#5,d7
+		bne	expand_history_for_apply
+
 		move.b	d0,d5				*  D5.B : 「範囲が空でもＯＫ」フラグ
 		move.l	d1,d0
 		bsr	fix_wordno
@@ -515,10 +415,7 @@ expand_history_word_range_empty:
 		btst	#1,d7
 		bne	expand_history_empty_range
 
-		lea	msg_subst,a0
-		bsr	eputs
-		lea	msg_bad_word_selecter,a0
-		bsr	enputs
+		bsr	bad_word_selecter
 		or.b	#%11,d7
 expand_history_empty_range:
 		moveq	#0,d0
@@ -528,6 +425,41 @@ expand_history_word_range_ok:
 		bsr	strforn				*  A0 : 取得単語並び
 		move.w	d1,d0				*  D0.W : 取得単語数
 		move.l	(a7)+,d1
+		bra	expand_history_modify
+****************
+expand_history_for_apply:
+		move.l	d1,d0
+		bmi	apply_bad_word_selecter
+		beq	apply_bad_word_selecter
+
+		move.l	d2,d1
+		bmi	apply_bad_word_selecter
+		beq	apply_bad_word_selecter
+
+		cmp.l	d0,d1
+		bcs	apply_bad_word_selecter
+
+		cmp.l	d3,d1
+		bhi	apply_expected
+
+		cmp.w	maxwordno(a6),d1
+		bls	expand_history_for_apply_1
+
+		move.w	d1,maxwordno(a6)
+expand_history_for_apply_1:
+		sub.l	d0,d1
+		subq.l	#1,d0
+		bclr	#5,d7
+		bra	expand_history_word_range_ok
+
+apply_bad_word_selecter:
+		bsr	perror_command_name
+		bsr	bad_word_selecter
+		bclr	#5,d7
+apply_expected:
+		or.b	#%111,d7
+		move.l	(a7)+,d1
+		bra	expand_history_return
 ****************
 *
 *  A0     単語並び
@@ -580,10 +512,10 @@ expand_history_nullword:
 		bra	expand_history_start
 
 expand_history_loop:
-		addq.l	#1,a0
 		subq.w	#1,d4
 		bcs	expand_history_over
 
+		addq.l	#1,a0
 		move.b	#' ',(a1)+			* 空白で区切る
 expand_history_start:
 		bsr	strlen
@@ -629,10 +561,16 @@ expand_history_not_failed:
 		bset	#0,d7
 expand_history_not_p:
 		move.w	d4,d1
-****************
+expand_history_return:
 		move.l	d7,d0
 		movem.l	(a7)+,d2-d5/d7/a0
 		rts
+****************
+bad_word_selecter:
+		lea	msg_subst,a0
+		bsr	eputs
+		lea	msg_bad_word_selecter,a0
+		bra	enputs
 ****************************************************************
 compare_histchar:
 		movea.l	a2,a3
@@ -648,7 +586,7 @@ is_histchar_canceller:
 		tst.b	d0
 		beq	is_histchar_canceller_return
 
-		bsr	isspace
+		bsr	isspace2
 		beq	is_histchar_canceller_return
 
 		cmp.b	#'=',d0
@@ -672,6 +610,7 @@ is_histchar_canceller_return:
 *      A2     参照する単語並びのアドレス．0 ならば履歴イベントを参照する
 *      D1.W   展開バッファの容量
 *      D2.W   参照する単語並びの単語数（A2 が 0 でないとき）
+*      D0.B   非0: apply 用
 *
 * RETURN
 *      A0     ソース文字列の最後の NUL の次を指す
@@ -681,29 +620,41 @@ is_histchar_canceller_return:
 *             bit0 : 実行しない
 *             bit1 : 表示も実行もしない
 *             bit2 : 登録も表示も実行もしない
-*             bit3 : 置換が行われた
+*             bit3 : 置換が行われた（apply では !!のみ）
+*             bit5 : apply で引数が足りなかった
+*      D3.W   apply での !! 置換での最大単語番号
+*             ただし置換が行われなかった場合は保存
 *****************************************************************
 .xdef subst_history
 
 buftop = -4
-braceflag = buftop-1
+ref_words = buftop-4
+ref_nwords = ref_words-2
+maxwordno = ref_nwords-2
+braceflag = maxwordno-1
 istr_flag = braceflag-1
 quick_modify = istr_flag-1
-subst_status = quick_modify-1
-pad = subst_status - 0
+default_event_flag = quick_modify-1
+subst_for_apply = default_event_flag-1
+subst_status = subst_for_apply-1
+quote = subst_status-1
+pad = quote-1
 
 subst_history:
 		link	a6,#pad
-		movem.l	d2-d7/a2-a4,-(a7)
+		movem.l	d2-d7/a2-a3,-(a7)
 		move.l	a1,buftop(a6)
-		movea.l	a2,a4				*  A4 : 参照単語並び
-		move.w	d2,d4				*  D4.W : 参照単語数
+		move.l	a2,ref_words(a6)
+		move.w	d2,ref_nwords(a6)
+		move.b	d0,subst_for_apply(a6)
 		movea.l	a0,a2				*  A2 : ソース
 		move.w	d1,d7				*  D7.W : 展開バッファの容量
 		clr.b	subst_status(a6)
+		clr.b	quote(a6)
+		clr.w	maxwordno(a6)
 subst_history_dup_first_blank_loop:
 		move.b	(a2)+,d0
-		bsr	isspace
+		bsr	isspace2
 		bne	subst_history_dup_first_blank_done
 
 		subq.w	#1,d7
@@ -735,6 +686,7 @@ subst_history_loop:
 		bsr	is_histchar_canceller
 		beq	subst_history_dup_char
 
+		sf	default_event_flag(a6)
 		sf	quick_modify(a6)
 		movea.l	a3,a2
 		move.b	d0,braceflag(a6)
@@ -743,7 +695,6 @@ subst_history_loop:
 
 		addq.l	#1,a2
 subst_hist_nobrace:
-		move.b	(a2),d0
 		move.w	histchar1(a5),d1
 		bsr	compare_histchar		*  !!
 		beq	default_event
@@ -770,7 +721,7 @@ find_str_loop:
 		move.b	(a2)+,d0
 		beq	find_str_done
 
-		bsr	isspace
+		bsr	isspace2
 		beq	find_str_done
 
 		cmp.b	#':',d0
@@ -778,7 +729,7 @@ find_str_loop:
 
 		move.l	a0,-(a7)
 		lea	special_word_selecters_2,a0	*   -  *  $  ^
-		bsr	jstrchr
+		bsr	strchr				*  special_word_selecters_2 にシフトJIS文字は無い
 		movea.l	(a7)+,a0
 		bne	find_str_done
 
@@ -804,7 +755,7 @@ search_istr:
 		addq.l	#1,a2				*  1つめの ? をスキップ
 		movea.l	a2,a0				*  A0 : str の先頭
 		moveq	#'?',d0
-		bsr	jstrchr
+		bsr	strchr				*  '?' にはシフトJIS文字を考慮は不要
 		exg	a0,a2				*  A2 : 次のポイント
 		move.l	a2,d0
 		sub.l	a0,d0				*  D0.L : strの長さ
@@ -836,7 +787,7 @@ get_hist_search_str:
 		move.l	a1,-(a7)
 		movea.l	history_bot(a5),a1
 		move.b	istr_flag(a6),d2
-		bsr	search_up_history
+		bsr	search_event
 		movea.l	a1,a0
 		movea.l	(a7)+,a1
 		beq	fail_str
@@ -881,11 +832,12 @@ cannot_expand_current_event:
 default_event:
 		movea.l	a3,a2
 default_event_1:
-		cmpa.l	#0,a4
+		st	default_event_flag(a6)
+		move.l	ref_words(a6),d0
 		beq	last_history_event
 
-		movea.l	a4,a0
-		move.w	d4,d0
+		movea.l	d0,a0
+		move.w	ref_nwords(a6),d0
 		moveq	#-1,d2
 		bra	subst_hist_do_expand_2
 
@@ -906,7 +858,7 @@ search_relative:
 search_minus_d0:
 		sub.l	current_eventno(a5),d0
 		neg.l	d0
-		cmpa.l	#0,a4
+		tst.l	ref_words(a6)
 		beq	search_absolute_1
 
 		subq.l	#1,d0
@@ -941,13 +893,23 @@ subst_hist_do_expand_2:
 		*      D7.W   展開バッファの容量
 		*
 		move.b	subst_status(a6),d3
-		bset	#3,d3
 		bclr	#4,d3
 		tst.b	quick_modify(a6)
 		beq	subst_hist_do_expand_3
 
 		bset	#4,d3
 subst_hist_do_expand_3:
+		bclr	#5,d3
+		tst.b	subst_for_apply(a6)
+		beq	subst_hist_do_expand_4
+
+		tst.b	default_event_flag(a6)
+		beq	subst_hist_do_expand_5
+
+		bset	#5,d3
+subst_hist_do_expand_4:
+		bset	#3,d3
+subst_hist_do_expand_5:
 		exg	d1,d7
 		bsr	expand_history
 		exg	d1,d7
@@ -982,6 +944,11 @@ subst_history_not_histchar:
 		bsr	compare_histchar
 		beq	subst_history_dup_char
 
+		subq.l	#1,a2
+		tst.b	quote(a6)
+		bne	subst_history_dup_char
+
+		addq.l	#1,a2
 		subq.w	#1,d7
 		bcs	subst_hist_over
 
@@ -989,7 +956,25 @@ subst_history_not_histchar:
 subst_history_dup_char:
 		move.b	(a2)+,d0
 		bsr	issjis
+		beq	subst_history_dup2
+
+		tst.b	quote(a6)
+		beq	subst_history_not_in_quote
+
+		cmp.b	quote(a6),d0
+		bra	subst_history_check_quote
+
+subst_history_not_in_quote:
+		cmp.b	#"'",d0
+		beq	subst_history_quote
+
+		cmp.b	#'"',d0
+subst_history_check_quote:
 		bne	subst_history_dup1
+subst_history_quote:
+		eor.b	d0,quote(a6)
+		bra	subst_history_dup1
+
 subst_history_dup2:
 		move.b	d0,(a1)+
 		beq	subst_hist_done
@@ -1021,8 +1006,13 @@ subst_history_return:
 		bsr	xfreep
 		movea.l	a2,a0
 		move.w	d7,d1
+		movem.l	(a7)+,d2-d7/a2-a3
 		move.b	subst_status(a6),d0
-		movem.l	(a7)+,d2-d7/a2-a4
+		btst	#3,d0
+		beq	subst_history_return_1
+
+		move.w	maxwordno(a6),d3
+subst_history_return_1:
 		unlk	a6
 		rts
 
@@ -1077,42 +1067,6 @@ error:
 		moveq	#0,d0
 		moveq	#-1,d2
 		bra	subst_hist_do_expand_2
-*****************************************************************
-is_special_word_selecter:
-		move.l	a0,-(a7)
-		lea	special_word_selecters,a0
-		bsr	jstrchr
-		movea.l	(a7)+,a0
-		rts
-****************************************************************
-get_wordno:
-		moveq	#1,d1
-		cmp.b	#'^',d0
-		beq	get_wordno_return
-
-		moveq	#-1,d1
-		cmp.b	#'$',d0
-		beq	get_wordno_return
-
-		moveq	#-3,d1
-		cmp.b	#'%',d0
-		beq	get_wordno_return
-
-		subq.l	#1,a0
-		bsr	atou
-		bmi	get_wordno_no_wordno
-		bne	get_wordno_overflow
-
-		cmp.l	#MAXWORDS,d1
-		bls	get_wordno_return
-get_wordno_overflow:
-		move.l	#MAXWORDS,d1
-get_wordno_return:
-		rts
-
-get_wordno_no_wordno:
-		moveq	#-2,d1
-		rts
 ****************************************************************
 .data
 
@@ -1129,4 +1083,3 @@ msg_cannot_sharp:		dc.b	'!#を処理できません',0
 ****************************************************************
 
 .end
-

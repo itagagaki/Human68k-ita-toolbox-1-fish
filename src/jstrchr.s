@@ -1,6 +1,7 @@
 * jstrchr.s
 * Itagaki Fumihiko 23-Sep-90  Create.
 
+.xref strchr
 .xref scanchar2
 
 .text
@@ -23,6 +24,12 @@
 .xdef jstrchr
 
 jstrchr:
+		cmp.w	#$0040,d0			*  $40未満のコードはシフトJISに無いので
+		bhs	jstrchr_1
+
+		jmp	strchr				*  strchr で充分。strchrの方がずっと速い。
+
+jstrchr_1:
 		movem.l	d0-d1/a1,-(a7)
 		move.w	d0,d1
 jstrchr_loop:
@@ -44,4 +51,3 @@ jstrchr_found:
 		rts
 
 .end
-

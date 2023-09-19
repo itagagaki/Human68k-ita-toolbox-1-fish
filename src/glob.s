@@ -9,6 +9,7 @@
 .xref issjis
 .xref strlen
 .xref strbot
+.xref strcmp
 .xref strcpy
 .xref stpcpy
 .xref strmove
@@ -21,19 +22,24 @@
 .xref strip_quotes
 .xref builtin_dir_match
 .xref drvchkp
+.xref stat
 .xref check_wildcard
+.xref find_shellvar
+.xref get_var_value
 .xref no_match
 .xref too_many_words
 .xref too_long_line
 .xref dos_allfile
 .xref builtin_table
+.xref word_nonomatch
+
 .xref tmpword1
 .xref tmpword2
 .xref pathname_buf
 
 .xref tmpline
 .xref flag_ciglob
-.xref flag_nonomatch
+.xref flag_symlinks
 
 .text
 
@@ -200,12 +206,13 @@ get_subdir_done:
 curdot  = -4
 dirbot  = curdot-4
 statbuf = dirbot-STATBUFSIZE
+l_statbuf = statbuf-STATBUFSIZE
 
 globsub:
-		link	a6,#statbuf
+		link	a6,#l_statbuf
 		move.l	a2,curdot(a6)
 		lea	pathname_buf,a0
-		move.w	#MODEVAL_FILEDIR,-(a7)		* ボリューム・ラベル以外の全てを検索
+		move.w	#MODEVAL_ALL,-(a7)
 		move.l	a0,-(a7)
 		pea	statbuf(a6)
 		bsr	strbot
@@ -219,18 +226,25 @@ globsub_loop:
 		tst.l	d0
 		bmi	globsub_nomore
 
+		move.b	statbuf+ST_MODE(a6),d0
+		btst	#MODEBIT_DIR,d0			*  ディレクトリなら
+		bne	globsub_mode_ok			*  よし
+
+		btst	#MODEBIT_VOL,d0			*  ボリューム・ラベルは
+		bne	globsub_next			*  除外
+globsub_mode_ok:
 		movea.l	curdot(a6),a0
 		lea	tmpword2,a1
 		bsr	get_subdir
 		movea.l	a0,a2
 		lea	statbuf+ST_NAME(a6),a0
 
-		* 検索されたエントリが . で始まっていなければ、よし。
+		*  検索されたエントリが . で始まっていなければ、よし。
 		cmpi.b	#'.',(a0)
 		bne	globsub_compare
 
-		* . で始まるエントリも、
-		* 検索文字列が . または \. で始まっているならば、よし。
+		*  . で始まるエントリも、
+		*  検索文字列が . または \. で始まっているならば、よし。
 		cmpi.b	#'.',(a1)
 		beq	globsub_compare
 
@@ -248,12 +262,29 @@ globsub_compare:
 		tst.b	(a2)
 		beq	globsub_terminal
 
-		btst.b	#MODEBIT_DIR,statbuf+ST_MODE(a6)
-		beq	globsub_next
-
 		movea.l	dirbot(a6),a0
 		lea	statbuf+ST_NAME(a6),a1
 		bsr	stpcpy
+		move.b	statbuf+ST_MODE(a6),d0
+		btst	#MODEBIT_DIR,d0
+		bne	globsub_continue_dir
+
+		tst.b	flag_symlinks(a5)
+		beq	globsub_next
+
+		btst	#MODEBIT_LNK,d0
+		beq	globsub_next
+
+		movem.l	a0-a1,-(a7)
+		lea	pathname_buf,a0
+		lea	l_statbuf(a6),a1
+		bsr	stat
+		movem.l	(a7)+,a0-a1
+		bmi	globsub_next
+
+		btst.b	#MODEBIT_DIR,l_statbuf+ST_MODE(a6)
+		beq	globsub_next
+globsub_continue_dir:
 		move.b	(a2)+,d0
 		cmp.b	#'\',d0
 		bne	globsub_find_more
@@ -498,19 +529,15 @@ glob_error:
 .xdef glob_wordlist
 
 glob_wordlist:
-		movem.l	d1-d4/a0-a2,-(a7)
-		move.w	#MAXWORDLISTSIZE,d1	* D1 : 最大文字数
-		move.w	d0,d2			* D2 : 引数カウンタ
-		moveq	#0,d3			* D3 : 展開後の語数
-		moveq	#0,d4			* D4 : glob status
-		tst.b	flag_nonomatch(a5)
-		beq	glob_wordlist_1
-
-		moveq	#-1,d4
-glob_wordlist_1:
+		movem.l	d1-d5/a0-a2,-(a7)
+		move.w	#MAXWORDLISTSIZE,d1	*  D1 : 最大文字数
+		move.w	d0,d2			*  D2 : 引数カウンタ
+		moveq	#0,d3			*  D3 : 展開後の語数
+		moveq	#0,d4			*  D4 : glob status := 0 .. ワイルドカードはまだない
+		moveq	#-1,d5			*  D5.B := no match のときのアクション
 		move.l	a0,-(a7)
-		lea	tmpline(a5),a0		* 一時領域に
-		bsr	copy_wordlist		* 引数並びを一旦コピーしてこれをソースとする
+		lea	tmpline(a5),a0		*  一時領域に
+		bsr	copy_wordlist		*  引数並びを一旦コピーしてこれをソースとする
 		movea.l	(a7)+,a1
 		bra	glob_wordlist_continue
 
@@ -518,30 +545,43 @@ glob_wordlist_loop:
 		bsr	check_wildcard
 		beq	glob_wordlist_just_copy
 
-		tst.b	d4
-		bne	glob_wordlist_glob_1
+		*  ワイルドカードがある
 
-		moveq	#1,d4
-glob_wordlist_glob_1:
 		move.w	#MAXWORDS,d0
 		sub.w	d3,d0
 		bsr	glob
-		bmi	glob_wordlist_glob_error
-		bne	glob_wordlist_2
+		bmi	glob_wordlist_glob_error	*  error
+		bne	glob_wordlist_glob_found	*  match found
 
-		tst.b	d4
-		bpl	glob_wordlist_glob_3
+		*  no match
 
-		bra	glob_wordlist_just_copy
+		tst.l	d5
+		bpl	glob_wordlist_glob_1
 
-glob_wordlist_2:
-		tst.b	d4
-		beq	glob_wordlist_glob_3
-		bmi	glob_wordlist_glob_3
+		bsr	test_nonomatch
+		move.l	d0,d5
+glob_wordlist_glob_1:
+		beq	glob_wordlist_glob_2		*  unset nonomatch
 
-		moveq	#2,d4
-glob_wordlist_glob_3:
+		moveq	#1,d4				*  D4 := 1 .. ワイルドカードがあった
+							*             マッチした（ことにする）
+		btst	#0,d5
+		bne	glob_wordlist_just_copy		*  set nonomatch .. 単語をコピーする
+		*  set nonomatch=drop .. 単語を捨てる
+glob_wordlist_glob_2:
+		*  unset nonomatch .. 単語を捨てる
+		tst.l	d4
+		bne	glob_wordlist_glob_next
+
+		moveq	#-1,d4				*  D4 := -1 .. ワイルドカードがあった
+							*              マッチするものはまだない
+		bra	glob_wordlist_glob_next
+
+glob_wordlist_glob_found:
 		add.w	d0,d3
+		moveq	#1,d4				*  D4 := 1 .. ワイルドカードがあった
+							*             マッチした
+glob_wordlist_glob_next:
 		bsr	strfor1
 		bra	glob_wordlist_continue
 
@@ -566,13 +606,13 @@ glob_wordlist_just_copy:
 glob_wordlist_continue:
 		dbra	d2,glob_wordlist_loop
 
-		cmp.b	#1,d4
-		beq	glob_wordlist_no_match
+		tst.l	d4
+		bmi	glob_wordlist_no_match
 
 		moveq	#0,d0
 		move.w	d3,d0
 glob_wordlist_return:
-		movem.l	(a7)+,d1-d4/a0-a2
+		movem.l	(a7)+,d1-d5/a0-a2
 		tst.l	d0
 		rts
 
@@ -598,6 +638,43 @@ glob_wordlist_too_long_line:
 glob_wordlist_error:
 		moveq	#-1,d0
 		bra	glob_wordlist_return
+****************************************************************
+* test_nonomatch - シェル変数 nonomatch を調べる
+*
+* CALL
+*      none
+*
+* RETURN
+*      D0.L   0 : unset nonomatch
+*             1 : set nonomatch
+*             2 : set nonomatch=drop
+*      CCR    TST.L D0
+****************************************************************
+.xdef test_nonomatch
+
+test_nonomatch:
+		movem.l	d1/a0-a1,-(a7)
+		moveq	#0,d1
+		lea	word_nonomatch,a0
+		bsr	find_shellvar
+		beq	test_nonomatch_done		*  unset nonomatch -> 0
+
+		moveq	#1,d1
+		bsr	get_var_value
+		beq	test_nonomatch_done		*  set nonomatch -> 1
+
+		lea	word_drop,a1
+		bsr	strcmp
+		bne	test_nonomatch_done		*  set nonomatch=??? -> 1
+
+		moveq	#2,d1				*  set nonomatch=drop -> 2
+test_nonomatch_done:
+		move.l	d1,d0
+		movem.l	(a7)+,d1/a0-a1
+		rts
+****************************************************************
+.data
+
+word_drop:	dc.b	'drop',0
 
 .end
-

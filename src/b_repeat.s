@@ -4,19 +4,19 @@
 *  Itagaki Fumihiko 14-Oct-90  Create.
 
 .xref atou
+.xref strcmp
+.xref strfor1
 .xref wordlistlen
 .xref copy_wordlist
 .xref xmalloc
 .xref free_current_argbuf
-.xref DoSimpleCommand
+.xref DoSimpleCommand_recurse_2
 .xref too_few_args
 .xref usage
 .xref cannot_because_no_memory
 .xref badly_formed_number
 .xref too_large_number
 
-.xref argc
-.xref simple_args
 .xref current_argbuf
 
 .text
@@ -60,6 +60,10 @@ cmd_repeat:
 		subq.w	#1,d2
 		bls	repeat_too_few_args
 
+		lea	str_oo,a1
+		bsr	strcmp
+		beq	repeat_oo
+
 		bsr	atou
 		bmi	badly_formed_number
 
@@ -72,20 +76,26 @@ cmd_repeat:
 		move.l	d1,d3
 		beq	return_0
 
+		sf	d4
+		bra	start
+
+repeat_oo:
+		bsr	strfor1
+		st	d4
+start:
 		move.w	d2,d1
 		bsr	alloc_new_argbuf
 		bmi	cannot_repeat
 loop:
-		movem.l	d0/d3,-(a7)
-		move.w	d0,argc(a5)
+		movem.l	d0/d3-d4,-(a7)
+		moveq	#0,d1
 		movea.l	current_argbuf(a5),a1
 		addq.l	#4,a1
-		lea	simple_args(a5),a0
-		bsr	copy_wordlist
-		sf	d1
-		st	d2
-		bsr	DoSimpleCommand			*** 再帰 ***
-		movem.l	(a7)+,d0/d3
+		jsr	DoSimpleCommand_recurse_2	*** 再帰 ***
+		movem.l	(a7)+,d0/d3-d4
+		tst.b	d4
+		bne	loop
+
 		subq.l	#1,d3
 		bne	loop
 
@@ -105,8 +115,8 @@ cannot_repeat:
 ****************
 .data
 
-msg_usage:		dc.b	'<回数> <コマンド>',0
-msg_repeat:		dc.b	'repeatを実行できません',0
+str_oo:		dc.b	'oo',0
+msg_usage:	dc.b	'{ <回数> | oo } <コマンド>',0
+msg_repeat:	dc.b	'repeatを実行できません',0
 
 .end
-

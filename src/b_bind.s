@@ -40,60 +40,64 @@
 
 X_SELF_INSERT			equ	0
 X_ERROR				equ	1
-X_MACRO				equ	2
-X_PREFIX_1			equ	3
-X_PREFIX_2			equ	4
-X_ABORT				equ	5
-X_EOF				equ	6
-X_ACCEPT_LINE			equ	7
-X_QUOTED_INSERT			equ	8
-X_REDRAW			equ	9
-X_CLEAR_AND_REDRAW		equ	10
-X_SET_MARK			equ	11
-X_EXG_POINT_AND_MARK		equ	12
-X_SEARCH_CHARACTER		equ	13
-X_BOL				equ	14
-X_EOL				equ	15
-X_BACKWARD_CHAR			equ	16
-X_FORWARD_CHAR			equ	17
-X_BACKWARD_WORD			equ	18
-X_FORWARD_WORD			equ	19
-X_DEL_BACK_CHAR			equ	20
-X_DEL_FOR_CHAR			equ	21
-X_KILL_BACK_WORD		equ	22
-X_KILL_FOR_WORD			equ	23
-X_KILL_BOL			equ	24
-X_KILL_EOL			equ	25
-X_KILL_WHOLE_LINE		equ	26
-X_KILL_REGION			equ	27
-X_COPY_REGION			equ	28
-X_YANK				equ	29
-X_UPCASE_CHAR			equ	30
-X_DOWNCASE_CHAR			equ	31
-X_UPCASE_WORD			equ	32
-X_DOWNCASE_WORD			equ	33
-X_UPCASE_REGION			equ	34
-X_DOWNCASE_REGION		equ	35
-X_TRANSPOSE_CHARS		equ	36
-X_TRANSPOSE_WORDS		equ	37
-X_UP_HISTORY			equ	38
-X_DOWN_HISTORY			equ	39
-X_COMPLETE			equ	40
-X_COMPLETE_COMMAND		equ	41
-X_COMPLETE_FILE			equ	42
-X_COMPLETE_VARIABLE		equ	43
-X_COMPLETE_ENVIRONMENT_VARIABLE	equ	44
-X_COMPLETE_SHELL_VARIABLE	equ	45
-X_LIST				equ	46
-X_LIST_COMMAND			equ	47
-X_LIST_FILE			equ	48
-X_LIST_VARIABLE			equ	49
-X_LIST_ENVIRONMENT_VARIABLE	equ	50
-X_LIST_SHELL_VARIABLE		equ	51
-X_LIST_OR_EOF			equ	52
-X_DEL_FOR_CHAR_OR_LIST		equ	53
-X_DEL_FOR_CHAR_OR_LIST_OR_EOF	equ	54
-X_COPY_PREV_WORD		equ	55
+X_NO_OP				equ	2
+X_MACRO				equ	3
+X_PREFIX_1			equ	4
+X_PREFIX_2			equ	5
+X_ABORT				equ	6
+X_EOF				equ	7
+X_ACCEPT_LINE			equ	8
+X_QUOTED_INSERT			equ	9
+X_REDRAW			equ	10
+X_CLEAR_AND_REDRAW		equ	11
+X_SET_MARK			equ	12
+X_EXG_POINT_AND_MARK		equ	13
+X_SEARCH_CHARACTER		equ	14
+X_BOL				equ	15
+X_EOL				equ	16
+X_BACKWARD_CHAR			equ	17
+X_FORWARD_CHAR			equ	18
+X_BACKWARD_WORD			equ	19
+X_FORWARD_WORD			equ	20
+X_DEL_BACK_CHAR			equ	21
+X_DEL_FOR_CHAR			equ	22
+X_KILL_BACK_WORD		equ	23
+X_KILL_FOR_WORD			equ	24
+X_KILL_BOL			equ	25
+X_KILL_EOL			equ	26
+X_KILL_WHOLE_LINE		equ	27
+X_KILL_REGION			equ	28
+X_COPY_REGION			equ	29
+X_YANK				equ	30
+X_UPCASE_CHAR			equ	31
+X_DOWNCASE_CHAR			equ	32
+X_UPCASE_WORD			equ	33
+X_DOWNCASE_WORD			equ	34
+X_UPCASE_REGION			equ	35
+X_DOWNCASE_REGION		equ	36
+X_TRANSPOSE_CHARS		equ	37
+X_TRANSPOSE_WORDS		equ	38
+X_HISTORY_SEARCH_BACKWARD	equ	39
+X_HISTORY_SEARCH_FORWARD	equ	40
+X_COMPLETE			equ	41
+X_COMPLETE_COMMAND		equ	42
+X_COMPLETE_FILE			equ	43
+X_COMPLETE_VARIABLE		equ	44
+X_COMPLETE_ENVIRONMENT_VARIABLE	equ	45
+X_COMPLETE_SHELL_VARIABLE	equ	46
+X_LIST				equ	47
+X_LIST_COMMAND			equ	48
+X_LIST_FILE			equ	49
+X_LIST_VARIABLE			equ	50
+X_LIST_ENVIRONMENT_VARIABLE	equ	51
+X_LIST_SHELL_VARIABLE		equ	52
+X_LIST_OR_EOF			equ	53
+X_DEL_FOR_CHAR_OR_LIST		equ	54
+X_DEL_FOR_CHAR_OR_LIST_OR_EOF	equ	55
+X_COPY_PREV_WORD		equ	56
+X_UP_HISTORY			equ	57
+X_DOWN_HISTORY			equ	58
+X_QUIT_HISTORY			equ	59
 
 .text
 
@@ -206,14 +210,11 @@ print_bind:
 		movem.l	d3/a0,-(a7)
 		bsr	funcno
 		move.b	d0,d3
-		lsl.l	#2,d0
 		lea	key_function_name_table,a0
-		movea.l	(a0,d0.l),a0
-		bsr	puts
+		bsr	put_funcname
 		cmp.b	#X_MACRO,d3
 		bne	print_bind_done
 
-		bsr	put_space
 		moveq	#"'",d0
 		bsr	putc
 		bsr	keymap_index
@@ -232,6 +233,14 @@ print_bind_done:
 		movem.l	(a7)+,d3/a0
 		moveq	#0,d0
 		rts
+****************************************************************
+put_funcname:
+		lsl.l	#1,d0
+		move.w	(a0,d0.l),d0
+		lea	key_function_names_top,a0
+		lea	(a0,d0.w),a0
+		bsr	puts
+		bra	put_space
 ****************************************************************
 * print_all_bind - 現在のすべてのバインドを表示する
 *
@@ -257,11 +266,8 @@ print_all_bind_loop2:
 		bls	print_all_bind_continue
 print_all_bind_1:
 		move.l	d1,d0
-		lsl.l	#2,d0
 		lea	msg_prefixes,a0
-		move.l	(a0,d0.l),a0
-		bsr	puts
-		bsr	put_space
+		bsr	put_funcname
 		move.b	d2,d0
 		bsr	cputc
 		bsr	put_tab
@@ -394,11 +400,13 @@ keycode_ok:
 		moveq	#-1,d3				*  D3.B にファンクション番号を求める
 		lea	key_function_name_table,a2
 bind_find_func:
-		tst.l	(a2)
-		beq	bad_funcname
+		tst.w	(a2)
+		bmi	bad_funcname
 
 		addq.b	#1,d3
-		movea.l	(a2)+,a1
+		move.w	(a2)+,d0
+		lea	key_function_names_top,a1
+		lea	(a1,d0.w),a1
 		bsr	strcmp
 		bne	bind_find_func
 		*
@@ -473,72 +481,78 @@ bind_usage:
 
 .even
 key_function_name_table:
-		dc.l	name_self_insert
-		dc.l	name_error
-		dc.l	name_macro
-		dc.l	name_prefix_1
-		dc.l	name_prefix_2
-		dc.l	name_abort
-		dc.l	name_eof
-		dc.l	name_accept_line
-		dc.l	name_quoted_insert
-		dc.l	name_redraw
-		dc.l	name_clear_and_redraw
-		dc.l	name_set_mark
-		dc.l	name_exg_point_and_mark
-		dc.l	name_search_character
-		dc.l	name_bol
-		dc.l	name_eol
-		dc.l	name_backward_char
-		dc.l	name_forward_char
-		dc.l	name_backward_word
-		dc.l	name_forward_word
-		dc.l	name_del_back_char
-		dc.l	name_del_for_char
-		dc.l	name_kill_back_word
-		dc.l	name_kill_for_word
-		dc.l	name_kill_bol
-		dc.l	name_kill_eol
-		dc.l	name_kill_whole_line
-		dc.l	name_kill_region
-		dc.l	name_copy_region
-		dc.l	name_yank
-		dc.l	name_upcase_char
-		dc.l	name_downcase_char
-		dc.l	name_upcase_word
-		dc.l	name_downcase_word
-		dc.l	name_upcase_region
-		dc.l	name_downcase_region
-		dc.l	name_transpose_chars
-		dc.l	name_transpose_words
-		dc.l	name_up_history
-		dc.l	name_down_history
-		dc.l	name_complete
-		dc.l	name_complete_command
-		dc.l	name_complete_file
-		dc.l	name_complete_variable
-		dc.l	name_complete_environment_variable
-		dc.l	name_complete_shell_variable
-		dc.l	name_list
-		dc.l	name_list_command
-		dc.l	name_list_file
-		dc.l	name_list_variable
-		dc.l	name_list_environment_variable
-		dc.l	name_list_shell_variable
-		dc.l	name_list_or_eof
-		dc.l	name_del_for_char_or_list
-		dc.l	name_del_for_char_or_list_or_eof
-		dc.l	name_copy_prev_word
-		dc.l	0
+		dc.w	name_self_insert-key_function_names_top
+		dc.w	name_error-key_function_names_top
+		dc.w	name_no_op-key_function_names_top
+		dc.w	name_macro-key_function_names_top
+		dc.w	name_prefix_1-key_function_names_top
+		dc.w	name_prefix_2-key_function_names_top
+		dc.w	name_abort-key_function_names_top
+		dc.w	name_eof-key_function_names_top
+		dc.w	name_accept_line-key_function_names_top
+		dc.w	name_quoted_insert-key_function_names_top
+		dc.w	name_redraw-key_function_names_top
+		dc.w	name_clear_and_redraw-key_function_names_top
+		dc.w	name_set_mark-key_function_names_top
+		dc.w	name_exg_point_and_mark-key_function_names_top
+		dc.w	name_search_character-key_function_names_top
+		dc.w	name_bol-key_function_names_top
+		dc.w	name_eol-key_function_names_top
+		dc.w	name_backward_char-key_function_names_top
+		dc.w	name_forward_char-key_function_names_top
+		dc.w	name_backward_word-key_function_names_top
+		dc.w	name_forward_word-key_function_names_top
+		dc.w	name_del_back_char-key_function_names_top
+		dc.w	name_del_for_char-key_function_names_top
+		dc.w	name_kill_back_word-key_function_names_top
+		dc.w	name_kill_for_word-key_function_names_top
+		dc.w	name_kill_bol-key_function_names_top
+		dc.w	name_kill_eol-key_function_names_top
+		dc.w	name_kill_whole_line-key_function_names_top
+		dc.w	name_kill_region-key_function_names_top
+		dc.w	name_copy_region-key_function_names_top
+		dc.w	name_yank-key_function_names_top
+		dc.w	name_upcase_char-key_function_names_top
+		dc.w	name_downcase_char-key_function_names_top
+		dc.w	name_upcase_word-key_function_names_top
+		dc.w	name_downcase_word-key_function_names_top
+		dc.w	name_upcase_region-key_function_names_top
+		dc.w	name_downcase_region-key_function_names_top
+		dc.w	name_transpose_chars-key_function_names_top
+		dc.w	name_transpose_words-key_function_names_top
+		dc.w	name_history_search_backward-key_function_names_top
+		dc.w	name_history_search_forward-key_function_names_top
+		dc.w	name_complete-key_function_names_top
+		dc.w	name_complete_command-key_function_names_top
+		dc.w	name_complete_file-key_function_names_top
+		dc.w	name_complete_variable-key_function_names_top
+		dc.w	name_complete_environment_variable-key_function_names_top
+		dc.w	name_complete_shell_variable-key_function_names_top
+		dc.w	name_list-key_function_names_top
+		dc.w	name_list_command-key_function_names_top
+		dc.w	name_list_file-key_function_names_top
+		dc.w	name_list_variable-key_function_names_top
+		dc.w	name_list_environment_variable-key_function_names_top
+		dc.w	name_list_shell_variable-key_function_names_top
+		dc.w	name_list_or_eof-key_function_names_top
+		dc.w	name_del_for_char_or_list-key_function_names_top
+		dc.w	name_del_for_char_or_list_or_eof-key_function_names_top
+		dc.w	name_copy_prev_word-key_function_names_top
+		dc.w	name_up_history-key_function_names_top
+		dc.w	name_down_history-key_function_names_top
+		dc.w	name_quit_history-key_function_names_top
+		dc.w	-1
 
 .even
 msg_prefixes:
-		dc.l	msg_main
-		dc.l	name_prefix_1
-		dc.l	name_prefix_2
+		dc.w	msg_main-key_function_names_top
+		dc.w	name_prefix_1-key_function_names_top
+		dc.w	name_prefix_2-key_function_names_top
 
+key_function_names_top:
 name_self_insert:			dc.b	'self-insert',0
 name_error:				dc.b	'error',0
+name_no_op:				dc.b	'no-op',0
 name_macro:				dc.b	'macro',0
 name_prefix_1:				dc.b	'prefix-1',0
 name_prefix_2:				dc.b	'prefix-2',0
@@ -576,8 +590,8 @@ name_upcase_region:			dc.b	'upcase-region',0
 name_downcase_region:			dc.b	'downcase-region',0
 name_transpose_chars:			dc.b	'transpose-chars',0
 name_transpose_words:			dc.b	'transpose-words',0
-name_up_history:			dc.b	'up-history',0
-name_down_history:			dc.b	'down-history',0
+name_history_search_backward:		dc.b	'history-search-backward',0
+name_history_search_forward:		dc.b	'history-search-forward',0
 name_complete:				dc.b	'complete',0
 name_complete_command:			dc.b	'complete-command',0
 name_complete_file:			dc.b	'complete-file',0
@@ -593,6 +607,9 @@ name_list_environment_variable:		dc.b	'list-environment-variable',0
 name_list_shell_variable:		dc.b	'list-shell-variable',0
 name_list_or_eof:			dc.b	'list-or-eof',0
 name_copy_prev_word:			dc.b	'copy-prev-word',0
+name_up_history:			dc.b	'up-history',0
+name_down_history:			dc.b	'down-history',0
+name_quit_history:			dc.b	'quit-history',0
 
 msg_main:		dc.b	'        ',0
 
@@ -619,4 +636,3 @@ msg_usage_of_bind:
 str_option_a:		dc.b	'-a',0
 
 .end
-

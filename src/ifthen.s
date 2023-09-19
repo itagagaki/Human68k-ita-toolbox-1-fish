@@ -25,6 +25,19 @@
 .text
 
 ****************************************************************
+* test_statement_paren - ステートメントの ( ) をチェックする
+*
+* CALL
+*      A0       単語並び
+*      D0.W     単語数
+*
+* RETURN
+*      A0       ( の次の単語を指す
+*      A1       ) の次の単語を指す
+*      D0.W     ( ) の中の単語数
+*      D1.W     A1以降の単語数
+*      CCR      エラーならば NZ
+****************************************************************
 .xdef test_statement_paren
 
 test_statement_paren:
@@ -43,7 +56,7 @@ test_statement_paren:
 		beq	test_statement_paren_error
 
 		bsr	strfor1
-		exg	a0,a1				*  A1 : ')' の次の単語
+		exg	a0,a1				*  A1 : ) の次の単語
 		subq.w	#1,d0
 		exg	d0,d1				*  D1 : A1 以降の単語数
 
@@ -51,7 +64,7 @@ test_statement_paren:
 		subq.w	#2,d0				*  D0 : ()の中の単語数
 		beq	test_statement_paren_error
 
-		bsr	strfor1				*  A0 : '(' の次の単語
+		bsr	strfor1				*  A0 : ( の次の単語
 		cmp.w	d0,d0
 		rts
 
@@ -75,18 +88,19 @@ test_statement_paren_error:
 .xdef state_if
 
 state_if:
-		tst.b	if_status(a5)
-		bne	state_if_inc_level
-
 		movea.l	a1,a3
-		bsr	test_statement_paren
+		bsr	test_statement_paren		*  戻り値：A0/D0/A1/D1
 		bne	syntax_error
 
-		move.w	d1,d2
+		move.w	d1,d2				*  D2.W : ( ) に続く単語数
 		beq	empty_if
 
-		movea.l	a1,a2
-		movea.l	a0,a1
+		movea.l	a1,a2				*  A2 : ( ) に続く単語を指す
+		movea.l	a0,a1				*  A1 : ( の次の単語を指す
+
+		tst.b	if_status(a5)			*  現在
+		bne	state_if_1			*  FALSE状態である
+
 		lea	tmpargs,a0
 		bsr	subst_var_wordlist
 		bmi	syntax_error
@@ -97,27 +111,37 @@ state_if:
 
 		tst.w	d7
 		bne	expression_syntax_error
-
-		movea.l	a2,a0
-		move.w	d2,d7
+state_if_1:
+		move.w	d2,d7				*  D7.W : ( ) に続く単語数
+		movea.l	a2,a0				*  A0 : ( ) に続く単語を指す
 		lea	word_then,a1
 		bsr	strcmp
 		beq	state_if_then
+		*
+		*  then は無い
+		*
+		tst.b	if_status(a5)			*  現在
+		bne	state_if_recurse		*  FALSE状態である
 
-		tst.l	d1
-		beq	success
-		bra	state_if_set_status
+		tst.l	d1				*  式の値が
+		bne	state_if_recurse		*    真
+		bra	success				*    偽
 
 state_if_then:
-		subq.w	#1,d7
-		bne	syntax_error
+		*
+		*  then がある
+		*
+		subq.w	#1,d7				*  then の後に
+		bne	syntax_error			*  まだ単語があるならエラー
 
-		bsr	strfor1
-state_if_set_status:
-		tst.l	d1
-		seq	if_status(a5)
-		move.w	d7,d0
+		tst.b	if_status(a5)			*  現在
+		bne	state_if_inc_level		*  FALSE状態である
+
 		clr.w	if_level(a5)
+		tst.l	d1
+		seq	if_status(a5)			*  if_status := 式は0 ? -1 : 0
+state_if_recurse:
+		move.w	d7,d0
 		movea.l	a3,a1
 recurse:
 		tst.w	d0

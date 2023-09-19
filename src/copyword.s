@@ -23,7 +23,7 @@ loop:
 		move.b	(a1)+,d0
 		beq	done
 
-		bsr	isspace
+		bsr	isspace2
 		beq	done
 
 		move.b	d0,(a2)+
@@ -39,4 +39,3 @@ done:
 		rts
 
 .end
-

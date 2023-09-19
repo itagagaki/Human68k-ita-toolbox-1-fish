@@ -495,4 +495,3 @@ prefix_hex_lower:	dc.b	'0x',0
 prefix_hex_upper:	dc.b	'0X',0
 
 .end
-

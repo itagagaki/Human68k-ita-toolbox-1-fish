@@ -19,14 +19,19 @@
 
 memmovi:
 		move.l	d0,-(a7)
-		beq	done
-loop:
+		bra	low_continue
+
+high_loop:
+		swap	d0
+low_loop:
 		move.b	(a1)+,(a0)+
-		subq.l	#1,d0
-		bne	loop
-done:
+low_continue:
+		dbra	d0,low_loop
+
+		swap	d0
+		dbra	d0,high_loop
+
 		move.l	(a7)+,d0
 		rts
 
 .end
-

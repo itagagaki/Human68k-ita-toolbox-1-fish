@@ -7,7 +7,7 @@
 .include ../src/fish.h
 
 .xref issjis
-.xref isspace
+.xref isspace3
 .xref jstrchr
 .xref copy_wordlist
 .xref dup1
@@ -23,9 +23,8 @@
 .xref perror
 .xref fclose
 .xref remove
-.xref fork
+.xref fork_and_wait
 .xref manage_signals
-.xref set_status
 .xref too_many_words
 .xref too_long_word
 .xref too_long_line
@@ -33,9 +32,16 @@
 
 .xref tmpline
 .xref not_execute
+.xref mainjmp
+.xref stackp
 
 .text
 
+****************************************************************
+abort:
+		movea.l	stackp(a5),a7
+		movea.l	mainjmp(a5),a0
+		jmp	(a0)
 ****************************************************************
 unmatched:
 		moveq	#'`',d0
@@ -76,15 +82,18 @@ unmatched:
 *****************************************************************
 .xdef subst_command
 
-tmpfilename = -(((MAXPATH+1)+1)>>1<<1)
-tmpfiledesc = tmpfilename-4
-quote_char = tmpfiledesc-1
+sourcep = -4
+substtopp = sourcep-4
+tmpfiledesc = sourcep-4
+tmpfilename = tmpfiledesc-(((MAXPATH+1)+1)>>1<<1)
+quote_char = tmpfilename-1
 escape = quote_char-1
-pad = escape-0			*  偶数バウンダリに合わせる
+interrupted = escape-1
+pad = interrupted-1		*  偶数バウンダリに合わせる
 
 subst_command:
 		link	a6,#pad
-		movem.l	d2-d7/a2-a3,-(a7)
+		movem.l	d2-d7/a2,-(a7)
 		clr.b	quote_char(a6)			* クオート・フラグ
 		move.l	#-1,tmpfiledesc(a6)		* 一時ファイルデスクリプタ
 		move.w	#MAXWORDLEN,d2			* D2.W : 単語の長さの最大値
@@ -160,7 +169,15 @@ subst_command_search_bottom_not_sjis:
 
 		move.l	d0,tmpfiledesc(a6)
 		st	d7				*  first_flag = TRUE;
-		movea.l	a0,a3
+		move.l	a0,sourcep(a6)
+
+		sf	interrupted(a6)
+		move.l	mainjmp(a5),-(a7)
+		move.l	stackp(a5),-(a7)
+		move.l	a6,-(a7)
+		lea	substcom_interrupted(pc),a0
+		move.l	a7,stackp(a5)
+		move.l	a0,mainjmp(a5)
 substcom_skiploop:
 		move.l	tmpfiledesc(a6),d0
 		bsr	fgetc
@@ -257,7 +274,7 @@ is_separator:
 		beq	is_separator_return
 
 		tst.b	quote_char(a6)
-		beq	isspace
+		beq	isspace3
 
 		cmp.b	#LF,d0
 		beq	is_separator_return
@@ -266,12 +283,19 @@ is_separator:
 is_separator_return:
 		rts
 ****************
+substcom_interrupted:
+		movea.l	(a7),a6
+		st	interrupted(a6)
 substcom_input_done:
-		move.l	tmpfiledesc(a6),d0
-		lea	tmpfilename(a6),a0
-		bsr	erase_tmp
+		addq.l	#4,a7
+		move.l	(a7)+,stackp(a5)
+		move.l	(a7)+,mainjmp(a5)
+		bsr	subst_command_erase_tmp
+		tst.b	interrupted(a6)
+		bne	abort
+
 		move.l	#-1,tmpfiledesc(a6)
-		movea.l	a3,a0
+		movea.l	sourcep(a6),a0
 		bra	subst_command_loop
 ********************************
 subst_command_escape:
@@ -296,6 +320,7 @@ subst_command_dup1:
 		bra	subst_command_loop
 ********************************
 subst_command_done:
+		moveq	#0,d0
 		move.w	d4,d0
 		tst.b	d5
 		bne	subst_command_return
@@ -305,18 +330,15 @@ subst_command_done:
 		bsr	dup1
 		bmi	subst_command_return
 
+		moveq	#0,d0
 		move.w	d4,d0
 subst_command_return:
 		tst.l	tmpfiledesc(a6)
 		bmi	subst_command_return1
 
-		movem.l	d0/a0,-(a7)
-		move.l	tmpfiledesc(a6),d0
-		lea	tmpfilename(a6),a0
-		bsr	erase_tmp
-		movem.l	(a7)+,d0/a0
+		bsr	subst_command_erase_tmp
 subst_command_return1:
-		movem.l	(a7)+,d2-d7/a2-a3
+		movem.l	(a7)+,d2-d7/a2
 		unlk	a6
 		tst.l	d0
 		rts
@@ -325,6 +347,15 @@ subst_command_return1:
 subst_command_unmatched:
 		bsr	unmatched
 		bra	subst_command_return
+
+
+subst_command_erase_tmp:
+		movem.l	d0/a0,-(a7)
+		move.l	tmpfiledesc(a6),d0
+		lea	tmpfilename(a6),a0
+		bsr	erase_tmp
+		movem.l	(a7)+,d0/a0
+		rts
 ****************************************************************
 * subst_command_2 - コマンド置換をする
 *
@@ -355,12 +386,16 @@ subst_command_unmatched:
 *****************************************************************
 .xdef subst_command_2
 
-tmpfilename = -(((MAXPATH+1)+1)>>1<<1)
+sourcep = -4
+tmpfiledesc = sourcep-4
+tmpfilename = tmpfiledesc-(((MAXPATH+1)+1)>>1<<1)
+interrupted = tmpfilename-1
+pad = interrupted-1		*  偶数バウンダリに合わせる
 
 subst_command_2:
-		link	a6,#tmpfilename
-		movem.l	d7/a2-a4,-(a7)
-		moveq	#-1,d7				* D7.L : 一時ファイルデスクリプタ
+		link	a6,#pad
+		movem.l	a2-a3,-(a7)
+		move.l	#-1,tmpfiledesc(a6)
 subst_command_2_loop:
 		move.b	(a0)+,d0
 		beq	subst_command_2_done
@@ -392,18 +427,26 @@ subst_command_2_loop:
 		tst.b	not_execute(a5)
 		bne	subst_command_2_loop
 
-		move.l	d0,d7
-		movea.l	a0,a3
-		movea.l	a1,a4
+		move.l	d0,tmpfiledesc(a6)
+		move.l	a0,sourcep(a6)
+		movea.l	a1,a3
+
+		sf	interrupted(a6)
+		move.l	mainjmp(a5),-(a7)
+		move.l	stackp(a5),-(a7)
+		move.l	a6,-(a7)
+		lea	substcom2_interrupted(pc),a0
+		move.l	a7,stackp(a5)
+		move.l	a0,mainjmp(a5)
 subst_command_2_read_loop:
-		move.w	d7,d0
+		move.l	tmpfiledesc(a6),d0
 		bsr	fgetc
 		bmi	subst_command_2_read_done
 subst_command_2_read_loop_1:
 		cmp.b	#LF,d0
 		bne	subst_command_2_read_loop_dup1
 
-		move.w	d7,d0
+		move.l	tmpfiledesc(a6),d0
 		bsr	fgetc
 		bmi	subst_command_2_read_done0
 
@@ -420,7 +463,7 @@ subst_command_2_read_loop_dup1:
 		bra	subst_command_2_read_loop
 
 subst_command_2_read_done0:
-		cmpa.l	a4,a1
+		cmpa.l	a3,a1
 		bls	subst_command_2_read_done
 
 		cmpi.b	#CR,-1(a1)
@@ -428,12 +471,21 @@ subst_command_2_read_done0:
 
 		subq.l	#1,a1
 		addq.w	#1,d1
+		bra	subst_command_2_read_done
+
+substcom2_interrupted:
+		movea.l	(a7),a6
+		st	interrupted(a6)
 subst_command_2_read_done:
-		move.w	d7,d0
-		lea	tmpfilename(a6),a0
-		bsr	erase_tmp
-		moveq	#-1,d7
-		movea.l	a3,a0
+		addq.l	#4,a7
+		move.l	(a7)+,stackp(a5)
+		move.l	(a7)+,mainjmp(a5)
+		bsr	subst_command_2_erase_tmp
+		tst.b	interrupted(a6)
+		bne	abort
+
+		move.l	#-1,tmpfiledesc(a6)
+		movea.l	sourcep(a6),a0
 		bra	subst_command_2_loop
 
 subst_command_2_escape:
@@ -464,16 +516,12 @@ subst_command_2_done:
 		clr.b	(a1)+
 		moveq	#0,d0
 subst_command_2_return:
-		tst.l	d7
+		tst.l	tmpfiledesc(a6)
 		bmi	subst_command_2_return1
 
-		movem.l	d0/a0,-(a7)
-		move.w	d7,d0
-		lea	tmpfilename(a6),a0
-		bsr	erase_tmp
-		movem.l	(a7)+,d0/a0
+		bsr	subst_command_2_erase_tmp
 subst_command_2_return1:
-		movem.l	(a7)+,d7/a2-a4
+		movem.l	(a7)+,a2-a3
 		unlk	a6
 		tst.l	d0
 		rts
@@ -482,9 +530,23 @@ subst_command_2_return1:
 subst_command_2_unmatched:
 		bsr	unmatched
 		bra	subst_command_2_return
+
+
+subst_command_2_erase_tmp:
+		movem.l	d0/a0,-(a7)
+		move.l	tmpfiledesc(a6),d0
+		lea	tmpfilename(a6),a0
+		bsr	erase_tmp
+		movem.l	(a7)+,d0/a0
+		rts
 ****************************************************************
+save_stdout = -4
+pad = save_stdout-0
+
 subst_command_redirect:
-		movem.l	d1-d3,-(a7)
+		link	a6,#pad
+		move.l	#-1,save_stdout(a6)
+		movem.l	d1-d3/a2,-(a7)
 		move.l	d0,d3				*  D3.L : 単語数
 		tst.b	not_execute(a5)
 		bne	subst_command_redirect_1
@@ -492,69 +554,77 @@ subst_command_redirect:
 		exg	a0,a1
 		bsr	tmpfile
 		exg	a0,a1
-		bmi	subst_command_redirect_error
+		bmi	subst_command_redirect_error1
 
 		move.l	d0,d2				*  D2.L : ファイル・ハンドル
 		move.l	d0,d1
 		moveq	#1,d0				*  標準出力を
 		bsr	redirect			*  リダイレクト
-		bmi	subst_command_redirect_perror
+		bmi	subst_command_redirect_error2
+
+		move.l	d0,save_stdout(a6)
 subst_command_redirect_1:
-		movem.l	d0-d2,-(a7)
+		move.l	mainjmp(a5),-(a7)
+		move.l	stackp(a5),-(a7)
+		movem.l	d2/a1/a6,-(a7)
+		move.l	a7,stackp(a5)
+		lea	subst_command_redirect_interrupted(pc),a2
+		move.l	a2,mainjmp(a5)
 		move.w	d3,d0
 		moveq	#0,d1
 		move.b	not_execute(a5),d2
-		bsr	fork
-		move.l	d0,d3				*  D3.L : fork の status
-		movem.l	(a7)+,d0-d2
+		lea	subst_command_unredirect(pc),a1
+		bsr	fork_and_wait
+		movem.l	(a7)+,d2/a1/a6
+		move.l	(a7)+,stackp(a5)
+		move.l	(a7)+,mainjmp(a5)
+		moveq	#0,d0
 		tst.b	not_execute(a5)
-		bne	subst_command_redirect_2
-
-		move.l	d0,d1
-		moveq	#1,d0
-		bsr	unredirect
-subst_command_redirect_2:
-		move.l	d3,d0
-		beq	subst_command_fork_success
-
-		bsr	set_status
-		clr.b	d3
-		cmp.l	#$200,d3
-		beq	signal_raised
-
-		cmp.l	#$300,d3
-		beq	signal_raised
-subst_command_fork_success:
-		tst.b	not_execute(a5)
-		bne	subst_command_redirect_3
+		bne	subst_command_redirect_return
 
 		clr.w	-(a7)				* 先頭
 		clr.l	-(a7)				* 　まで
-		move.w	d2,-(a7)			* 　
+		move.w	d2,-(a7)			*
 		DOS	_SEEK				* 　シークする
 		addq.l	#8,a7
 		move.l	d2,d0				* ファイル・ハンドルを返す
 subst_command_redirect_return:
-		movem.l	(a7)+,d1-d3
+		movem.l	(a7)+,d1-d3/a2
+		unlk	a6
 		rts
 
-subst_command_redirect_3:
-		moveq	#0,d0
-		bra	subst_command_redirect_return
 
-subst_command_redirect_perror:
+subst_command_redirect_error2:
+		exg	a0,a1
 		bsr	perror
-subst_command_redirect_error:
+		move.l	d2,d0
+		bsr	erase_tmp
+		exg	a0,a1
+subst_command_redirect_error1:
 		moveq	#-4,d0
 		bra	subst_command_redirect_return
 
-signal_raised:
-		exg	d0,d2
-		exg	a0,a1
+
+subst_command_redirect_interrupted:
+		movem.l	(a7)+,d2/a1/a6
+		move.l	(a7)+,stackp(a5)
+		move.l	(a7)+,mainjmp(a5)
+		bsr	subst_command_unredirect
+		move.l	d0,-(a7)
+		move.l	d2,d0
+		movea.l	a1,a0
 		bsr	erase_tmp
-		exg	a0,a1
-		exg	d0,d2
-		bra	manage_signals
+		move.l	(a7)+,d0
+		bra	abort
+
+
+subst_command_unredirect:
+		movem.l	d0/a0,-(a7)
+		moveq	#1,d0
+		lea	save_stdout(a6),a0
+		bsr	unredirect
+		movem.l	(a7)+,d0/a0
+		rts
 ****************************************************************
 erase_tmp:
 		bsr	fclose
@@ -633,4 +703,3 @@ subst_wordlist_error:
 		bra	subst_wordlist_return
 
 .end
-

@@ -2,9 +2,9 @@
 
 
 .if EXTMALLOC
-	.xref MALLOC
-	.xref MFREE
-	.xref MFREEALL
+	.xref allocate_memory_reg_saved
+	.xref free_memory_reg_saved
+	.xref free_all_memory_reg_saved
 
 	.xref lake_top
 	.xref tmplake_top
@@ -37,7 +37,7 @@ xfree:
 free:
 		move.l	d0,-(a7)
 	.if EXTMALLOC
-		bsr	MFREE
+		bsr	free_memory_reg_saved
 	.else
 		DOS	_MFREE
 	.endif
@@ -87,7 +87,7 @@ xmalloc:
 		move.l	d0,-(a7)			*  要求量
 		move.w	#1,-(a7)			*  必要最小ブロックから
 	.if EXTMALLOC
-		bsr	MALLOC
+		bsr	allocate_memory_reg_saved
 	.else
 		DOS	_MALLOC
 	.endif
@@ -138,6 +138,28 @@ freet:
 		bsr	free
 		bra	swap_lake
 *****************************************************************
+* xfreetp - 確保した一時的メモリを解放する
+*
+* CALL
+*      A0     メモリ・ブロックの先頭アドレスが格納されているポインタのアドレス
+*
+* RETURN
+*      D0.L   エラー・コード
+*      (A0)   エラーでなければクリアされる
+*      CCR    TST.L D0
+*
+* DESCRIPTION
+*      (A0) == 0 のときには何もしない
+*      D0.L   エラー・コード
+*      CCR    TST.L D0
+*****************************************************************
+.xdef xfreetp
+
+xfreetp:
+		bsr	swap_lake
+		bsr	xfreep
+		bra	swap_lake
+*****************************************************************
 * free_all_tmp - 確保した一時的メモリをすべて解放する
 *
 * CALL
@@ -152,7 +174,7 @@ freet:
 free_all_tmp:
 	.if EXTMALLOC
 		bsr	swap_lake
-		bsr	MFREEALL
+		bsr	free_all_memory_reg_saved
 		bra	swap_lake
 	.else
 		*  代用品は無い (^^;
@@ -188,4 +210,3 @@ xmallocp_return:
 *****************************************************************
 
 .end
-

@@ -5,7 +5,7 @@
 
 .include ../src/var.h
 
-.xref strcmp
+.xref strchr
 .xref strfor1
 .xref putc
 .xref cputs
@@ -13,11 +13,10 @@
 .xref strip_quotes
 .xref expand_wordlist
 .xref fish_setenv
-.xref inport_path
-.xref rehash
 .xref too_many_args
 .xref ambiguous
-.xref word_path
+.xref syntax_error
+
 .xref str_nul
 
 .xref tmpargs
@@ -42,8 +41,8 @@ cmd_setenv:
 		beq	printenv		* 環境変数を表示する
 
 		lea	str_nul,a1
-		cmp.w	#2,d0
-		blo	cmd_setenv_set
+		subq.w	#2,d0
+		bcs	cmd_setenv_set
 		bhi	too_many_args		* エラー
 
 		movea.l	a0,a2			* A2 : 変数名
@@ -63,8 +62,16 @@ cmd_setenv:
 		movea.l	a2,a0			* A0 : 変数名
 cmd_setenv_set:
 		bsr	strip_quotes
+		move.l	a0,-(a7)
+		moveq	#'=',d0
+		bsr	strchr
+		movea.l	(a7)+,a0
+		bne	syntax_error
+
 		bsr	fish_setenv
 		beq	cmd_setenv_fail
+.if 0
+	*  これはやめた
 		*
 		*  環境変数 path が再設定されたのならば
 		*  シェル変数 path も再設定して rehash する
@@ -73,10 +80,11 @@ cmd_setenv_set:
 		bsr	strcmp
 		bne	cmd_setenv_success_return
 
-		jsr	inport_path
+		jsr	import_path
 		bne	cmd_setenv_return
 
 		bsr	rehash
+.endif
 		bra	cmd_setenv_success_return
 ****************
 printenv:
@@ -109,4 +117,3 @@ setenv_ambiguous:
 		bra	ambiguous
 
 .end
-
