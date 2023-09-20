@@ -1,0 +1,27 @@
+#  個人環境ファイル ~/[.%]login のサンプル
+#  Copyright(C)1993 by Itagaki Fumihiko
+
+# これは、あくまでもサンプルです。
+
+# このサンプルでどのような設定が行われるかを把握せずにこのまま使って「具合
+# が悪い」と言われる方がいらっしゃいますが、まずは FISH.DOC を読んで、しっ
+# かり自分用に調整しましょう。
+
+# ...と言っても、そういう方はこのコメントなど読まないかも :-<
+
+
+echo ''
+echo "fish  version $FISH_VERSION[1].$FISH_VERSION[2] patchlevel $FISH_VERSION[3]"
+echo "  by $FISH_AUTHOR"
+echo "$FISH_COPYRIGHT"
+echo ''
+
+set columns=96
+set ignoreeof
+set savedirs savehist=30
+
+set t=`\ls -l /dev/tty` >& NUL
+if ($status == 0 && $t[$#t] == CON) keyset	# ファンクションキーを定義する
+unset t
+
+TODAY

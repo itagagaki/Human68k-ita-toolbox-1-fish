@@ -1,22 +1,25 @@
 Title Title Title Title Title Title Title Title Title Title Title Title Title 
 le Title Title Title Title Title Title Title Title Title Title Title Title Tit
 Titl　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　tle 
-le T　　　　　　　　　　　ＭＡＬＬＯＣ　ＭＦＲＥＥ　　　　　　　　　　　　 Tit
-Titl　　　　　　　　　　　　　　for ｆｉｓｈ．ｘ　　　　　　　　　　　　　tle 
+le T　　　　　　　　　　　　Ｅｘｔ　ｍａｌｌｏｃ　　　　　　　　　　　　　 Tit
+Titl　　　　　　　　for fish.x, ksh.x, zsh.x and dis.x　　　　　　　　　　tle 
 le T　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　 Tit
-Titl　　　　　　　　　　　　　　９２／４／１６　　　　　　　　　　　　　　tle 
+Titl　　　　　　　　　　　　　　９３／３／２１　　　　　　　　　　　　　　tle 
 le T　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　 Tit
 Title Title Title Title Title Title Title Title Title Title Title Title Title 
 le Title Title Title Title Title Title Title Title Title Title Title Title Tit
 
 
 　fish.x の下請け用、allocate_memory_reg_saved free_memory_reg_saved 及び、
-ksh.x の下請け用 malloc と free です。
+ksh.x zsh.x 及び dis.x の下請け用 malloc , free と realloc です。
+
 
 　local BBS を使う（fish.x 専用）場合
 
 allocate_memory:
 allocate_memory_reg_saved:
+realloc_memory:
+realloc_memory_reg_saved:
 free_memory:
 free_memory_reg_saved:
 free_all_memory:
@@ -26,11 +29,13 @@ dumpout_memory_reg_saved:
 
 のアセンブララベルが使えます。
 
-　local BBS を使わず、ただひとつの lake chain を利用する（ksh.x 専用）場合
+　local BBS を使わず、ただひとつの lake chain を利用する（ksh.x 及び zsh.x 専用）
+場合
 
 C 言語の関数
 
 extern void *malloc(int size);
+extern void *realloc(void *ptr, int size);
 extern int free(void *ptr);
 
 が使えます。
@@ -62,6 +67,23 @@ allocate_memory:
 
 allocate_memory_reg_saved:
 	入出力に関係ないレジスタを保存する以外は、allocate_memory とおなじです。
+
+
+realloc_memory:
+	入力レジスタ
+		d0	リアロックしたいメモリーのアドレス
+		d1	必要なメモリーサイズ
+		a5	loca BSS へのポインタ
+	出力レジスタ
+		d0	確保されたメモリーのアドレス
+	破壊レジスタ
+		d1,d2,d3,d4,d5,d6,d7,a0,a1,a2,a3,a4,a6
+
+	d1 のサイズのメモリを確保し、d0 で与えられた領域からコピーしてきます。
+	オリジナルの領域は free_memory してしまいます。
+
+realloc_memory_reg_saved:
+	入出力に関係ないレジスタを保存する以外は、realloc_memory とおなじです。
 
 
 free_memory:
@@ -118,14 +140,15 @@ dumpout_memory_reg_saved:
 
 
 
-　Ｃインターフェース用に、_malloc _free も用意しました。それぞれ allocate_memory
-free_memory のＣ版です。
+　Ｃインターフェース用に、_malloc _realloc _free も用意しました。それぞれ
+allocate_memory realloc_memory free_memory のＣ版です。
 
 extern void *malloc(int size);
+extern void *realloc(void *ptr, int size);
 extern int free(void *ptr);
 
-というインターフェースになります。これらも、local BBS へのポインタをお互いに
-共有して、全体でひとつの lake chain をサポートします。
+というインターフェースになります。これらは local BBS へのポインタを内部でお互いに
+共有して、全体でひとつの lake chain をサポートします。ksh.x 及び zsh.x 専用です。
 
 
 －－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－
@@ -174,6 +197,43 @@ extern int free(void *ptr);
 ｖｅｒ０．１３
 
 　C ライブラリの名前付け間違い修正 mfree -> free
+
+ｖｅｒ０．１４
+
+　realloc を追加
+
+ｖｅｒ０．１５
+
+　shrink_lake のバグフィックス
+
+バグ説明
+　lake の最後の free pool を小さくして lake を縮める作業に失敗し、
+最後に broken free pool を作ってしまう事がある。
+
+バグ症状
+　これが起こると is_previous_free がハングアップする。
+
+バグ回避
+　shrink_lake にて、今まで ４Ｋbytes の倍数単位で lake を縮めていた
+のを、今後は、最後に free pool が ４Ｋbytes 以上有った時にそれを全部
+解放する様に変更した。そうすれば、２bytesの free pool (即ち broken
+free pool) は出来得ない。
+
+ｖｅｒ０．１６
+
+　realloc にて、1 ～ 2 バイトの領域を拡大しようとした場合に暴走する
+状況をフィックス
+
+ｖｅｒ０．１７
+
+　alloc, realloc でサイズ 0 の領域を要求されたら、サイズ 1 の領域を返す。
+
+ｖｅｒ０．１８
+
+　realloc のエンバグ（テストしていないことがばればれである。）を
+フィックス。
+
+
 
 
 　　　　　　　　　　　　　　Ｎifty-Ｓerve   NAH00720   Ｅｘｔ

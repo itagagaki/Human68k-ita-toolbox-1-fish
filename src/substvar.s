@@ -48,6 +48,7 @@
 .xref tmpgetlinebufp
 .xref var_line_eof
 .xref in_getline_x
+.xref flag_noundefined
 
 .text
 
@@ -417,7 +418,7 @@ selecter_fixed:
 expand_var_start:
 		move.l	a0,source_pointer(a6)
 		tst.b	not_execute(a5)
-		bne	expand_var_start_var
+		bne	expand_var_null
 
 		cmpi.b	#'0',special(a6)
 		bne	not_0
@@ -455,11 +456,12 @@ not_0:
 
 			movea.l	d0,a0
 			move.w	#MAXLINELEN,d1
-			movem.l	d4/a1,-(a7)
+			movem.l	d4/a1-a2,-(a7)
+			movea.l	a0,a2
 			suba.l	a1,a1
 			moveq	#0,d4
 			bsr	getline_stdin
-			movem.l	(a7)+,d4/a1
+			movem.l	(a7)+,d4/a1-a2
 			smi	var_line_eof(a5)
 			neg.l	d0
 			bmi	expand_var_buffer_over
@@ -537,6 +539,9 @@ expand_not_question:
 			tst.b	digit(a6)
 			bne	expand_var_null
 
+			tst.b	flag_noundefined(a5)
+			bne	expand_var_null
+
 			tst.b	in_getline_x(a5)
 			bne	expand_var_undefined_1
 
@@ -571,6 +576,9 @@ index2_fixed:
 		tst.b	digit(a6)
 		bne	expand_var_null
 out_of_range:
+		tst.b	flag_noundefined(a5)
+		bne	expand_var_null
+
 		lea	msg_subscript_out_of_range,a2
 		bra	expand_var_syntax_error_1
 

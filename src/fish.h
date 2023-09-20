@@ -17,8 +17,6 @@ MAXSWITCHLEVEL	equ	65535			*  switch のネストの最深  0以上65535以下  cshは無制限
 MAXLABELLEN	equ	31			*  goto/onintrラベルの有効先頭文字数
 MAXFUNCNAMELEN	equ	31			*  関数名の最大長
 
-DSTACKSIZE	equ	128			*  ディレクトリ・スタックの大きさ
-
 RND_POOLSIZE	equ	61			*  乱数プールサイズ
 
-V9		equ	0
+OUTBUF_SIZE	equ	4096			*  バッファリング出力バッファの大きさ

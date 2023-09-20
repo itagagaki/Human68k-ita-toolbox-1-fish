@@ -54,7 +54,7 @@ cmd_repeat:
 		bls	repeat_too_few_args
 
 		lea	str_oo,a1
-		bsr	strcmp
+		jsr	strcmp
 		beq	repeat_oo
 
 		jsr	atou
@@ -73,7 +73,7 @@ cmd_repeat:
 		bra	start
 
 repeat_oo:
-		bsr	strfor1
+		jsr	strfor1
 		st	d5
 start:
 		move.w	d3,d0
@@ -83,7 +83,7 @@ start:
 
 		move.l	a0,-(a7)
 		move.l	d1,d0
-		bsr	memmovi
+		jsr	memmovi
 		movea.l	(a7)+,a1
 		move.w	d3,d0
 loop:
@@ -110,6 +110,6 @@ repeat_too_few_args:
 .data
 
 str_oo:		dc.b	'oo',0
-msg_usage:	dc.b	'{<回数>|oo} <コマンド名> [ <引数> ... ]',0
+msg_usage:	dc.b	'{<回数>|oo} <コマンド名> [<引数リスト>]',0
 
 .end

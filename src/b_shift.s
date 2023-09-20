@@ -42,7 +42,7 @@ shift_var:
 		bsr	get_var_value
 		beq	no_more_words
 
-		bsr	strfor1
+		jsr	strfor1
 		movea.l	a0,a1
 		subq.w	#1,d0
 		movea.l	a2,a0
@@ -58,4 +58,3 @@ no_more_words:
 msg_no_more_words:	dc.b	'’PŒê‚Í‚à‚¤‚ ‚è‚Ü‚¹‚ñ',0
 
 .end
-

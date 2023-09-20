@@ -8,6 +8,9 @@
 .xref fish_getenv
 .xref get_var_value
 
+.xref flag_refersysroot
+
+
 .text
 
 *****************************************************************
@@ -29,7 +32,7 @@ scan_drive_name:
 		cmpi.b	#':',1(a0)
 		bne	scan_drive_name_return
 
-		bsr	toupper
+		jsr	toupper
 		cmp.b	d0,d0
 scan_drive_name_return:
 		rts
@@ -65,6 +68,46 @@ make_sys_pathname_1:
 		bsr	cat_pathname
 		movem.l	(a7)+,d0/a0-a3
 		rts
+*****************************************************************
+* isfullpathx - パス名がドライブ名を含むフルパス名であるか
+*               どうかを検査する
+*
+* CALL
+*      A0     パス名の先頭アドレス
+*
+* RETURN
+*      CCR    フルパス名ならば EQ
+*****************************************************************
+.xdef isfullpathx
+.xdef isfullpath
+
+isfullpathx:
+		tst.b	flag_refersysroot(a5)
+		beq	isfullpath
+
+		cmpi.b	#'/',(a0)
+		bne	isfullpath
+
+		cmp.b	d0,d0
+		rts
+
+isfullpath:
+		tst.b	(a0)
+		beq	isfullpath_false
+
+		cmpi.b	#':',1(a0)
+		bne	isfullpath_return
+
+		cmpi.b	#'/',2(a0)
+		beq	isfullpath_return
+
+		cmpi.b	#'\',2(a0)
+isfullpath_return:
+		rts
+
+isfullpath_false:
+		cmpi.b	#1,(a0)
+		bra	isfullpath_return
 *****************************************************************
 .data
 

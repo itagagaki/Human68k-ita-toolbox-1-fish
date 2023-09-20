@@ -103,27 +103,35 @@ state_case:
 		bsr	subst_var_wordlist
 		bmi	return				*  D0.L != 0
 
+		move.w	d0,d1
 		tst.b	switch_status(a5)
 		bpl	success
 
-		tst.w	d0
-		beq	success
+		bra	state_switch_start
 
+state_switch_loop:
 		bsr	strlen
-		subq.l	#1,d0
-		bcs	success
+		lea	1(a0,d0.l),a2
+		tst.l	d0
+		beq	state_switch_continue
 
-		cmpi.b	#':',(a0,d0.l)
+		cmpi.b	#':',-2(a2)
 		bne	state_case_no_colon
 
-		clr.b	(a0,d0.l)
+		clr.b	-2(a2)
 state_case_no_colon:
 		lea	tmpword1,a1
 		bsr	escape_quoted
 		lea	switch_string(a5),a0
 		moveq	#0,d0
 		bsr	strpcmp
-		bne	success
+		beq	clear_switch_status
+state_switch_continue:
+		movea.l	a2,a0
+state_switch_start:
+		dbra	d1,state_switch_loop
+		bra	success
+
 clear_switch_status:
 		clr.b	switch_status(a5)
 		bra	success

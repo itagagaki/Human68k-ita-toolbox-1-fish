@@ -10,6 +10,9 @@
 .xref utoa
 .xref strfor1
 .xref strcmp
+.xref isopt
+.xref start_output
+.xref end_output
 .xref putc
 .xref puts
 .xref cputs
@@ -80,6 +83,7 @@ parse_range_done:
 		or.l	d3,d0
 		bne	b_bad_arg
 
+		bsr	start_output
 		moveq	#3,d6				*  イベント番号や時刻は出力しない
 		movea.l	history_top(a5),a0
 output_region_loop:
@@ -101,14 +105,10 @@ history_normal:
 		sf	d5				*  D5 : -r : reverse
 		moveq	#0,d6				*  D6 : bit0=noeventno, bit1=notime
 parse_option_loop1:
-		tst.w	d1
-		beq	history_default
-
-		cmpi.b	#'-',(a0)
+		exg	d0,d1
+		bsr	isopt
+		exg	d0,d1
 		bne	parse_option_done
-
-		subq.w	#1,d1
-		addq.l	#1,a0
 parse_option_loop2:
 		move.b	(a0)+,d0
 		beq	parse_option_loop1
@@ -157,6 +157,7 @@ history_check_n:
 history_inf:
 		move.l	#$ffffffff,d0
 history_start:
+		bsr	start_output
 		movea.l	history_bot(a5),a0
 		cmpa.l	#0,a0
 		beq	history_done
@@ -195,6 +196,7 @@ prhist_rev_loop:
 		bra	prhist_rev_loop
 
 history_done:
+		bsr	end_output
 		moveq	#0,d0
 		rts
 

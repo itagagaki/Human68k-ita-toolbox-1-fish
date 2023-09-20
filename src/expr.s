@@ -21,6 +21,7 @@
 *     -s <name>
 *     -v <name>
 *     -l <name>
+*     -x <name>
 *     -c <name>
 *     -b <name>
 *     -i <name>
@@ -85,6 +86,7 @@ E_DIV0		equ	3
 termsize equ MAXWORDLEN*2+1
 
 .xref isdigit
+.xref isalpha
 .xref toupper
 .xref itoa
 .xref strlen
@@ -99,7 +101,7 @@ termsize equ MAXWORDLEN*2+1
 .xref strip_excessive_slashes
 .xref tfopenx
 .xref fclose
-.xref isblkdev
+.xref ischardev
 .xref stat
 .xref lgetmode
 .xref xmalloct
@@ -761,6 +763,10 @@ primary_not_command:
 **
 		cmp.b	#'-',d0
 		bne	primary_not_file_examination
+
+		move.b	1(a0),d0
+		bsr	isalpha
+		bne	primary_not_file_examination
 		*{
 			lea	1(a0),a4
 			tst.b	(a4)
@@ -943,7 +949,7 @@ primary_devicetype:
 			bsr	open_device
 			bmi	success
 
-			jsr	isblkdev
+			jsr	ischardev
 			bra	primary_device_1
 
 primary_isatty:

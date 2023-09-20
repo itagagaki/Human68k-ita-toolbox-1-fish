@@ -7,7 +7,6 @@
 .xref strcpy
 .xref stpcpy
 .xref strfor1
-.xref sltobsl
 .xref rehash
 .xref setvar
 .xref get_var_value
@@ -33,6 +32,7 @@
 .xref histchar2
 .xref wordchars
 .xref tmpargs
+.xref hash_flag
 
 .text
 
@@ -79,12 +79,12 @@ set_shellvar:
 		beq	set_histchars_done
 
 		movea.l	a2,a0
-		bsr	scanchar2
+		jsr	scanchar2
 		beq	set_histchars_done
 
 			move.w	d0,histchar1(a5)
 
-		bsr	scanchar2
+		jsr	scanchar2
 		beq	set_histchars_done
 
 			move.w	d0,histchar2(a5)
@@ -112,8 +112,11 @@ not_wordchars:
 		bsr	strcmp
 		bne	not_path
 
-		bsr	rehash
+		tst.b	hash_flag(a5)
+		beq	not_rehash
 
+		bsr	rehash
+not_rehash:
 		movea.l	a2,a0				*  A0 : シェル変数 path の値
 		movea.l	tmpargs(a5),a2			*  A2 : バッファ
 		clr.b	(a2)
@@ -140,14 +143,13 @@ export_build_path_continue:
 		dbra	d1,export_build_path_loop
 
 		movea.l	tmpargs(a5),a0
-		bsr	sltobsl
 		lea	word_path,a1
 		bra	set_svar_setenv
 ****************
 not_path:
-		lea	export_table-6,a3
+		lea	export_table-4,a3
 compare_export_loop:
-		addq.l	#6,a3
+		addq.l	#4,a3
 		move.l	(a3)+,d0
 		beq	set_svar_return0
 
@@ -162,10 +164,6 @@ compare_export_loop:
 
 		movea.l	a2,a1				*  A1 : シェル変数の値
 		bsr	strcpy
-		tst.w	4(a3)
-		beq	do_export
-
-		bsr	sltobsl
 do_export:
 		movea.l	(a3),a1				*  A1 : 環境変数名
 set_svar_setenv:
@@ -244,27 +242,21 @@ set_shellvar_num:
 export_table:
 		dc.l	word_temp
 		dc.l	word_temp
-		dc.w	1
 
 		dc.l	word_home
 		dc.l	word_upper_home
-		dc.w	0
 
 		dc.l	word_user
 		dc.l	word_upper_user
-		dc.w	0
 
 		dc.l	word_term
 		dc.l	word_upper_term
-		dc.w	0
 
 		dc.l	word_columns
 		dc.l	word_upper_columns
-		dc.w	0
 
 		dc.l	word_shlvl
 		dc.l	word_upper_shlvl
-		dc.w	0
 
 		dc.l	0
 

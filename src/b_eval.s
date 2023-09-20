@@ -39,7 +39,7 @@ build_line_loop:
 
 		clr.b	-1(a0)
 		movea.l	(a7)+,a0
-		sf	d0
+		sf	d7
 		jsr	do_line_substhist		*!! Ä‹A !!*
 		jsr	free_current_argbuf
 return_0:

@@ -56,6 +56,7 @@ clobber::
 	cd $(TOP)\prg || $(MAKE) clobber
 
 backup::
+	cd $(TOP)
 	@$(BACKUP) Makefile $(BACKUPDIR)
 	@$(BACKUP) src\*.* $(BACKUPDIR)\src
 	@$(BACKUP) include\*.* $(BACKUPDIR)\include
@@ -67,9 +68,11 @@ backup::
 	@$(BACKUP_R) extlib\*.* $(BACKUPDIR)\extlib
 
 backup_doc::
-	@$(BACKUP) doc\*.* $(BACKUPDIR)\doc
+	cd $(TOP)\doc
+	@$(BACKUP) *.* $(BACKUPDIR)\doc
 
 backup_misc::
+	cd $(TOP)
 	@$(BACKUP) FISH_MailList $(BACKUPDIR)\misc
 	@$(BACKUP) Mail.LZH $(BACKUPDIR)\misc
 	@$(BACKUP) NewsLetter.Lzh $(BACKUPDIR)\misc

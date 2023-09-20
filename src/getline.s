@@ -71,17 +71,18 @@
 .xref open_passwd
 .xref fgetpwent
 .xref subst_var
-.xref expand_tilde
+.xref subst_directory
 .xref contains_dos_wildcard
 .xref fair_pathname
 .xref get_fair_pathname
-.xref normalize_pathname
 .xref headtail
 .xref cat_pathname
-.xref isfullpath
+.xref isfullpathx
 .xref is_dot
 .xref stat
 .xref findvar
+.xref do_line_substhist
+.xref which
 .if 0
 .xref cmd_eval
 .xref find_function
@@ -95,7 +96,9 @@
 .xref getcwdx
 .xref print_dirstack
 .xref is_histchar_canceller
+.xref xmalloc
 .xref xmalloct
+.xref free
 .xref xfreetp
 .xref minmaxul
 .xref drvchkp
@@ -120,9 +123,10 @@
 .xref tmpword2
 .xref tmppwline
 .xref tmppwbuf
-.xref pathname_buf
-.xref doscall_pathname
 
+.xref mainjmp
+.xref stackp
+.xref line
 .xref history_top
 .xref history_bot
 .xref current_eventno
@@ -149,11 +153,11 @@
 .xref flag_matchbeep
 .xref flag_noalias
 .xref flag_nobeep
+.xref flag_noglob
 .xref flag_nonullcommandc
 .xref flag_recexact
 .xref flag_reconlyexec
 .xref flag_showdots
-.xref flag_symlinks
 .xref flag_usegets
 .xref last_congetbuf
 .xref keymap
@@ -167,16 +171,12 @@
 .text
 
 *****************************************************************
-* getline
+* getline - line に 1論理行を入力する
 *
 * CALL
-*      A0     入力バッファの先頭
-*      D1.W   入力最大バイト数（32767以下．最後のNUL分は勘定しない）
 *      D2.B   0 ならばコメントを削除しない
 *      D3.B   0 ならば行継続を認識しない
 *      A1     プロンプト出力ルーチンのエントリ・アドレス
-*      A2     物理行入力ルーチンのエントリ・アドレス
-*      D7.L   (A2) への引数 D0.L
 *
 * RETURN
 *      D0.L   0:入力有り，-1:EOF，-2: 入力エラー+EOF，1:入力エラー
@@ -187,14 +187,16 @@
 
 getline:
 		movem.l	d3-d6/a0-a4,-(a7)
+		lea	line(a5),a2
+		move.w	#MAXLINELEN,d1
 		moveq	#0,d4				*  D4.B : 全体クオート・フラグ
+		movea.l	a2,a0
 getline_more:
 		**
 		**  １物理行を入力する
 		**
 		movea.l	a0,a4
-		move.l	d7,d0
-		jsr	(a2)
+		bsr	getline_phigical
 		bmi	getline_eof
 		bne	getline_return
 
@@ -396,7 +398,7 @@ getline_over:
 * CALL
 *      A0     行バッファ入力ポインタ
 *      A1     プロンプト出力ルーチンのエントリ・アドレス
-*      D0.W   入力ファイル・ハンドル
+*      A2     行バッファ先頭アドレス
 *      D1.W   入力最大バイト数（32767以下．最後のNUL分は勘定しない）
 *
 * RETURN
@@ -415,7 +417,7 @@ getline_phigical:
 		bra	getline_phigical_1
 
 getline_phigical_stdin:
-		bsr	getline_file
+		bsr	getline_stdin
 getline_phigical_1:
 		beq	getline_phigical_return
 		bpl	too_long_line
@@ -491,13 +493,12 @@ getline_script_sub_eof:
 
 getline_stdin:
 		moveq	#0,d0
-getline_file:
+		bsr	put_prompt
 		movem.l	d0,-(a7)
 		bsr	isnotttyin
 		movem.l	(a7)+,d0
 		beq	fgets
 
-		bsr	put_prompt
 		tst.b	flag_usegets(a5)
 		beq	getline_x
 getline_standard_console:
@@ -550,7 +551,10 @@ getline_console_over:
 put_prompt_ptr = -4
 macro_ptr = put_prompt_ptr-4
 line_top = macro_ptr-4
-bottomline = line_top-4
+global_line_top = line_top-4
+save_line = global_line_top-4
+save_length = save_line-4
+bottomline = save_length-4
 x_histptr = bottomline-4
 input_handle = x_histptr-4
 mark = input_handle-2
@@ -570,6 +574,7 @@ getline_x:
 		move.w	d0,input_handle(a6)
 		move.l	a0,line_top(a6)
 		move.l	a1,put_prompt_ptr(a6)
+		move.l	a2,global_line_top(a6)
 		clr.l	bottomline(a6)
 		clr.l	macro_ptr(a6)
 		clr.w	nbytes(a6)
@@ -695,6 +700,56 @@ x_macro:
 		lsl.l	#2,d2
 		move.l	(a0,d2.l),macro_ptr(a6)
 		bra	getline_x_1
+********************************
+*  eval-command
+********************************
+x_eval_command:
+		lea	x_eval_command_sub(pc),a2
+x_eval_command_1:
+		moveq	#0,d0
+		move.w	nbytes(a6),d0
+		add.l	line_top(a6),d0
+		sub.l	global_line_top(a6),d0
+		move.l	d0,save_length(a6)
+		bsr	xmalloc
+		beq	x_error				*  メモリが足りない
+
+		movem.l	a0-a1,-(a7)
+		move.l	d0,save_line(a6)
+		movea.l	d0,a0
+		movea.l	global_line_top(a6),a1
+		move.l	save_length(a6),d0
+		bsr	memmovi
+		movem.l	(a7)+,a0-a1
+		movem.l	d1/a4/a6,-(a7)
+		move.l	mainjmp(a5),-(a7)
+		move.l	stackp(a5),-(a7)
+		move.l	a0,-(a7)
+		lea	x_eval_command_done(pc),a0
+		move.l	a0,mainjmp(a5)
+		movea.l	(a7)+,a0
+		move.l	a7,stackp(a5)
+		bsr	eol_newline
+		jsr	(a2)
+x_eval_command_done:
+		move.l	(a7)+,stackp(a5)
+		move.l	(a7)+,mainjmp(a5)
+		movem.l	(a7)+,d1/a4/a6
+		movea.l	global_line_top(a6),a0
+		movea.l	save_line(a6),a1
+		move.l	save_length(a6),d0
+		move.l	a1,-(a7)
+		bsr	memmovi
+		move.l	(a7)+,d0
+		bsr	free
+		bra	x_redraw_1
+
+x_eval_command_sub:
+		lea	keymacromap(a5),a0
+		lsl.l	#2,d2
+		movea.l	(a0,d2.l),a0
+		sf	d7
+		bra	do_line_substhist
 ********************************
 *  prefix-1
 ********************************
@@ -988,17 +1043,13 @@ x_copy_string:
 		move.l	d0,d2
 x_copy:
 		bsr	open_columns
-		bcs	x_over
+		bcs	x_error
 
 		move.l	d2,d0
 		move.l	a0,-(a7)
 		bsr	memmovi
 		movea.l	(a7)+,a0
 		bsr	post_insert_job
-		bra	getline_x_1
-
-x_over:
-		bsr	beep
 		bra	getline_x_1
 ********************************
 *  copy-prev-word
@@ -1210,22 +1261,46 @@ x_transpose_words:
 		bra	x_error
 
 x_transpose_word_ok:
+*  ROOTS  ROCK REGGAE
+*         ~カーソル
+*         ^ポインタ
 		move.w	d2,d4				*  D4.W : 右の単語のバイト数
 		bsr	move_word_backward
+*  ROOTS  ROCK REGGAE
+*  ~カーソル
+*  ^ポインタ
 		move.w	d2,d5				*  D5.W : 左の単語＋スペースのバイト数
 		move.l	d3,d6				*  D6.L : 左の単語＋スペースの文字幅
 		move.w	point(a6),-(a7)
 		bsr	forward_word			*  D2.W : 左の単語のバイト数
-		move.w	(a7),point(a6)
+*  ROOTS  ROCK REGGAE
+*  ~カーソル
+*       ^ポインタ
+		move.w	(a7)+,point(a6)
+*  ROOTS  ROCK REGGAE
+*  ~カーソル
+*  ^ポインタ
 		exg	d2,d5
 		bsr	transpose
+*  ROCKROOTS   REGGAE
+*              ~カーソル
+*              ^ポインタ
 		sub.w	d2,point(a6)
+*  ROCKROOTS   REGGAE
+*              ~カーソル
+*      ^ポインタ
 		move.l	d6,d0
 		bsr	backward_cursor
+*  ROCKROOTS   REGGAE
+*      ~カーソル
+*      ^ポインタ
 		move.w	d2,d4
 		sub.w	d5,d4
 		move.w	d5,d2
 		bsr	transpose
+*  ROCK  ROOTS REGGAE
+*             ~カーソル
+*             ^ポインタ
 		bra	getline_x_1
 ********************************
 transpose:
@@ -1437,7 +1512,7 @@ x_history_search_backward_found:
 		beq	x_history_search_backward_more
 
 save_and_insert_history:
-		move.l	d4,d0
+		tst.l	d4
 		bpl	insert_history
 
 		lea	bottomline(a6),a0
@@ -1487,7 +1562,7 @@ copy_history_dup_word_loop:
 		beq	copy_history_continue
 
 		cmp.w	histchar1(a5),d0
-		bne	copy_history_not_histchar
+		bne	copy_history_dup_1
 
 		move.b	(a1),d0
 		bsr	is_histchar_canceller
@@ -1500,15 +1575,10 @@ copy_history_dup_word_loop:
 		addq.w	#1,nbytes(a6)
 copy_history_dup_histchar:
 		move.w	histchar1(a5),d0
-		bra	copy_history_dup_1
-
-copy_history_not_histchar:
-		cmp.w	#'\',d0
-		beq	copy_history_dup_escape
 copy_history_dup_1:
 		cmp.w	#$100,d0
-		blo	copy_history_dup_1_1
-
+		blo	copy_history_dup_1byte
+copy_history_dup_2byte:
 		subq.w	#1,d1
 		bcs	copy_history_over
 
@@ -1517,7 +1587,7 @@ copy_history_dup_1:
 		move.b	d0,(a0)+
 		move.w	(a7)+,d0
 		addq.w	#1,nbytes(a6)
-copy_history_dup_1_1:
+copy_history_dup_1byte:
 		subq.w	#1,d1
 		bcs	copy_history_over
 
@@ -1525,17 +1595,6 @@ copy_history_dup_1_1:
 		addq.w	#1,nbytes(a6)
 		bra	copy_history_dup_word_loop
 
-copy_history_dup_escape:
-		subq.w	#1,d1
-		bcs	copy_history_over
-
-		move.b	d0,(a0)+
-		addq.w	#1,nbytes(a6)
-
-		exg	a0,a1
-		bsr	scanchar2
-		exg	a0,a1
-		bne	copy_history_dup_1
 copy_history_continue:
 		dbra	d2,copy_history_loop
 copy_history_done:
@@ -1603,7 +1662,6 @@ histcmp_bottom:
 		beq	histcmp_bottom_fail
 
 		movea.l	d2,a1
-		move.l	d0,d3
 		bsr	memcmp
 histcmp_bottom_return:
 		rts
@@ -1725,93 +1783,34 @@ history_search_return:
 		movem.l	(a7)+,d0-d2/d4/a0/a2
 		rts
 ********************************
+*  which-command
+********************************
+x_which_command:
+		bsr	filec_parse_line
+		bmi	x_error
 
-FLAGBIT_LIST       = 0
-FLAGBIT_RAW        = 1
-FLAGBIT_NOSUBSTDIR = 2
+		movea.l	a2,a0
+		bsr	strlen
+		beq	x_error
 
-FLAGX_COMPL      = 0
-FLAGX_LIST       = 1<<FLAGBIT_LIST
-FLAGX_COMPL_RAW  = 1<<FLAGBIT_RAW
-FLAGX_LIST_RAW   = (1<<FLAGBIT_LIST)|(1<<FLAGBIT_RAW)
-
-PROP_FILE        = 0
-PROP_DIRECTORY   = 1
-PROP_COMMAND     = 2
-PROP_USER        = 3
-PROP_SVAR        = 4
-PROP_ENVIRON     = 5
-PROP_ALIAS       = 6
-PROP_FUNCTION    = 7
-PROP_BINDING     = 8
-PROP_COMPLETION  = 9
-
-********************************
-*  list
-********************************
-x_list:
-.if V9
-		moveq	#FLAGX_LIST,d7
-		bra	x_filec_or_list
-.endif
-********************************
-*  list-raw
-********************************
-x_list_raw:
-		moveq	#FLAGX_LIST_RAW,d7
-		bra	x_filec_or_list
-********************************
-*  complete
-********************************
-x_complete:
-.if V9
-		moveq	#FLAGX_COMPL,d7
-		bra	x_filec_or_list
-.endif
-********************************
-*  complete-raw
-********************************
-x_complete_raw:
-		moveq	#FLAGX_COMPL_RAW,d7
-
-filec_statbuf = -STATBUFSIZE
-filec_file_search_path = filec_statbuf-(((MAXPATH+1)+1)>>1<<1)
-filec_current_program = filec_file_search_path-4
-filec_current_statement = filec_current_program-4
-filec_action = filec_current_statement-4
-filec_pattern = filec_action-4
-filec_program_suffix = filec_pattern-4
-filec_program_delimiter = filec_program_suffix-2
-filec_branch_time = filec_program_delimiter-2
-filec_fignore = filec_branch_time-2
-filec_fignore_list = filec_fignore-4
-filec_files_path_ptr = filec_fignore_list-4
-filec_files_path_count = filec_files_path_ptr-2
-filec_files_builtin_ptr = filec_files_path_count-4
-filec_buffer_ptr = filec_files_builtin_ptr-4
-filec_buffer_free = filec_buffer_ptr-2
-filec_command_top = filec_buffer_free-4
-filec_argno = filec_command_top-4
-filec_patlen = filec_argno-4
-filec_maxlen = filec_patlen-4
-filec_minlen = filec_maxlen-4
-filec_minlen_precious = filec_minlen-4
-filec_numentry = filec_minlen_precious-2
-filec_numprecious = filec_numentry-2
-filec_suffix = filec_numprecious-1
-filec_exact_suffix = filec_suffix-1
-filec_flag = filec_exact_suffix-1
-filec_quote = filec_flag-1
-filec_command_position = filec_quote-1
-filec_file_findmode = filec_command_position-1
-filec_file_path_fullpath = filec_file_findmode-1
-filec_file_path_dot = filec_file_path_fullpath-1
-filec_case_independent = filec_file_path_dot-1
-filec_pad = filec_case_independent-1
-
-x_filec_or_list:
-		link	a4,#filec_pad
-		move.b	d7,filec_flag(a4)
+		lea	which(pc),a2
+		bra	x_eval_command_1
+****************************************************************
+* filec_parse_line
+*
+* CALL
+*      none
+*
+* RETURN
+*      A2     対象となる単一コマンドの先頭
+*      D2.L   対象となる単一コマンドの単語数
+*      D3.B   補完候補区分
+*             0 : files
+*             1 : statements ->
+*             2 : aliases -> functions -> $path
+*      D0/D4/A0-A1   破壊
+****************************************************************
+filec_parse_line:
 	*
 	*  物理行を単語に分解する
 	*
@@ -1826,23 +1825,21 @@ x_filec_or_list:
 		bsr	make_wordlist
 		move.l	(a7)+,d1
 		move.b	d4,(a0,d3.w)
-		move.l	d0,d2				*  D2.L : 物理行全体の単語数
-		bmi	filec_error
+		move.l	d0,d4				*  D4.L : 物理行全体の単語数
+		bmi	filec_parse_line_error
 	*
 	*  コマンドの先頭を見つける
 	*  complete_raw での候補（ファイルかコマンドか）を決める
 	*
 		movea.l	tmpargs(a5),a0
 filec_scan_statement:
-		moveq	#1,d0			*  1 : statement->alias->function->commandfiles
+		moveq	#1,d0
 filec_scan_command:
-		move.l	a0,filec_command_top(a4)
-		move.l	d2,filec_argno(a4)
+		movea.l	a0,a2				*  A2 : 単一コマンドの先頭
+		move.l	d4,d2				*  D2.L : A2 以降の単語数
 filec_scan_words:
-		move.b	d0,filec_command_position(a4)	*  0 : files
-							*  1 : statements ->
-							*  2 : aliases -> functions -> $path
-		subq.l	#1,d2
+		move.b	d0,d3				*  D3.B : 候補区分
+		subq.l	#1,d4
 		beq	filec_scan_done
 
 		move.b	(a0)+,d0
@@ -1882,12 +1879,111 @@ filec_scan_paren:
 		tst.b	(a0)+
 		bne	filec_scan_next
 
-		tst.b	filec_command_position(a4)
+		tst.b	d3
 		beq	filec_scan_args
 		bra	filec_scan_statement
 
 filec_scan_done:
-		subq.l	#1,filec_argno(a4)
+		subq.l	#1,d2
+		moveq	#0,d0
+		rts
+
+filec_parse_line_error:
+		rts
+********************************
+
+FLAGBIT_LIST       = 0
+FLAGBIT_RAW        = 1
+FLAGBIT_NOSUBSTDIR = 2
+
+FLAGX_COMPL      = 0
+FLAGX_LIST       = 1<<FLAGBIT_LIST
+FLAGX_COMPL_RAW  = 1<<FLAGBIT_RAW
+FLAGX_LIST_RAW   = (1<<FLAGBIT_LIST)|(1<<FLAGBIT_RAW)
+
+PROP_FILE        = 0
+PROP_DIRECTORY   = 1
+PROP_COMMAND     = 2
+PROP_USER        = 3
+PROP_SVAR        = 4
+PROP_ENVIRON     = 5
+PROP_ALIAS       = 6
+PROP_FUNCTION    = 7
+PROP_BINDING     = 8
+PROP_COMPLETION  = 9
+
+********************************
+*  list
+********************************
+x_list:
+		moveq	#FLAGX_LIST,d7
+		bra	x_filec_or_list
+********************************
+*  list-raw
+********************************
+x_list_raw:
+		moveq	#FLAGX_LIST_RAW,d7
+		bra	x_filec_or_list
+********************************
+*  complete
+********************************
+x_complete:
+		moveq	#FLAGX_COMPL,d7
+		bra	x_filec_or_list
+********************************
+*  complete-raw
+********************************
+x_complete_raw:
+		moveq	#FLAGX_COMPL_RAW,d7
+
+filec_statbuf = -STATBUFSIZE
+filec_file_search_path = filec_statbuf-(((MAXPATH+1)+1)>>1<<1)
+filec_current_program = filec_file_search_path-4
+filec_current_statement = filec_current_program-4
+filec_action = filec_current_statement-4
+filec_pattern = filec_action-4
+filec_program_suffix = filec_pattern-4
+filec_program_delimiter = filec_program_suffix-2
+filec_branch_time = filec_program_delimiter-2
+filec_fignore = filec_branch_time-2
+filec_fignore_list = filec_fignore-4
+filec_files_path_ptr = filec_fignore_list-4
+filec_files_path_count = filec_files_path_ptr-2
+filec_files_builtin_ptr = filec_files_path_count-4
+filec_buffer_ptr = filec_files_builtin_ptr-4
+filec_buffer_free = filec_buffer_ptr-2
+filec_command_top = filec_buffer_free-4
+filec_argno = filec_command_top-4
+filec_patlen = filec_argno-4
+filec_maxlen = filec_patlen-4
+filec_minlen = filec_maxlen-4
+filec_minlen_precious = filec_minlen-4
+filec_numentry = filec_minlen_precious-2
+filec_numprecious = filec_numentry-2
+filec_suffix = filec_numprecious-1
+filec_suffix_precious = filec_suffix-1
+filec_exact_suffix = filec_suffix_precious-1
+filec_exact_suffix_precious = filec_exact_suffix-1
+filec_flag = filec_exact_suffix_precious-1
+filec_quote = filec_flag-1
+filec_command_position = filec_quote-1
+filec_file_findmode = filec_command_position-1
+filec_file_path_fullpath = filec_file_findmode-1
+filec_file_path_dot = filec_file_path_fullpath-1
+filec_case_independent = filec_file_path_dot-1
+filec_pad = filec_case_independent-1
+
+x_filec_or_list:
+		link	a4,#filec_pad
+		move.b	d7,filec_flag(a4)
+		bsr	filec_parse_line
+		bmi	filec_error
+
+		move.l	a2,filec_command_top(a4)
+		move.l	d2,filec_argno(a4)
+		move.b	d3,filec_command_position(a4)	*  0 : files
+							*  1 : statements ->
+							*  2 : aliases -> functions -> $path
 	*
 	*  対象の単語を tmpword1 にコピーする
 	*  クオートが開いているかどうか調べる
@@ -1947,6 +2043,7 @@ filec_copy_word_done:
 		move.l	#-1,filec_minlen(a4)
 		move.l	#-1,filec_minlen_precious(a4)
 		clr.b	filec_exact_suffix(a4)
+		clr.b	filec_exact_suffix_precious(a4)
 	*
 		clr.l	filec_pattern(a4)		*!!
 		clr.l	filec_program_suffix(a4)	*!!
@@ -2510,6 +2607,7 @@ get_filec_program_field_return:
 		rts
 ********************************
 complete_raw:
+		bclr.b	#FLAGBIT_NOSUBSTDIR,filec_flag(a4)
 		bsr	filec_try_static_rule
 		bmi	filec_error
 
@@ -2533,11 +2631,15 @@ complete_raw_file:
 		bra	filec_find_done_x
 
 complete_raw_cmdname:
+		move.b	#' ',filec_suffix(a4)		*  default
 		bsr	complete_cmdname
 		bra	filec_find_done_x
 ********************************
 filec_try_static_rule:
 		clr.l	filec_pattern(a4)		*!!
+		tst.b	flag_noglob(a5)
+		bne	filec_not_dirstack
+
 		btst.b	#FLAGBIT_NOSUBSTDIR,filec_flag(a4)
 		bne	filec_not_dirstack
 	*
@@ -2609,21 +2711,28 @@ filec_not_dirstack:
 		subq.l	#1,d0
 		bhi	filec_static_rule_error
 
+		tst.b	flag_noglob(a5)
+		bne	filec_not_substdir
+
 		btst.b	#FLAGBIT_NOSUBSTDIR,filec_flag(a4)
-		beq	filec_substdir
+		bne	filec_not_substdir
 
-		bsr	strcpy
-		bra	filec_strip_quotes
+		cmpi.b	#'.',(a1)
+		bne	filec_substdir
 
+		cmpi.b	#'.',1(a1)
+		bne	filec_substdir
+
+		tst.b	(a1)
+		beq	filec_not_substdir
 filec_substdir:
 		*  ディレクトリ置換
 		exg	a0,a1
-		moveq	#0,d2
+		moveq	#3,d2
 		movem.l	d1/a0-a1,-(a7)
 		move.l	#MAXWORDLEN+1,d1
-		bsr	expand_tilde
+		bsr	subst_directory
 		movem.l	(a7)+,d1/a0-a1
-		tst.l	d0
 		bne	filec_static_rule_error
 
 		exg	a0,a1
@@ -2633,6 +2742,10 @@ filec_strip_quotes:
 		move.l	d0,filec_patlen(a4)		*!!
 		moveq	#0,d0
 		rts
+
+filec_not_substdir:
+		bsr	strcpy
+		bra	filec_strip_quotes
 
 filec_static_rule_error:
 		moveq	#-1,d0
@@ -2651,8 +2764,9 @@ filec_find_done:
 		bne	filec_numprecious_ok
 
 		move.w	d0,filec_numprecious(a4)
-		move.l	filec_minlen(a4),d0
-		move.l	d0,filec_minlen_precious(a4)
+		move.b	filec_suffix(a4),filec_suffix_precious(a4)
+		move.b	filec_exact_suffix(a4),filec_exact_suffix_precious(a4)
+		move.l	filec_minlen(a4),filec_minlen_precious(a4)
 filec_numprecious_ok:
 		*
 		*  最初の曖昧でない部分を確定する
@@ -2917,7 +3031,7 @@ filec_insert_done:
 		bsr	is_all_same_word
 		beq	filec_match
 
-		tst.b	filec_exact_suffix(a4)
+		tst.b	filec_exact_suffix_precious(a4)
 		beq	filec_ambiguous
 
 		*  not unique exact match
@@ -2931,8 +3045,7 @@ filec_insert_done:
 filec_notunique_beep:
 		bsr	beep
 filec_notunique_nobeep:
-		move.b	filec_exact_suffix(a4),d0
-		move.b	d0,filec_suffix(a4)
+		move.b	filec_exact_suffix_precious(a4),filec_suffix_precious(a4)
 filec_match:
 		move.b	flag_addsuffix(a5),d0		*  シェル変数 addsuffix が
 		beq	filec_done			*  セットされていなければおしまい
@@ -2943,7 +3056,7 @@ filec_match:
 		subq.b	#1,d0				*  $@addsuffix[1] == exact なら
 		beq	filec_done			*  今回はサフィックスを追加しない
 filec_addsuffix:
-		cmpi.b	#'/',filec_suffix(a4)
+		cmpi.b	#'/',filec_suffix_precious(a4)
 		beq	filec_addsuffix_1
 
 		move.l	filec_program_suffix(a4),d0	*!!
@@ -2960,7 +3073,7 @@ filec_addsuffix:
 		tst.b	(a0)
 		bne	filec_addsuffix_2
 filec_addsuffix_1:
-		lea	filec_suffix(a4),a1
+		lea	filec_suffix_precious(a4),a1
 		tst.b	(a1)
 		beq	filec_done
 
@@ -3357,6 +3470,7 @@ complete_file_3:					*  0,1,2,3
 		move.w	d0,filec_fignore(a4)
 		move.l	a0,filec_fignore_list(a4)
 complete_file_fignore_ok:
+		move.b	flag_cifilec(a5),filec_case_independent(a4)
 		bsr	filec_files
 complete_file_loop:
 		bmi	return_0
@@ -3519,7 +3633,6 @@ complete_cmdname_return:
 		rts
 ****************
 complete_file_init:
-		move.b	flag_cifilec(a5),filec_case_independent(a4)
 		lea	tmpword1,a1
 		movea.l	a1,a0
 		bsr	builtin_dir_match
@@ -3549,9 +3662,9 @@ complete_file_init_not_builtin:
 		bsr	drvchkp
 		bmi	filec_check_path_fail
 
-		moveq	#MAXHEAD,d4			*  D4.L : filec_file_search_path の容量チェック
 		bsr	skip_root
 complete_file_init_copy_root:
+		moveq	#MAXHEAD,d4			*  D4.L : filec_file_search_path の容量チェック
 		movea.l	a0,a3
 		move.l	a3,d0
 		sub.l	a1,d0
@@ -3590,32 +3703,6 @@ filec_check_path_loop:
 
 		move.b	#'.',(a2)+
 		move.b	#'.',(a2)+
-		cmpi.b	#2,flag_symlinks(a5)
-		beq	filec_check_path_ignore_links	*  set symlinks=ignore
-
-		cmpi.b	#3,flag_symlinks(a5)
-		bne	filec_check_path_continue
-		*  set symlinks=expand
-filec_check_path_ignore_links:
-		clr.b	(a2)
-		move.l	a0,-(a7)
-		lea	filec_file_search_path(a4),a1
-		lea	pathname_buf,a0
-		bsr	strcpy
-		moveq	#MAXPATH,d0
-		bsr	normalize_pathname
-		movea.l	(a7)+,a0
-		bmi	filec_check_path_fail
-
-		moveq	#MAXHEAD,d4
-		lea	filec_file_search_path(a4),a2
-		exg	a0,a2
-		bsr	strlen
-		exg	a0,a2
-		sub.l	d0,d4
-		bcs	filec_check_path_fail
-
-		adda.l	d0,a2
 		bra	filec_check_path_continue
 
 scan_next_directory:
@@ -3809,6 +3896,18 @@ filec_entry_1:
 		move.l	d2,filec_minlen(a4)
 filec_entry_2:
 		*
+		*  exact match なら filec_suffix を filec_exact_suffix に記憶しておく
+		*
+		tst.b	flag_recexact(a5)
+		beq	filec_entry_3
+
+		move.l	filec_patlen(a4),d0
+		tst.b	(a2,d0.l)
+		bne	filec_entry_3
+
+		move.b	filec_suffix(a4),filec_exact_suffix(a4)
+filec_entry_3:
+		*
 		*  fignore に含まれているかどうかを調べる
 		*
 		move.w	filec_fignore(a4),d4
@@ -3835,11 +3934,13 @@ check_fignore_start:
 		dbra	d4,check_fignore_loop
 not_ignore:
 		addq.w	#1,filec_numprecious(a4)
+		move.b	filec_suffix(a4),filec_suffix_precious(a4)
+		move.b	filec_exact_suffix(a4),filec_exact_suffix_precious(a4)
 		cmp.l	filec_minlen_precious(a4),d2
-		bhs	filec_entry_3
+		bhs	filec_entry_4
 
 		move.l	d2,filec_minlen_precious(a4)
-filec_entry_3:
+filec_entry_4:
 		move.l	filec_buffer_ptr(a4),a1
 		movea.l	tmpargs(a5),a0
 		move.l	a1,d0
@@ -3864,17 +3965,6 @@ filec_add_entry:
 		clr.b	(a0)
 		add.l	d2,filec_buffer_ptr(a4)
 		addq.l	#2,filec_buffer_ptr(a4)
-
-		tst.b	flag_recexact(a5)
-		beq	filec_enter_success
-
-		move.l	filec_patlen(a4),d0
-		tst.b	(a2,d0.l)
-		bne	filec_enter_success
-
-		move.b	filec_suffix(a4),d0
-		move.b	d0,filec_exact_suffix(a4)
-filec_enter_success:
 		moveq	#0,d0
 filec_enter_return:
 		movem.l	(a7)+,d1-d5/a0-a2
@@ -3951,7 +4041,7 @@ filec_files_path_next:
 		bsr	drvchkp
 		bmi	filec_files_path_next
 
-		bsr	isfullpath
+		bsr	isfullpathx
 		seq	filec_file_path_fullpath(a4)
 		bsr	is_dot
 		seq	filec_file_path_dot(a4)
@@ -3962,20 +4052,8 @@ filec_files_path_next:
 		bne	filec_files_path_next_builtin
 
 		moveq	#MAXPATH,d0
-		cmpi.b	#2,flag_symlinks(a5)
-		bne	filec_files_path_next_ignore_links	*  set symilnks=ignore
-
-		cmpi.b	#3,flag_symlinks(a5)
-		bne	filec_files_path_next_ignore_links	*  set symilnks=expand
-
 		bsr	fair_pathname
 		scs	d0
-		bra	filec_files_path_next_1
-
-filec_files_path_next_ignore_links:
-		exg	a0,a1
-		bsr	normalize_pathname
-		smi	d0
 		bra	filec_files_path_next_1
 
 filec_files_path_next_builtin:
@@ -5068,6 +5146,7 @@ key_function_jump_table:
 		dc.l	x_error
 		dc.l	x_no_op
 		dc.l	x_macro
+		dc.l	x_eval_command
 		dc.l	x_prefix_1
 		dc.l	x_prefix_2
 		dc.l	x_abort
@@ -5124,6 +5203,7 @@ key_function_jump_table:
 		dc.l	x_up_history
 		dc.l	x_down_history
 		dc.l	x_quit_history
+		dc.l	x_which_command
 
 word_separators:	dc.b	' ',HT,'><)(;&|',0
 

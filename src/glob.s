@@ -32,7 +32,9 @@
 
 .xref tmpline
 .xref flag_ciglob
+.xref flag_globdotA
 .xref flag_nonomatch
+.xref flag_nosort
 
 .text
 
@@ -204,11 +206,21 @@ curbot   = curdot-4
 slashlen = curbot-4
 dirlen   = slashlen-4
 statbuf  = dirlen-STATBUFSIZE
+dot_ok   = statbuf-1
+pad      = dot_ok-1
 
 globsub:
-		link	a6,#statbuf
+		link	a6,#pad
 
 		move.l	a2,curdot(a6)
+		move.b	(a2),d0
+		cmp.b	#'\',d0
+		bne	globsub_check_dot
+
+		move.b	1(a2),d0
+globsub_check_dot:
+		cmp.b	#'.',d0
+		seq	dot_ok(a6)
 scan_subdir:
 		move.l	a2,curbot(a6)
 		bsr	get_1char
@@ -259,23 +271,29 @@ globsub_loop:
 		bne	globsub_next			*  èúäO
 globsub_mode_ok:
 		lea	statbuf+ST_NAME(a6),a0
-		movea.l	curdot(a6),a1
 		cmpi.b	#'.',(a0)
 		bne	globsub_compare
 
-		cmpi.b	#'.',(a1)
-		beq	globsub_compare
+		tst.b	dot_ok(a6)
+		beq	globsub_next
 
-		cmpi.b	#'\',(a1)
-		bne	globsub_next
+		tst.b	1(a0)
+		beq	globsub_check_globdotA
 
-		cmpi.b	#'.',1(a1)
+		cmpi.b	#'.',1(a0)
+		bne	globsub_compare
+
+		tst.b	2(a0)
+		bne	globsub_compare
+globsub_check_globdotA:
+		tst.b	flag_globdotA(a5)
 		bne	globsub_next
 globsub_compare:
 		movea.l	curbot(a6),a2
 		move.b	(a2),d5
 		clr.b	(a2)
 		move.b	flag_ciglob(a5),d0
+		movea.l	curdot(a6),a1
 		bsr	strpcmp
 		move.b	d5,(a2)
 		tst.l	d0
@@ -522,6 +540,9 @@ get_firstdir_error:
 
 		moveq	#0,d0
 		move.w	d1,d0
+		tst.b	flag_nosort(a5)
+		bne	glob_done
+
 		movea.l	a4,a0
 		bsr	sort_wordlist
 glob_done:

@@ -13,6 +13,8 @@
 .xref memset
 .xref strfor1
 .xref xfree
+.xref start_output
+.xref end_output
 .xref putc
 .xref cputc
 .xref puts
@@ -41,64 +43,66 @@
 							* = is not in default bindings
 X_SELF_INSERT				equ	0
 X_ERROR					equ	1
-X_NO_OP					equ	2
-X_MACRO					equ	3
-X_PREFIX_1				equ	4
-X_PREFIX_2				equ	5
-X_ABORT					equ	6
-X_EOF					equ	7
-X_ACCEPT_LINE				equ	8
-X_KEYBOARD_QUIT				equ	9
-X_QUOTED_INSERT				equ	10
-X_REDRAW				equ	11
-X_CLEAR_AND_REDRAW			equ	12
-X_SET_MARK				equ	13
-X_EXG_POINT_AND_MARK			equ	14
-X_SEARCH_CHARACTER			equ	15	*
-X_BOL					equ	16
-X_EOL					equ	17
-X_BACKWARD_CHAR				equ	18
-X_FORWARD_CHAR				equ	19
-X_BACKWARD_WORD				equ	20
-X_FORWARD_WORD				equ	21
-X_NEXT_WORD				equ	22	*
-X_DEL_BACK_CHAR				equ	23
-X_DEL_FOR_CHAR				equ	24
-X_KILL_BACK_WORD			equ	25
-X_KILL_FOR_WORD				equ	26
-X_KILL_BOL				equ	27	*
-X_KILL_EOL				equ	28
-X_KILL_WHOLE_LINE			equ	29
-X_KILL_REGION				equ	30
-X_COPY_REGION				equ	31
-X_YANK					equ	32
-X_CHANGE_CASE				equ	33	*
-X_UPCASE_CHAR				equ	34	*
-X_DOWNCASE_CHAR				equ	35	*
-X_UPCASE_WORD				equ	36
-X_DOWNCASE_WORD				equ	37
-X_UPCASE_REGION				equ	38
-X_DOWNCASE_REGION			equ	39
-X_CAPITALIZE_WORD			equ	40
-X_TRANSPOSE_GOSLING			equ	41	*
-X_TRANSPOSE_CHARS			equ	42
-X_TRANSPOSE_WORDS			equ	43
-X_HISTORY_SEARCH_BACKWARD		equ	44
-X_HISTORY_SEARCH_FORWARD		equ	45
-X_HISTORY_SEARCH_BACKWARD_CIRCULAR	equ	46
-X_HISTORY_SEARCH_FORWARD_CIRCULAR	equ	47
-X_COMPLETE				equ	48
-X_COMPLETE_RAW				equ	49
-X_LIST					equ	50
-X_LIST_RAW				equ	51
-X_LIST_OR_EOF				equ	52
-X_DEL_FOR_CHAR_OR_LIST			equ	53
-X_DEL_FOR_CHAR_OR_LIST_OR_EOF		equ	54
-X_COPY_PREV_WORD			equ	55
-X_INSERT_LAST_WORD			equ	56
-X_UP_HISTORY				equ	57
-X_DOWN_HISTORY				equ	58
-X_QUIT_HISTORY				equ	59
+X_NO_OP					equ	2	*
+X_MACRO					equ	3	*
+X_EVAL					equ	4	*
+X_PREFIX_1				equ	5
+X_PREFIX_2				equ	6
+X_ABORT					equ	7
+X_EOF					equ	8
+X_ACCEPT_LINE				equ	9
+X_KEYBOARD_QUIT				equ	10
+X_QUOTED_INSERT				equ	11
+X_REDRAW				equ	12
+X_CLEAR_AND_REDRAW			equ	13
+X_SET_MARK				equ	14
+X_EXG_POINT_AND_MARK			equ	15
+X_SEARCH_CHARACTER			equ	16	*
+X_BOL					equ	17
+X_EOL					equ	18
+X_BACKWARD_CHAR				equ	19
+X_FORWARD_CHAR				equ	20
+X_BACKWARD_WORD				equ	21
+X_FORWARD_WORD				equ	22
+X_NEXT_WORD				equ	23	*
+X_DEL_BACK_CHAR				equ	24
+X_DEL_FOR_CHAR				equ	25
+X_KILL_BACK_WORD			equ	26
+X_KILL_FOR_WORD				equ	27
+X_KILL_BOL				equ	28	*
+X_KILL_EOL				equ	29
+X_KILL_WHOLE_LINE			equ	30
+X_KILL_REGION				equ	31
+X_COPY_REGION				equ	32
+X_YANK					equ	33
+X_CHANGE_CASE				equ	34	*
+X_UPCASE_CHAR				equ	35	*
+X_DOWNCASE_CHAR				equ	36	*
+X_UPCASE_WORD				equ	37
+X_DOWNCASE_WORD				equ	38
+X_UPCASE_REGION				equ	39
+X_DOWNCASE_REGION			equ	40
+X_CAPITALIZE_WORD			equ	41
+X_TRANSPOSE_GOSLING			equ	42	*
+X_TRANSPOSE_CHARS			equ	43
+X_TRANSPOSE_WORDS			equ	44
+X_HISTORY_SEARCH_BACKWARD		equ	45
+X_HISTORY_SEARCH_FORWARD		equ	46
+X_HISTORY_SEARCH_BACKWARD_CIRCULAR	equ	47
+X_HISTORY_SEARCH_FORWARD_CIRCULAR	equ	48
+X_COMPLETE				equ	49
+X_COMPLETE_RAW				equ	50
+X_LIST					equ	51
+X_LIST_RAW				equ	52
+X_LIST_OR_EOF				equ	53
+X_DEL_FOR_CHAR_OR_LIST			equ	54
+X_DEL_FOR_CHAR_OR_LIST_OR_EOF		equ	55
+X_COPY_PREV_WORD			equ	56
+X_INSERT_LAST_WORD			equ	57
+X_UP_HISTORY				equ	58
+X_DOWN_HISTORY				equ	59
+X_QUIT_HISTORY				equ	60
+X_WHICH_COMMAND				equ	61
 
 .text
 
@@ -154,6 +158,9 @@ do_bind:
 		lea	keymap(a5),a0
 		move.b	d3,(a0,d0.l)
 		cmp.b	#X_MACRO,d3
+		beq	do_bind_return
+
+		cmp.b	#X_EVAL,d3
 		beq	do_bind_return
 
 		lsl.l	#2,d0
@@ -224,8 +231,11 @@ print_bind:
 		lea	key_function_word_table,a0
 		bsr	put_funcname
 		cmp.b	#X_MACRO,d3
-		bne	print_bind_done
+		beq	print_bind_macro
 
+		cmp.b	#X_EVAL,d3
+		bne	print_bind_done
+print_bind_macro:
 		moveq	#"'",d0
 		bsr	putc
 		bsr	keymap_index
@@ -270,6 +280,7 @@ cmd_bind_a:
 print_all_bind:
 		move.b	d0,d3
 		moveq	#0,d1
+		bsr	start_output
 print_all_bind_loop1:
 		moveq	#0,d2
 print_all_bind_loop2:
@@ -295,6 +306,7 @@ print_all_bind_continue:
 		cmp.b	#2,d1
 		bls	print_all_bind_loop1
 
+		bsr	end_output
 		moveq	#0,d0
 		rts
 ****************************************************************
@@ -436,9 +448,20 @@ bind_find_func:
 		lea	keymacromap(a5),a2
 		adda.l	d0,a2				*  A2 : keymacromapポインタ
 		cmp.b	#X_MACRO,d3
-		bne	bind_normal_func
-		*
-		*
+		beq	bind_macro
+
+		cmp.b	#X_EVAL,d3
+		beq	bind_eval
+
+		tst.w	d4
+		bne	bind_too_many_args
+
+		move.l	(a2),d0
+		bsr	xfree
+		bra	cmd_bind_do_bind
+
+bind_macro:
+bind_eval:
 		subq.w	#1,d4
 		blo	missing_macro_string
 		bhi	too_many_macro_string
@@ -451,14 +474,6 @@ bind_find_func:
 		move.l	(a2),d0
 		bsr	xfree
 		move.l	a0,(a2)
-		bra	cmd_bind_do_bind
-
-bind_normal_func:
-		tst.w	d4
-		bne	bind_too_many_args
-
-		move.l	(a2),d0
-		bsr	xfree
 cmd_bind_do_bind:
 		bsr	do_bind
 		moveq	#0,d0
@@ -510,6 +525,7 @@ key_function_word_table:
 		dc.w	word_error-key_function_names_top
 		dc.w	word_no_op-key_function_names_top
 		dc.w	word_macro-key_function_names_top
+		dc.w	word_eval_command-key_function_names_top
 		dc.w	word_prefix_1-key_function_names_top
 		dc.w	word_prefix_2-key_function_names_top
 		dc.w	word_abort-key_function_names_top
@@ -566,6 +582,7 @@ key_function_word_table:
 		dc.w	word_up_history-key_function_names_top
 		dc.w	word_down_history-key_function_names_top
 		dc.w	word_quit_history-key_function_names_top
+		dc.w	word_which_command-key_function_names_top
 		dc.w	-1
 
 .even
@@ -579,6 +596,7 @@ word_self_insert:			dc.b	'self-insert',0
 word_error:				dc.b	'error',0
 word_no_op:				dc.b	'no-op',0
 word_macro:				dc.b	'macro',0
+word_eval_command:			dc.b	'eval-command',0
 word_prefix_1:				dc.b	'prefix-1',0
 word_prefix_2:				dc.b	'prefix-2',0
 word_abort:				dc.b	'abort',0
@@ -636,6 +654,7 @@ word_insert_last_word:			dc.b	'insert-last-word',0
 word_up_history:			dc.b	'up-history',0
 word_down_history:			dc.b	'down-history',0
 word_quit_history:			dc.b	'quit-history',0
+word_which_command:			dc.b	'which-command',0
 
 msg_main:		dc.b	'        ',0
 
@@ -674,6 +693,7 @@ initial_bindings:
 			dc.b	1,'_'-'@',X_COPY_PREV_WORD
 			dc.b	1,' ',X_SET_MARK
 			dc.b	1,'>',X_QUIT_HISTORY
+			dc.b	1,'?',X_WHICH_COMMAND
 			dc.b	1,'B',X_BACKWARD_WORD
 			dc.b	1,'C',X_CAPITALIZE_WORD
 			dc.b	1,'D',X_KILL_FOR_WORD
@@ -703,7 +723,7 @@ initial_bindings:
 			dc.b	2,'X'-'@',X_EXG_POINT_AND_MARK
 			dc.b	-1
 
-msg_follows_macro:	dc.b	'macro に続く',0
+msg_follows_macro:	dc.b	'macro/eval への',0
 msg_bad_funcname:	dc.b	'このような名前の機能はありません',0
 
 msg_usage_of_bind:
@@ -714,10 +734,8 @@ msg_usage_of_bind:
 		dc.b	'          デフォルトのキー・バインドに戻す',CR,LF,LF
 		dc.b	'     bind [[prefix]-{1|2}] <キー>',CR,LF
 		dc.b	'          <キー>にバインドされている機能を表示する',CR,LF,LF
-		dc.b	'     bind [[prefix]-{1|2}] <キー> <機能>',CR,LF
-		dc.b	'          <キー>に<機能>をバインドする',CR,LF,LF
-		dc.b	'     bind [[prefix]-{1|2}] <キー> macro <文字列>',CR,LF
-		dc.b	'          <キー>に<文字列>をバインドする',0
+		dc.b	'     bind [[prefix]-{1|2}] <キー> <機能> [<文字列>]',CR,LF
+		dc.b	'          <キー>に<機能>をバインドする',0
 
 str_option_a:		dc.b	'-a',0
 str_option_d:		dc.b	'-d',0

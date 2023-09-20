@@ -19,7 +19,6 @@
 .xref set_shellvar
 .xref expression
 .xref find_history
-.xref delete_old_history
 .xref xmallocp
 .xref xfreep
 .xref command_error
@@ -385,7 +384,7 @@ clear_status:
 		clr.l	in_history_ptr(a5)
 		clr.b	loop_status(a5)
 		sf	keep_loop(a5)
-		bra	delete_old_history
+		rts
 *****************************************************************
 .xdef cmd_continue
 

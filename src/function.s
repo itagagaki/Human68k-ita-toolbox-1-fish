@@ -21,6 +21,8 @@
 .xref make_wordlist
 .xref escape_quoted
 .xref skip_varname
+.xref start_output
+.xref end_output
 .xref putc
 .xref cputc
 .xref puts
@@ -30,7 +32,6 @@
 .xref put_tab
 .xref put_newline
 .xref getline
-.xref getline_phigical
 .xref xmalloc
 .xref free
 .xref subst_var
@@ -310,17 +311,22 @@ cmd_functions:
 		beq	no_func
 
 		movea.l	d0,a0
+		bsr	start_output
 		bsr	list_1_function
-		bra	cmd_functions_return
+		bra	list_function_done
 
 list_all_func:
 		move.l	function_bot(a5),d0
 		beq	cmd_functions_return
+
+		bsr	start_output
 list_function_loop:
 		movea.l	d0,a0
 		bsr	list_1_function
 		move.l	FUNC_PREV(a0),d0
 		bne	list_function_loop
+list_function_done:
+		bsr	end_output
 cmd_functions_return:
 		moveq	#0,d0
 		rts
@@ -523,15 +529,10 @@ make_function_body_script_loop:
 		cmpa.l	a3,a2
 		beq	make_function_body_script_done
 
-		move.l	a0,-(a7)
-		lea	line(a5),a0
-		move.w	#MAXLINELEN,d1
 		suba.l	a1,a1
 		st	d2
 		st	d3
-		lea	getline_phigical(pc),a2
 		bsr	getline
-		movea.l	(a7)+,a0
 		bne	make_function_body_script_done
 
 		move.l	a0,-(a7)

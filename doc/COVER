@@ -1,0 +1,22 @@
+
+概要        :  Human68k上で動作するシェル fish.x v0.7 とドキュメント一式
+必須環境    :  Human68k v2.0以降
+データ名    :  FISH070.ish
+符号化方式  :  LHA → ISH(SJIS)
+著者        :  板垣　史彦
+
+特記事項    :
+
+  * login.x も併せて使われるとより一層快適です。
+
+  * HUPAIR に準拠・対応しています。
+
+
+                          BADDEST JAPANESE いたう            板垣 史彦    
+       ^^                      o ∞§__§§∞             Itagaki Fumihiko
+  ^^                         ∞ §§     |§§                            
+         ^^                ∞§ §| 〇^〇 |§§           ita@hudson.co.jp
+_ _ __  _ _  _  +_ _ _    §§ § ;   ゝ  ;§ §     NIFTY-Serve: QGB02101
+ -_ _- _ + -_ -- _ _-    § § §  ;.""".;  § §      ASCII-pcs: pcs35383
+- __ -_- -_ + _- -__-       § §   ;;;;;   § §         PC-VAN: GNM14305
+_- __-_ - -_ - -- -_       § §            §              南京: 176     

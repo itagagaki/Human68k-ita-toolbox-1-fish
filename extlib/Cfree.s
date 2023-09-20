@@ -28,10 +28,12 @@
 *
 _free:
 	move.l	4(sp),d0
+	beq	free_OK
 	move.l	a5,-(sp)
 	lea	lake_top_area,a5
 	bsr	free_memory_reg_saved
 	move.l	(sp)+,a5
+free_OK:
 	rts
 *
 	.end

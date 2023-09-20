@@ -29,7 +29,7 @@ cmd_unsetenv:
 		blo	too_few_args
 unset_loop:
 		movea.l	a0,a1
-		bsr	strfor1
+		jsr	strfor1
 		exg	a0,a1				*  A0:Œ»İ‚Ì’PŒêCA1:Ÿ‚Ì’PŒê
 		bsr	strip_quotes
 		bsr	fish_unsetenv
@@ -69,4 +69,3 @@ unsetenv_done:
 		rts
 
 .end
-

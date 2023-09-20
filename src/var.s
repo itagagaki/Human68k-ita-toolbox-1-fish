@@ -10,6 +10,8 @@
 .xref strfor1
 .xref memmovi
 .xref wordlistlen
+.xref start_output
+.xref end_output
 .xref putc
 .xref cputs
 .xref put_tab
@@ -94,7 +96,7 @@ dupvar_loop:
 		bsr	varsize
 		move.l	d0,d1				*  D1.L : varsize
 		add.l	#VAR_HEADER_SIZE,d0
-		bsr	xmalloc
+		jsr	xmalloc
 		beq	dupvar_fail
 
 		movea.l	d0,a0
@@ -260,7 +262,7 @@ allocvar:
 		bsr	strlen
 		add.l	d2,d0
 		add.l	#1+VAR_HEADER_SIZE,d0		*  D0.L : 新変数全体のサイズ
-		bsr	xmalloc
+		jsr	xmalloc
 		movea.l	d0,a3				*  A3 : 新変数の先頭を指す
 		rts
 ****************************************************************
@@ -377,6 +379,7 @@ print_var_value:
 *
 * CALL
 *      A3     変数領域の先頭アドレスを格納しているポインタのアドレス
+*      D0.B   非0 : 決して ( ) を用いない
 *
 * RETURN
 *      D0.L   0
@@ -385,8 +388,10 @@ print_var_value:
 .xdef printvar
 
 printvar:
-		movem.l	d1/a0-a1,-(a7)
+		movem.l	d1-d2/a0-a1,-(a7)
+		move.b	d0,d2
 		movea.l	(a3),a1
+		bsr	start_output
 printvar_loop:
 		cmpa.l	#0,a1
 		beq	printvar_done
@@ -394,6 +399,9 @@ printvar_loop:
 		lea	var_body(a1),a0
 		bsr	cputs			*  変数名を表示する
 		bsr	put_tab			*  水平タブを表示する
+		tst.b	d2
+		bne	printvar_value_1
+
 		move.w	var_nwords(a1),d1
 		subq.w	#1,d1
 		beq	printvar_value_1
@@ -403,6 +411,9 @@ printvar_loop:
 printvar_value_1:
 		move.l	a1,d0
 		bsr	print_var_value
+		tst.b	d2
+		bne	printvar_value_2
+
 		tst.w	d1
 		beq	printvar_value_2
 
@@ -414,7 +425,8 @@ printvar_value_2:
 		bra	printvar_loop		*  繰り返す
 
 printvar_done:
-		movem.l	(a7)+,d1/a0-a1
+		bsr	end_output
+		movem.l	(a7)+,d1-d2/a0-a1
 return_0:
 		moveq	#0,d0
 		rts

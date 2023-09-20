@@ -1,0 +1,13 @@
+MANIFEST       このファイル
+README         まず最初にお読み下さい
+NOTICE         版権と許諾についての告示書
+DIRECTORY      ITA製品リスト
+CHANGES        FISHのモデルチェンジの履歴
+FAQ            頻繁に訊かれる質問と回答
+FISH.DOC       FISHの詳細ドキュメント
+fish.x         FISH実行ファイル
+Pfishrc        個人環境ファイル ~/[.%]fishrc のサンプル
+Plogin         個人環境ファイル ~/[.%]login のサンプル
+Plogout        個人環境ファイル ~/[.%]logout のサンプル
+Passwd         システム・ファイル $SYSROOT/etc/passwd のサンプル
+contrib        寄稿ファイルを納めたディレクトリ

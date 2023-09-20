@@ -18,8 +18,11 @@
 .xref scan_hexa_decimal
 .xref strfor1
 .xref expand_wordlist
+.xref isopt
 .xref strip_quotes
 .xref words_to_line
+.xref start_output
+.xref end_output
 .xref putc
 .xref eputc
 .xref printfi
@@ -27,6 +30,7 @@
 .xref expression
 .xref basic_escape_sequence
 .xref too_few_args
+.xref bad_arg
 .xref command_error
 
 .xref msg_badly_placed_paren
@@ -86,7 +90,7 @@ compile_esch_escape_0:
 		bra	compile_esch_dup1
 
 compile_esch_not_escape:
-		bsr	issjis
+		jsr	issjis
 		bne	compile_esch_dup1
 
 		move.b	d0,(a1)+
@@ -209,7 +213,7 @@ not_asterisk_width:
 
 		lea	-1(a3),a0
 		exg	d1,d3
-		bsr	atou
+		jsr	atou
 		exg	d1,d3
 		move.l	a0,d0
 		sub.l	a3,d0
@@ -261,7 +265,7 @@ precision_not_asterisk:
 
 		lea	-1(a3),a0
 		exg	d1,d4
-		bsr	atou
+		jsr	atou
 		exg	d1,d4
 		move.l	a0,d0
 		sub.l	a3,d0
@@ -304,43 +308,43 @@ fmtout_expression:
 *       printf - print with formatting
 *
 *  Synopsis
-*       printf [ -2 ] [ - ] format [ word | ( expression ) ] ...
+*       printf [ -2 ] [ -- ] format [ word | ( expression ) ] ...
 ****************************************************************
 .xdef cmd_printf
 
 cmd_printf:
-		lea	putc(pc),a1
+		lea	putc,a1
 decode_opt_loop1:
-		subq.w	#1,d0
-		bcs	too_few_args
-
 		movea.l	a0,a3
-		cmpi.b	#'-',(a0)+
+		bsr	isopt
 		bne	decode_opt_done
 
-		tst.b	(a0)+
-		beq	decode_opt_done0
-
-		subq.l	#1,a0
+		sf	d1
 decode_opt_loop2:
 		move.b	(a0)+,d7
 		beq	decode_opt_loop1
 
 		cmp.b	#'2',d7
-		bne	decode_opt_done
+		beq	opt_2
 
-		lea	eputc(pc),a1
+		tst.b	d1
+		bne	bad_arg
+
+		movea.l	a3,a0
+		addq.w	#1,d0
+		bra	decode_opt_done
+
+opt_2:
+		lea	eputc,a1
+		sf	d1
 		bra	decode_opt_loop2
 
 decode_opt_done:
-		movea.l	a3,a0
-		addq.w	#1,d0
-decode_opt_done0:
 		move.w	d0,d7
 		beq	too_few_args
 
 		movea.l	a0,a3				*  A3 : format
-		bsr	strfor1
+		jsr	strfor1
 		movea.l	a0,a4				*  A4 : args
 		movea.l	a3,a0
 		bsr	strip_quotes
@@ -349,6 +353,7 @@ decode_opt_done0:
 		swap	d7				*  upper D7 : écÇËÇÃà¯êîÇÃêî
 		move.w	d0,d7				*  lower D7 : format ÇÃí∑Ç≥
 ********************************
+		jsr	start_output
 printf_loop:
 		subq.w	#1,d7
 		bcs	printf_done
@@ -377,14 +382,14 @@ printf_fmtout:
 		beq	fmtout_string
 
 		suba.l	a2,a2				*  prefixÇ»Çµ
-		lea	itoa(pc),a0
+		lea	itoa,a0
 		cmp.b	#'d',d0
 		beq	fmtout_integral
 
 		cmp.b	#'i',d0
 		beq	fmtout_integral
 
-		lea	utoa(pc),a0
+		lea	utoa,a0
 		cmp.b	#'u',d0
 		beq	fmtout_integral
 
@@ -408,7 +413,7 @@ printf_continue:
 ****************
 fmtout_integral:
 		tst.w	d7
-		beq	too_few_args
+		beq	fmtout_too_few_args
 
 		bsr	fmtout_expression
 		bne	printf_return
@@ -428,7 +433,7 @@ fmtout_integral_prefix_ok:
 ****************
 fmtout_character:
 		tst.w	d7
-		beq	too_few_args
+		beq	fmtout_too_few_args
 
 		bsr	fmtout_expression
 		bne	printf_return
@@ -444,7 +449,7 @@ fmtout_character_d0:
 ****************
 fmtout_string:
 		tst.w	d7
-		beq	too_few_args
+		beq	fmtout_too_few_args
 
 		move.b	(a4),d0
 		beq	fmtout_string_ok
@@ -474,19 +479,24 @@ fmtout_string_ok:
 do_fmtout_string:
 		bsr	printfs
 		movea.l	a4,a0
-		bsr	strfor1
+		jsr	strfor1
 		movea.l	a0,a4
 		subq.w	#1,d7
 		bra	printf_continue
 
+fmtout_too_few_args:
+		jsr	end_output
+		bra	too_few_args
+
 fmtout_string_bad:
+		jsr	end_output
 		lea	msg_badly_placed_paren,a0
 		bra	command_error
 
 printf_done:
 		moveq	#0,d0
 printf_return:
-		rts
+		jmp	end_output
 ****************************************************************
 .data
 

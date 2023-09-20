@@ -14,6 +14,7 @@
 *   ver 0.14  : 92/5/17	add _realloc		*
 *   ver 0.16  : 93/5/1	fixed error when	*
 *             :		copying 1-2 bytes area	*
+*   ver 1.00  : 94/8/7	fix realloc errors	*
 *						*
 *************************************************
 *
@@ -62,6 +63,10 @@ realloc_memory:
 *  a4	lake head へのポインタ
 *  a6	pool head へのポインタ
 *
+	tst.l	d1
+	bne	reallocate_memory_zero_skip
+	addq.l	#1,d1		* サイズ 0 を要求されたらサイズ 1 にする
+reallocate_memory_zero_skip:
 	subq.l	#2,d0			* ここから free したい size の計算
 	move.l	lake_top(a5),d7
 	bra	lake_entry
@@ -130,6 +135,7 @@ min_size_skip:
 *  d6	オリジナル size とリアロックしたい size のうち小さい方
 *  d0	リアロックしたい領域へのポインタ
 *
+	addq.l	#1,d6			* 奇数は切り上げ 94/8/7
 	move.l	a3,a1
 	move.l	d0,a2
 	move.l	a2,a3

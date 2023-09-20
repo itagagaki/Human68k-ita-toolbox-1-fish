@@ -7,6 +7,8 @@
 
 .xref strchr
 .xref strfor1
+.xref start_output
+.xref end_output
 .xref putc
 .xref cputs
 .xref put_newline
@@ -45,7 +47,7 @@ cmd_setenv:
 		bhi	too_many_args			*  エラー
 
 		movea.l	a0,a2				*  A2 : 変数名
-		bsr	strfor1
+		jsr	strfor1
 		movea.l	a0,a1				*  A1 : 値
 		moveq	#1,d0				*  1単語を
 		movea.l	tmpargs(a5),a0			*  tmpargs に
@@ -85,21 +87,24 @@ cmd_setenv_set:
 		bra	cmd_setenv_success_return
 ****************
 printenv:
+		jsr	start_output
 		movea.l	env_top(a5),a1
 printenv_loop:
 		cmpa.l	#0,a1
-		beq	cmd_setenv_success_return
+		beq	printenv_done
 
 		lea	var_body(a1),a0
-		bsr	cputs
+		jsr	cputs
 		moveq	#'=',d0
 		jsr	putc
-		bsr	strfor1
-		bsr	cputs
-		bsr	put_newline
+		jsr	strfor1
+		jsr	cputs
+		jsr	put_newline
 		movea.l	var_next(a1),a1
 		bra	printenv_loop
 
+printenv_done:
+		jsr	end_output
 cmd_setenv_success_return:
 		moveq	#0,d0
 cmd_setenv_return:

@@ -8,6 +8,9 @@
 
 .xref strfor1
 .xref strcpy
+.xref isopt
+.xref start_output
+.xref end_output
 .xref puts
 .xref nputs
 .xref cputs
@@ -18,8 +21,9 @@
 .xref find_function
 .xref list_1_function
 .xref print_var_value
-.xref usage
 .xref too_few_args
+.xref bad_arg
+.xref usage
 
 .xref word_alias
 .xref word_function
@@ -50,41 +54,38 @@ cputs_near:
 *       which [ -o | -O ] [ -t ] [ -a ] command ...
 ****************************************************************
 .xdef cmd_which
+.xdef which
 
 command_name = -(((MAXPATH+1)+1)>>1<<1)
 
 cmd_which:
-		move.w	d0,d1
 		moveq	#0,d2
 		moveq	#0,d3			*  D3 : answer mode
 parse_option_loop1:
-		subq.w	#1,d1
-		bcs	which_too_few_args
-
-		movea.l	a0,a1
-		cmpi.b	#'-',(a0)+
+		jsr	isopt
 		bne	parse_option_done
-
-		tst.b	(a0)
-		beq	parse_option_done0
 parse_option_loop2:
-		move.b	(a0)+,d0
+		move.b	(a0)+,d1
 		beq	parse_option_loop1
 
-		cmp.b	#'o',d0
+		cmp.b	#'o',d1
 		beq	opt_small_o
 
-		cmp.b	#'O',d0
+		cmp.b	#'O',d1
 		beq	opt_large_O
 
-		cmp.b	#'a',d0
+		cmp.b	#'a',d1
 		beq	opt_all
 
-		cmp.b	#'t',d0
+		cmp.b	#'t',d1
 		beq	opt_type
 
-		cmp.b	#'p',d0
-		bne	parse_option_done
+		cmp.b	#'p',d1
+		beq	opt_path
+
+		bsr	bad_arg
+		bra	cmd_which_usage
+
 opt_path:
 		moveq	#-1,d3				*  D3 := -1 ... path or null
 		bra	parse_option_loop2
@@ -103,13 +104,24 @@ opt_small_o:
 		bset	#0,d2				*  no alias
 		bra	parse_option_loop2
 
-parse_option_done0:
-		subq.w	#1,d1
-		bcs	which_too_few_args
-
-		lea	1(a0),a1
 parse_option_done:
+		subq.w	#1,d0
+		bcc	which_start
+
+		bsr	too_few_args
+cmd_which_usage:
+		lea	msg_usage,a0
+		jmp	usage
+
+which:
+		moveq	#0,d0
+		moveq	#0,d2
+		moveq	#0,d3
+which_start:
+		movea.l	a0,a1
+		move.w	d0,d1
 		link	a6,#command_name
+		jsr	start_output
 loop:
 		sf	d7
 	*
@@ -189,6 +201,7 @@ continue:
 		movea.l	a0,a1
 		dbra	d1,loop
 
+		jsr	end_output
 		moveq	#0,d0
 		unlk	a6
 return:
@@ -259,16 +272,14 @@ print_path:
 		bsr	put_space_near
 		lea	msg_desu,a0
 		bra	nputs_near
-****************
-which_too_few_args:
-		bsr	too_few_args
-		lea	msg_usage,a0
-		bra	usage
-
+****************************************************************
 .data
 
+.xdef msg_is
+.xdef msg_not_found
+
 msg_usage:
-	dc.b	'[-a] [-o|-O] [-t|-p] [-] <コマンド名> ...',CR,LF
+	dc.b	'[-a] [-o|-O] [-t|-p] [--] <コマンド名> ...',CR,LF
 	dc.b	'     -a   見つかってもなお検索を続行して見つかったものすべてを出力する',CR,LF
 	dc.b	'     -o   別名を除外する',CR,LF
 	dc.b	'     -O   別名，関数，組み込みコマンドを除外し、ファイルのみを検索する',CR,LF

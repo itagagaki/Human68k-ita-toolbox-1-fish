@@ -6,6 +6,8 @@
 .include ../src/extmalloc.h
 
 .xref utoa
+.xref start_output
+.xref end_output
 .xref putc
 .xref nputs
 .xref printu
@@ -31,6 +33,7 @@ cmd_alloc:
 		tst.w	d0
 		bne	too_many_args
 
+		bsr	start_output
 		lea	msg_header,a0
 		bsr	nputs
 
@@ -95,6 +98,7 @@ pool_end:
 		bra	lake_loop
 
 done:
+		bsr	end_output
 		moveq	#0,d0
 		rts
 ****************************************************************
@@ -104,4 +108,3 @@ msg_header:	dc.b	'    確保量    使用量      空量 使用率',0
 msg_percent:	dc.b	'%',0
 
 .end
-

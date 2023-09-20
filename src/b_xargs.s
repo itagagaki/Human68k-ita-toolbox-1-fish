@@ -16,6 +16,7 @@
 .xref memmovi
 .xref strfor1
 .xref wordlistlen
+.xref isopt
 .xref eputs
 .xref ecputs
 .xref eput_newline
@@ -110,16 +111,14 @@ cmd_xargs:
 		clr.b	mode(a6)
 		sf	flag_x(a6)
 decode_opt_loop1:
-		movea.l	a0,a1
-		subq.w	#1,d3
-		bcs	decode_opt_done
-
-		cmpi.b	#'-',(a0)+
+		exg	d0,d3
+		jsr	isopt
+		exg	d0,d3
 		bne	decode_opt_done
-
-		move.b	(a0)+,d0
-		beq	decode_opt_done_0
 decode_opt_loop2:
+		move.b	(a0)+,d0
+		beq	decode_opt_loop1
+
 		cmp.b	#'t',d0
 		beq	option_t
 
@@ -144,23 +143,16 @@ decode_opt_loop2:
 		cmp.b	#'x',d0
 		beq	option_x
 xargs_bad_arg:
-		bsr	bad_arg
+		jsr	bad_arg
 xargs_usage:
 		lea	msg_usage,a0
-		bsr	usage
+		jsr	usage
 		bra	xargs_done
 
 option_e:
 		move.l	a0,eofword(a6)
 nextarg:
 		jsr	strfor1
-		bra	decode_opt_loop1
-
-option_x:
-		st	flag_x(a6)
-decode_opt_nextch:
-		move.b	(a0)+,d0
-		bne	decode_opt_loop2
 		bra	decode_opt_loop1
 
 option_i:
@@ -226,24 +218,25 @@ option_s:
 
 bad_size:
 		lea	msg_bad_size,a0
-		bsr	command_error
+		jsr	command_error
 		bra	xargs_usage
 
 xargs_badly_formed_number:
-		bsr	badly_formed_number
+		jsr	badly_formed_number
 		bra	xargs_usage
 
 option_p:
 		st	prompt_mode(a6)
 option_t:
 		st	trace_mode(a6)
-		bra	decode_opt_nextch
+		bra	decode_opt_loop2
+
+option_x:
+		st	flag_x(a6)
+		bra	decode_opt_loop2
 
 decode_opt_done:
-		movea.l	a1,a0
-decode_opt_done_0:
 		move.w	d3,d0
-		addq.w	#1,d0
 		bne	command_ok
 
 		lea	default_command,a0
@@ -256,7 +249,7 @@ command_ok:
 flag_x_ok:
 		move.w	d0,initial_argc(a6)
 		move.l	a0,initial_args(a6)
-		bsr	wordlistlen
+		jsr	wordlistlen
 		move.l	d0,initial_args_size(a6)
 		sf	remain(a6)
 		sf	eof(a6)
@@ -580,7 +573,7 @@ xargs_done:
 		rts
 
 missing_quote:
-		bsr	perror_command_name
+		jsr	perror_command_name
 		lea	msg_missing_quote,a0
 		jsr	eputs
 		move.l	a1,d0
@@ -634,9 +627,9 @@ askbuf = -ASKBUFSIZE
 
 ask_yes:
 		link	a6,#askbuf
-		movem.l	d1/a0-a1,-(a7)
+		movem.l	d1/a0-a2,-(a7)
 		lea	ecputs,a1
-		bsr	echo
+		jsr	echo
 		tst.b	d1
 		beq	ask_yes_ok
 
@@ -657,6 +650,7 @@ ask_yes_output_ok:
 		lea	askbuf(a6),a0
 		moveq	#ASKBUFSIZE-1,d1
 		suba.l	a1,a1
+		movea.l	a0,a2
 		bsr	getline_stdin
 
 		move.l	d0,-(a7)
@@ -677,7 +671,7 @@ ask_yes_redirect_ok:
 
 		moveq	#1,d0
 ask_yes_return:
-		movem.l	(a7)+,d1/a0-a1
+		movem.l	(a7)+,d1/a0-a2
 		unlk	a6
 		rts
 
@@ -688,12 +682,13 @@ ask_yes_ok:
 ****************************************************************
 .data
 
-default_command:	dc.b	'~~/echo',0,'-',0
+default_command:	dc.b	'~~/echo',0,'--',0
 default_replstr:	dc.b	'{}',0
 default_eofword:	dc.b	'_',0
 
-msg_usage:	dc.b	'[-n<単語数>|-l[<行数>]|-i[<被置換文字列>]] [-tpx] [-s<サイズ>] [-e[<EOF単語>]]',CR,LF
-		dc.b	'          [ <コマンド名> [ <引数> ... ] ]',CR,LF,0
+msg_usage:	dc.b	'[ -n<単語数> | -l[<行数>] | -i[<被置換文字列>] ]',CR,LF
+		dc.b	'          [-tpx] [-s<サイズ>] [-e[<EOF単語>]] [--]',CR,LF
+		dc.b	'          [ <コマンド名> [<引数リスト>] ]',CR,LF,0
 
 msg_bad_size:		dc.b	'<サイズ>は4096以下でなければなりません',0
 msg_size_over:		dc.b	'コマンド行の長さがサイズの限度を超えました',0

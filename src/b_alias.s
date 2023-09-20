@@ -13,6 +13,8 @@
 .xref setvar
 .xref printvar
 .xref print_var_value
+.xref start_output
+.xref end_output
 .xref pre_perror
 .xref insufficient_memory
 .xref word_alias
@@ -27,6 +29,7 @@
 ****************************************************************
 cmd_alias_sub_1:
 		move.w	d0,d1
+		st	d0
 		beq	printvar			*  D0.L==0, ZF==1
 
 		movea.l	a0,a2
@@ -41,8 +44,10 @@ print_one:
 		bsr	findvar
 		beq	return_0
 
+		bsr	start_output
 		bsr	print_var_value
 		bsr	put_newline
+		bsr	end_output
 return_0:
 		moveq	#0,d0				*  D0.L==0, ZF==1
 return:

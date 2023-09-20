@@ -248,7 +248,7 @@ perror_2:
 		lea	perror_table,a0
 perror_3:
 		lsl.l	#2,d0
-		movea.l	(a0,d0),a0
+		movea.l	(a0,d0.l),a0
 		bsr	enputs
 		movem.l	(a7)+,d0/a0
 		tst.l	d0

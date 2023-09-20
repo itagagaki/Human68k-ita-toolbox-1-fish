@@ -11,6 +11,7 @@
 .xref strlen
 .xref strforn
 .xref memmovi
+.xref isopt
 .xref alloc_new_argbuf
 .xref free_current_argbuf
 .xref eputs
@@ -37,7 +38,7 @@
 *       apply - apply a command for set of arguments
 *
 *  Synopsis
-*       apply [ -p ] [ -t ] [ -<n> ] <command> [ <arg> ... ]
+*       apply [ -p ] [ -t ] [ -<n> ] [ -- ] <command line> [ <wordlist> ]
 ****************************************************************
 .xdef cmd_apply
 
@@ -52,15 +53,15 @@ cmd_apply:
 		sf	prompt_mode(a6)
 		move.w	d0,d2				*  D2.W : 引数の数
 		moveq	#1,d3				*  D3.L : コマンドあたりの引数の数
-parse_option_loop:
-		subq.w	#1,d2
-		bcs	apply_too_few_args
-
-		cmpi.b	#'-',(a0)
+parse_option_loop1:
+		exg	d0,d2
+		bsr	isopt
+		exg	d0,d2
 		bne	parse_option_done
-
-		addq.l	#1,a0
+parse_option_loop2:
 		move.b	(a0)+,d0
+		beq	parse_option_loop1
+
 		cmp.b	#'t',d0
 		beq	option_t
 
@@ -71,9 +72,6 @@ parse_option_loop:
 		bsr	atou				*  D1.L <- コマンドあたりの引数の数
 		bmi	apply_bad_arg
 
-		tst.b	(a0)+
-		bne	apply_bad_arg
-
 		tst.l	d0
 		bne	apply_too_large_number
 
@@ -81,37 +79,20 @@ parse_option_loop:
 		bhi	apply_too_large_number
 
 		move.l	d1,d3
-		bra	parse_option_loop
+		bra	parse_option_loop2
 
 option_p:
 		st	prompt_mode(a6)
 option_t:
 		st	trace_mode(a6)
-		tst.b	(a0)+
-		beq	parse_option_loop
-apply_bad_arg:
-		bsr	bad_arg
-apply_usage:
-		lea	msg_usage,a0
-		bsr	usage
-		bra	apply_return
-
-apply_too_few_args:
-		bsr	too_few_args
-		bra	apply_usage
-
-apply_too_large_number:
-		bsr	too_large_number
-		bra	apply_return
-
-cannot_apply:
-		bsr	cannot_run_command_because_no_memory
-		bra	apply_return
+		bra	parse_option_loop2
 
 parse_option_done:
 		move.w	d2,d0
-		addq.w	#1,d0
-		move.l	d2,d5
+		beq	apply_too_few_args
+
+		move.w	d2,d5
+		subq.w	#1,d5
 		moveq	#0,d2
 		bsr	alloc_new_argbuf
 		beq	cannot_apply
@@ -232,10 +213,29 @@ apply_error_return:
 apply_too_long_line:
 		bsr	too_long_line
 		bra	apply_done
+
+apply_bad_arg:
+		bsr	bad_arg
+apply_usage:
+		lea	msg_usage,a0
+		bsr	usage
+		bra	apply_return
+
+apply_too_few_args:
+		bsr	too_few_args
+		bra	apply_usage
+
+apply_too_large_number:
+		bsr	too_large_number
+		bra	apply_return
+
+cannot_apply:
+		bsr	cannot_run_command_because_no_memory
+		bra	apply_return
 ****************************************************************
 .data
 
-msg_usage:		dc.b	'[-tp] [-<N>] <コマンド行> [ <単語> ... ]',0
+msg_usage:		dc.b	'[-tp] [-<N>] [--] <コマンド行> [<単語リスト>]',0
 msg_expect_1:		dc.b	"'",0
 msg_expect_2:		dc.b	"' 以降の単語数が半端です",0
 

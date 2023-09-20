@@ -23,6 +23,7 @@
 PDB_envPtr	equ	$00
 PDB_argPtr	equ	$10
 PDB_ProcessFlag	equ	$50
+PDB_filename	equ	$b4
 
 PDB_dataPtr	equ	$f0
 PDB_stackPtr	equ	$f8
@@ -38,6 +39,7 @@ PDB_stackPtr	equ	$f8
 .xref strchr
 .xref strcmp
 .xref memcmp
+.xref memicmp
 .xref strcpy
 .xref stpcpy
 .xref strbot
@@ -48,6 +50,7 @@ PDB_stackPtr	equ	$f8
 .xref strmove
 .xref strazcpy
 .xref memmovi
+.xref skip_space
 .xref wordlistpcmp
 .xref wordlistlen
 .xref make_wordlist
@@ -55,8 +58,6 @@ PDB_stackPtr	equ	$f8
 .xref words_to_line
 .xref strip_quotes
 .xref strip_quotes_list
-.xref bsltosl
-.xref sltobsl
 .xref xmalloc
 .xref free
 .xref xfree
@@ -75,7 +76,7 @@ PDB_stackPtr	equ	$f8
 .xref eput_newline
 .xref printfi
 .xref echo
-.xref isblkdev
+.xref ischardev
 .xref isnotttyin
 .xref tfopenx
 .xref fgetc
@@ -102,7 +103,6 @@ PDB_stackPtr	equ	$f8
 .xref find_slashes
 .xref skip_slashes
 .xref is_slash_or_backslash
-.xref get_fair_pathname
 .xref strip_excessive_slashes
 .xref fair_pathname
 .xref make_sys_pathname
@@ -119,8 +119,8 @@ PDB_stackPtr	equ	$f8
 .xref get_var_value
 .xref dupvar
 .xref varsize
+.xref set_cwd
 .xref reset_cwd
-.xref set_oldcwd
 .xref clear_flagvars
 .xref init_key_bind
 .xref put_prompt_1
@@ -138,11 +138,11 @@ PDB_stackPtr	equ	$f8
 .xref subst_command
 .xref subst_command_2
 .xref unpack_words
-.xref expand_tilde
+.xref subst_directory
 .xref glob
 .xref get_dstack_d0
 .xref isquoted
-.xref isfullpath
+.xref isfullpathx
 .xref skip_paren
 .xref check_wildcard
 .xref find_shellvar
@@ -182,21 +182,22 @@ PDB_stackPtr	equ	$f8
 .xref cmd_breaksw
 .xref cmd_cd
 .xref cmd_cdd
-.if V9
+.xref cmd_cmd
 .xref cmd_complete
-.endif
 .xref cmd_continue
 .xref cmd_dirs
 .xref cmd_echo
 .xref cmd_eval
 .xref cmd_exec
 .xref cmd_exit
+.xref cmd_getopt
 .xref cmd_glob
 .xref cmd_goto
 .xref cmd_hashstat
 .xref cmd_history
 .xref cmd_functions
 .xref cmd_logout
+.xref cmd_noabort
 .xref cmd_onintr
 .xref cmd_popd
 .xref cmd_printf
@@ -212,9 +213,7 @@ PDB_stackPtr	equ	$f8
 .xref cmd_srand
 .xref cmd_time
 .xref cmd_unalias
-.if V9
 .xref cmd_uncomplete
-.endif
 .xref cmd_undefun
 .xref cmd_unhash
 .xref cmd_unset
@@ -231,21 +230,22 @@ PDB_stackPtr	equ	$f8
 .xref insufficient_memory
 .xref cannot_because_no_memory
 .xref msg_syntax_error
-.xref word_echo
 .xref word_complete
-.xref word_uncomplete
+.xref word_echo
 .xref word_glob
+.xref word_refersysroot
+.xref word_uncomplete
 .xref word_verbose
 
 auto_pathname	equ	(((MAXPATH+1)+1)>>1<<1)
 
 .text
 *****************************************************************
-texttop:					*   BIND版  :非BIND版
-	dc.l	bsstop				* 0(texttop):$f0(PDB): 子シェル毎のデータのアドレス
-	dc.l	bsstop+bsssize-texttop		* 4(texttop):$f4(PDB): BIND版の、切り詰める大きさ
-	dc.l	bsstop+bsssize+STACKSIZE	* 8(texttop):$f8(PDB): スタック・ポインタの初期値
-	dc.l	bsssize				*12(texttop):$fc(PDB): 子シェル毎のデータの大きさ
+texttop:				*   BIND版  :非BIND版
+	dc.l	bsstop			* 0(texttop):$f0(PDB): 子シェル毎のデータのアドレス
+	dc.l	bssbot-texttop		* 4(texttop):$f4(PDB): BIND版の、切り詰める大きさ
+	dc.l	bssbot+STACKSIZE	* 8(texttop):$f8(PDB): スタック・ポインタの初期値
+	dc.l	bsssize			*12(texttop):$fc(PDB): 子シェル毎のデータの大きさ
 *****************************************************************
 .even
 start:
@@ -297,6 +297,7 @@ i_am_not_root_shell:
 		clr.l	hash_misses(a5)
 		sf	hash_flag(a5)
 		sf	in_function(a5)
+		sf	do_buffering(a5)
 		moveq	#0,d0
 		bsr	isnotttyin
 		move.b	d0,input_is_tty(a5)		*  端末なら非0
@@ -347,77 +348,83 @@ i_am_not_root_shell:
 		clr.b	last_congetbuf(a5)
 		clr.b	last_congetbuf+1(a5)
 	**
-	**  $%FISHCONFIGを解釈する
-	**
-		lea	word_upper_fishconfig,a0
-		bsr	fish_getenv
-		beq	parse_fishconfig_done
-
-		bsr	get_var_value
-		movea.l	a0,a1
-parse_fishconfig_loop:
-		move.b	(a1)+,d0
-		beq	parse_fishconfig_done
-
-		bsr	issjis
-		beq	parse_fishconfig_ignore_next
-
-		cmp.b	#'k',d0
-		bne	parse_fishconfig_loop
-fishconfig_k:
-		st	keep_cwd(a5)
-		bra	parse_fishconfig_loop
-
-parse_fishconfig_ignore_next:
-		tst.b	(a1)+
-		bne	parse_fishconfig_loop
-parse_fishconfig_done:
-	**
 	**  引数を解釈する
 	**
+OPTION_d = 0
+OPTION_h = 1
+OPTION_s = 2
+OPTION_f = 3
+OPTION_x = 4
+OPTION_v = 5
+OPTION_t = 6
+OPTION_e = 7
+OPTION_c = 30
+OPTION_b = 31
 		clr.l	myname(a5)
 		sf	i_am_login_shell(a5)
 		clr.l	arg_command(a5)			*  最後の -c のコマンド
 		sf	not_execute(a5)			*  -n
-		sf	exit_on_error(a5)		*  -e
-		sf	flag_t(a5)			*  -t
 		clr.l	d7				*  bc-----------------------vxfshd
 	*
-		movea.l	PDB_argPtr(a4),a0
-		cmpi.b	#'-',1(a0)
-		bne	not_fish_C
+		lea	PDB_filename(a4),a0
+		lea	str_COM,a1
+		moveq	#3,d0
+		bsr	memicmp
+		bne	not_comfish
+****************
+* COMFISH.X
+****************
+		lea	word_COMFISHOPT,a0
+		bsr	fish_getenv
+		beq	parse_comfish_opt_done
 
-		addq.l	#2,a0
-check_fish_C:
+		bsr	get_var_value
+parse_comfish_opt:
 		move.b	(a0)+,d0
-		beq	not_fish_C
-
-		bsr	isspace2
-		beq	not_fish_C
-
-		cmp.b	#'C',d0
-		bne	check_fish_C
-		*
-		*  fish -*C*
-		*
-		movea.l	PDB_argPtr(a4),a0
-		addq.l	#1,a0
-parse_fish_C:
-		move.b	(a0)+,d0
-		bsr	isspace2
-		beq	parse_fish_C_ok
+		beq	parse_comfish_opt_done
 
 		bsr	parse_one_option
-		bra	parse_fish_C
+		bra	parse_comfish_opt
 
-parse_fish_C_ok:
+parse_comfish_opt_done:
+		movea.l	PDB_argPtr(a4),a0
+		addq.l	#1,a0
+skip_command_x_options_1:
+		bsr	skip_space
+		move.b	(a0),d0
+		beq	comfish_ok_3
+
+		cmp.b	#'/',d0
+		bne	comfish_ok_2
+
+		addq.l	#1,a0
+skip_command_x_options_2:
+		move.b	(a0)+,d0
+		cmp.b	#'C',d0
+		beq	comfish_ok_1
+
+		cmpi.b	#'c',d0
+		beq	comfish_ok_1
+skip_command_x_options_3:
+		move.b	(a0)+,d0
+		beq	comfish_ok_3
+
+		cmp.b	#'/',d0
+		beq	skip_command_x_options_2
+
+		bsr	isspace2
+		bne	skip_command_x_options_3
+		bra	skip_command_x_options_1
+
+comfish_ok_1:
+		bsr	skip_space
+comfish_ok_2:
 		move.l	a0,arg_command(a5)
+comfish_ok_3:
 		moveq	#0,d5
 		bra	done_flag_argument_parsing
-		*
-		*
-		*
-not_fish_C:
+****************
+not_comfish:
 		movea.l	PDB_argPtr(a4),a0
 		addq.l	#1,a0
 		bsr	strlen
@@ -461,38 +468,11 @@ check_l:
 set_login_shell_flag:
 		st	i_am_login_shell(a5)		*  ログイン・シェルとなる
 		*
-		*  loginsh
+		*  set loginsh
 		*
 		move.l	a0,-(a7)
 		lea	word_loginsh,a0
 		bsr	set_shellvar_nul
-		*
-		*  $HOME に chdir する
-		*
-		lea	word_upper_home,a0
-		bsr	fish_getenv
-		beq	no_home
-
-		bsr	get_var_value
-		move.l	a0,-(a7)
-		bsr	get_fair_pathname
-		bcs	chdir_home_fail
-
-		bsr	chdir
-		bmi	chdir_home_fail
-
-		addq.l	#4,a7
-		bra	chdir_home_done
-
-chdir_home_fail:
-		movea.l	(a7)+,a0
-		bsr	perror
-		bra	chdir_home_done
-
-no_home:
-		lea	msg_no_home,a0
-		bsr	enputs
-chdir_home_done:
 		movea.l	(a7)+,a0
 begin_parse_args:
 	*
@@ -502,7 +482,7 @@ parse_args_loop:
 		tst.l	d5
 		beq	done_flag_argument_parsing
 
-		btst	#31,d7				*  -b occurence
+		btst	#OPTION_b,d7			*  -b occurence
 		bne	done_flag_argument_parsing
 
 		cmpi.b	#'-',(a0)
@@ -518,10 +498,10 @@ parse_one_arg_loop:
 		bra	parse_one_arg_loop
 
 parse_one_arg_done:
-		btst	#30,d7				*  -c occurence
+		btst	#OPTION_c,d7			*  -c occurence
 		beq	parse_args_loop
 
-		bclr	#30,d7
+		bclr	#OPTION_c,d7
 		move.l	#-1,arg_command(a5)
 		tst.l	d5
 		beq	parse_args_loop
@@ -542,6 +522,8 @@ done_flag_argument_parsing:
 		movea.l	a0,a1
 		lea	first_cwd(a5),a0
 		bsr	strcpy
+		lea	old_cwd(a5),a0
+		bsr	strcpy
 	**
 	**  $0 と $argv を初期設定する
 	**
@@ -550,10 +532,10 @@ done_flag_argument_parsing:
 		tst.l	d5
 		beq	set_init_argv
 
-		tst.b	flag_t(a5)			*  -t
+		btst.b	#OPTION_t,flags(a5)		*  -t
 		bne	set_init_argv
 
-		btst.b	#2,flags(a5)			*  -s
+		btst.b	#OPTION_s,flags(a5)		*  -s
 		bne	set_init_argv
 
 		tst.l	arg_command(a5)			*  -c
@@ -575,6 +557,32 @@ set_init_argv:
 set_init_argv_1:
 		bsr	set_argv
 	**
+	**  interactive_mode を fix する
+	**
+		tst.l	arg_command(a5)
+		bne	reset_interactive_mode
+
+		tst.l	arg_script(a5)
+		beq	interactive_mode_ok
+reset_interactive_mode:
+		sf	interactive_mode(a5)
+interactive_mode_ok:
+	**
+	**  refersysrootの設定
+	**
+		lea	config_refersysroot,a1
+		lea	pathname_buf,a0
+		bsr	make_sys_pathname
+		bmi	set_refersysroot_ok
+
+		lea	tmpstatbuf,a1
+		bsr	stat
+		bmi	set_refersysroot_ok
+
+		lea	word_refersysroot,a0
+		bsr	set_shellvar_nul
+set_refersysroot_ok:
+	**
 	**  環境変数をシェル変数にインポートする
 	**
 		*
@@ -593,24 +601,24 @@ set_init_argv_1:
 		*
 		lea	word_user,a2
 		lea	word_upper_user,a1
-		bsr	importn
+		bsr	import
 		bpl	import_user_done
 
 		lea	word_upper_logname,a1
-		bsr	importn
+		bsr	import
 import_user_done:
 		*
 		*  TERM -> term
 		*
 		lea	word_term,a2
 		lea	word_upper_term,a1
-		bsr	importn
+		bsr	import
 		*
 		*  COLUMNS -> columns
 		*
 		lea	word_columns,a2
 		lea	word_upper_columns,a1
-		bsr	importn
+		bsr	import
 		*
 		*  HOME -> home
 		*
@@ -622,13 +630,13 @@ import_user_done:
 		*
 		lea	word_uid,a2
 		lea	word_upper_uid,a1
-		bsr	importn
+		bsr	import
 		*
 		*  GID -> gid
 		*
 		lea	word_gid,a2
 		lea	word_upper_gid,a1
-		bsr	importn
+		bsr	import
 		*
 		*  ++SHLVL -> shlvl
 		*
@@ -658,34 +666,17 @@ set_shlvl:
 		*
 		*  batshell
 		*
-		lea	init_batshell,a1
-		lea	pathname_buf,a0
-		bsr	make_sys_pathname
-		bmi	set_batshell_done
-
-		bsr	bsltosl
-		movea.l	a0,a1
 		lea	word_batshell,a0
+		lea	init_batshell,a1
 		moveq	#1,d0
 		bsr	set_shellvar
-set_batshell_done:
 		*
 		*  shell
 		*
-		lea	init_shell,a1
-		movea.l	tmpargs(a5),a0
-		bsr	make_sys_pathname
-		bmi	set_shell_done
-
-		bsr	bsltosl
-		bsr	strfor1
-		lea	init_shell_init_arg,a1
-		bsr	strcpy
-		movea.l	tmpargs(a5),a1
 		lea	word_shell,a0
+		lea	init_shell,a1
 		moveq	#2,d0
 		bsr	set_shellvar
-set_shell_done:
 		*
 		*  misc. static variables
 		*
@@ -696,7 +687,7 @@ set_shell_done:
 		tst.l	arg_command(a5)			* -c
 		bne	set_initial_vars
 
-		tst.b	flag_t(a5)			* -t
+		btst.b	#OPTION_t,flags(a5)		* -t
 		bne	set_initial_vars
 
 		lea	initial_vars_stdin_mode,a2
@@ -712,9 +703,9 @@ set_initial_vars:
 
 set_initial_vars_done:
 		*
-		*  cwd
+		*  cwd, PWD
 		*
-		bsr	reset_cwd
+		bsr	set_cwd
 		*
 		*  status
 		*
@@ -738,99 +729,77 @@ set_initial_vars_done:
 	**
 	**  スタートアップ
 	**
-		btst.b	#3,flags(a5)			*  -fが指定されているなら
-		bne	startup_done			*  やらない
-		*
-		*  $SYSROOT/etc/fishrc
-		*
-		lea	etc_fishrc,a1
-		lea	pathname_buf,a0
-		bsr	make_sys_pathname
-		bmi	etc_fishrc_done
+		lea	etc_fishenv,a1				*  $SYSROOT/etc/fishenv
+		bsr	run_etc_source_if_any
 
-		clr.b	d7
-		bsr	run_source_if_any
-etc_fishrc_done:
-		*
-		*  ~/.fishrc
-		*
-		lea	dot_fishrc,a1
-		bsr	run_home_source_if_any
-		bpl	home_fishrc_done
+		btst.b	#OPTION_f,flags(a5)
+		bne	start_run
 
-		lea	percent_fishrc,a1
-		bsr	run_home_source_if_any
-home_fishrc_done:
-		*
-		*  ~/.login
-		*
-		tst.b	i_am_login_shell(a5)		*  ログイン・シェルでなければ
-		beq	home_login_done			*  やらない
+		lea	dot_fishenv,a1				*  ~/.fishenv
+		bsr	run_home_dot_source_if_any
 
-		lea	dot_login,a1
-		bsr	run_home_source_if_any
-		bpl	home_login_done
+		tst.b	interactive_mode(a5)
+		beq	start_run
 
-		lea	percent_login,a1
-		bsr	run_home_source_if_any
-home_login_done:
-		*
-		*  ~/.fishdirs
-		*
-		tst.b	i_am_login_shell(a5)		*  ログイン・シェルならば
-		bne	do_source_fishdirs		*  やる
+		tst.b	i_am_login_shell(a5)
+		beq	source_profile_done
 
-		btst.b	#0,flags(a5)			*  -dが指定されていないなら
-		beq	home_fishdirs_done		*  やらない
+		lea	etc_fprofile,a1				*  $SYSROOT/etc/fprofile
+		bsr	run_etc_source_if_any
+		lea	dot_fprofile,a1				*  ~/.fprofile
+		bsr	run_home_dot_source_if_any
+source_profile_done:
+		lea	etc_fishrc,a1				*  $SYSROOT/etc/fishrc
+		bsr	run_etc_source_if_any
+		lea	dot_fishrc,a1				*  ~/.fishrc
+		bsr	run_home_dot_source_if_any
+
+		tst.b	i_am_login_shell(a5)
+		beq	not_source_login
+
+		lea	etc_flogin,a1				*  $SYSROOT/flogin
+		bsr	run_etc_source_if_any
+		lea	dot_login,a1				*  ~/.login
+		bsr	run_home_dot_source_if_any
+		bra	do_source_fishdirs
+
+not_source_login:
+		btst.b	#OPTION_d,flags(a5)
+		beq	source_fishdirs_done
 do_source_fishdirs:
-		lea	dot_fishdirs,a1
-		bsr	try_run_fishdirs
-		bpl	home_fishdirs_done
-
-		lea	percent_fishdirs,a1
-		bsr	try_run_fishdirs
-home_fishdirs_done:
+		lea	dot_fishdirs,a1				*  ~/.fishdirs
+		moveq	#(1<<SOURCE_FLAGBIT_NOSUBST),d7
+		bsr	run_home_dot_source_if_any_1
+source_fishdirs_done:
 startup_done:
 		tst.b	interrupted(a5)
 		bne	start_run
 
+		btst.b	#OPTION_h,flags(a5)
+		bne	load_history_done
+
+		lea	word_history,a0
+		bsr	find_shellvar
+		beq	load_history_done
+
 		lea	load_history_done(pc),a0
 		move.l	a0,mainjmp(a5)
-		*
-		*  ~/.history
-		*
-		btst.b	#3,flags(a5)			*  -fが指定されているなら
-		bne	load_history_done		*  やらない
-
-		btst.b	#1,flags(a5)			*  -hが指定されているなら
-		bne	load_history_done		*  やらない
-
-		tst.b	flag_t(a5)			*  -tが指定されているなら
-		bne	load_history_done		*  やらない
-
-		tst.l	arg_command(a5)			*  -cが指定されているなら
-		bne	load_history_done		*  やらない
-
-		tst.l	arg_script(a5)			*  スクリプト引数があるなら
-		bne	load_history_done		*  やらない
-
-		lea	dot_history,a1
-		bsr	try_load_history
-		bpl	load_history_done
-
-		lea	percent_history,a1
-		bsr	try_load_history
+		lea	dot_history,a1				*  ~/.history
+		moveq	#((1<<SOURCE_FLAGBIT_ONLYLOAD)|(1<<SOURCE_FLAGBIT_NOCOMMENT)|(1<<SOURCE_FLAGBIT_NOCONTLINE)),d7
+		bsr	run_home_dot_source_if_any_1
 load_history_done:
 start_run:
+		lea	abort_shell_status(pc),a0
+		move.l	a0,mainjmp(a5)
 	**
 	**  -v と -x を処理する
 	**
-		btst.b	#5,flags(a5)			*  -v
+		btst.b	#OPTION_v,flags(a5)		*  -v
 		beq	set_verbose_done
 
 		bsr	set_verbose
 set_verbose_done:
-		btst.b	#4,flags(a5)			*  -x
+		btst.b	#OPTION_x,flags(a5)		*  -x
 		beq	start_run_1
 
 		bsr	set_echo
@@ -838,16 +807,13 @@ start_run_1:
 	**
 	**  実行開始
 	**
-		lea	exit_shell_status(pc),a0
-		move.l	a0,mainjmp(a5)
-
 		tst.l	arg_command(a5)			*  -c
 		bne	do_argument
 
-		tst.b	flag_t(a5)			*  -t
+		btst.b	#OPTION_t,flags(a5)		*  -t
 		bne	do_tty_line
 
-		btst.b	#3,flags(a5)			*  -f
+		btst.b	#OPTION_f,flags(a5)		*  -f
 		bne	not_rehash
 
 		tst.b	not_execute(a5)
@@ -873,7 +839,7 @@ main:
 		bpl	main
 
 		tst.b	input_is_tty(a5)
-		beq	shell_eof2
+		beq	shell_eof
 
 		tst.b	flag_ignoreeof(a5)
 		beq	shell_eof
@@ -888,25 +854,20 @@ ignore_eof:
 		bra	main
 *****************************************************************
 do_tty_line:
-		lea	ttymain(pc),a0
-		move.l	a0,mainjmp(a5)
-ttymain:
 		bsr	do_line_getline
 		tst.l	d0
-		bpl	shell_eof2
-
-		tst.b	input_is_tty(a5)
-		beq	shell_eof2
+		bpl	shell_eol
 		bra	shell_eof
 *****************************************************************
 do_argument:
 		tst.b	breaked(a5)
-		bne	exit_shell_status
+		bne	abort_shell_status
 
-		move.l	arg_command(a5),d0
-		bmi	exit_shell_0
+		moveq	#0,d0
+		move.l	arg_command(a5),d1
+		bmi	exit_shell_d0
 
-		movea.l	d0,a0
+		movea.l	d1,a0
 		bsr	strlen
 		cmp.l	#MAXLINELEN,d0
 		bhi	do_argment_too_long
@@ -914,17 +875,17 @@ do_argument:
 		movea.l	a0,a1
 		lea	line(a5),a0
 		bsr	strcpy
-		st	d0
-		bsr	do_line_substhist
+		sf	d7
+		bsr	do_line_substhist_line
 		bra	shell_eol
 
 do_argment_too_long:
 		bsr	too_long_line
-		bra	exit_shell_1
+		bra	exit_shell_d0
 *****************************************************************
 do_file:
 		tst.b	breaked(a5)
-		bne	exit_shell_status
+		bne	abort_shell_status
 
 		movea.l	arg_script(a5),a0
 		moveq	#-1,d1
@@ -934,14 +895,8 @@ do_file:
 		bra	exit_shell_status
 *****************************************************************
 parse_one_option:
-		cmp.b	#'t',d0			*  -t : 標準入力からのコマンドを1行実行して終了する
-		beq	flag_t_found
-
 		cmp.b	#'n',d0			*  -n : コマンドを実行しない
 		beq	flag_n_found
-
-		cmp.b	#'e',d0			*  -e : エラーで終了する
-		beq	flag_e_found
 
 		cmp.b	#'k',d0			*  -k : 作業ディレクトリを元に戻さずに終了する
 		beq	flag_k_found
@@ -949,35 +904,43 @@ parse_one_option:
 		cmp.b	#'i',d0			*  -i : 対話モード
 		beq	flag_i_found
 
-		moveq	#31,d1
+		moveq	#OPTION_b,d1
 		cmp.b	#'b',d0			*  -b : フラグ引数の解釈をブレークする
 		beq	set_flag
 
-		moveq	#30,d1
+		moveq	#OPTION_c,d1
 		cmp.b	#'c',d0			*  -c : 引数のコマンドを実行して終了する
 		beq	set_flag
 
-		moveq	#0,d1
+		moveq	#OPTION_d,d1
 		cmp.b	#'d',d0			*  -d : ~/.fishdirsをsourceする
 		beq	set_flag
 
-		moveq	#1,d1
-		cmp.b	#'h',d0			*  -h : 高速な起動 .. 履歴を読み込まない
+		moveq	#OPTION_e,d1
+		cmp.b	#'e',d0			*  -e : エラーで終了する
 		beq	set_flag
 
-		moveq	#2,d1
-		cmp.b	#'s',d0			*  -s : コマンドは標準入力から読み取る
-		beq	set_flag
-
-		moveq	#3,d1
+		moveq	#OPTION_f,d1
 		cmp.b	#'f',d0			*  -f : 高速な起動 .. 環境ファイルを実行しない
 		beq	set_flag
 
-		moveq	#4,d1
+		moveq	#OPTION_h,d1
+		cmp.b	#'h',d0			*  -h : 高速な起動 .. 履歴を読み込まない
+		beq	set_flag
+
+		moveq	#OPTION_s,d1
+		cmp.b	#'s',d0			*  -s : コマンドは標準入力から読み取る
+		beq	set_flag
+
+		moveq	#OPTION_t,d1
+		cmp.b	#'t',d0			*  -t : 標準入力からのコマンドを1行実行して終了する
+		beq	set_flag
+
+		moveq	#OPTION_x,d1
 		cmp.b	#'x',d0			*  -x : echo をsetする
 		beq	set_flag
 
-		moveq	#5,d1
+		moveq	#OPTION_v,d1
 		cmp.b	#'v',d0			*  -v : verbose をsetする
 		beq	set_flag
 
@@ -1001,21 +964,13 @@ flag_n_found:
 		st	not_execute(a5)
 		rts
 
-flag_e_found:
-		st	exit_on_error(a5)
-		rts
-
 flag_k_found:
 		st	keep_cwd(a5)
 		rts
 
-flag_t_found:
-		st	flag_t(a5)
-		rts
-
 flag_i_found:
 		st	interactive_mode(a5)
-		moveq	#2,d1				*  -s
+		moveq	#OPTION_s,d1			*  -s
 set_flag:
 		bset	d1,d7
 		rts
@@ -1152,29 +1107,10 @@ import_path_1:
 		cmp.l	#MAXWORDLISTSIZE,d2
 		bhi	import_path_too_long
 
-		subq.w	#1,d1
-import_path_dup:
-		move.b	(a0)+,d0
-		bsr	issjis
-		beq	import_path_dup_sjis
-
-		cmp.b	#'\',d0
-		bne	import_path_dup_1
-
-		moveq	#'/',d0
-		bra	import_path_dup_1
-
-import_path_dup_sjis:
-		move.b	d0,(a1)+
-		dbra	d1,import_path_dup_sjis_2
-		bra	import_path_dup_done
-
-import_path_dup_sjis_2:
-		move.b	(a0)+,d0
-import_path_dup_1:
-		move.b	d0,(a1)+
-		dbra	d1,import_path_dup
-import_path_dup_done:
+		move.l	d1,d0
+		exg	a0,a1
+		bsr	memmovi
+		exg	a0,a1
 		clr.b	(a1)+
 		tst.b	(a2)+
 		bne	import_path_loop
@@ -1208,17 +1144,13 @@ init_path_static:
 * CALL
 *      A1     環境変数名
 *      A2     シェル変数名
-*      D0.B   0 以外: \ を / に替える
 *
 * RETURN
 *      D0.L   -1:環境変数は定義されていない  0:インポートした  1:エラー
 *      CCR    TST.L D0
 ****************************************************************
-importn:
-		sf	d0
 import:
-		movem.l	d1-d3/a0-a1,-(a7)
-		move.b	d0,d3				*  D3.B : subst \ to /
+		movem.l	d1-d2/a0-a1,-(a7)
 		movea.l	a1,a0
 		bsr	fish_getenv
 		beq	not_import
@@ -1233,18 +1165,8 @@ import_set:
 		moveq	#1,d0
 		sf	d1
 		bsr	set_shellvar
-		bne	import_return
-
-		tst.b	d3
-		beq	import_return
-
-		bsr	get_shellvar
-		beq	import_return
-
-		bsr	bsltosl
-		moveq	#0,d0
 import_return:
-		movem.l	(a7)+,d1-d3/a0-a1
+		movem.l	(a7)+,d1-d2/a0-a1
 		tst.l	d0
 		rts
 
@@ -1338,6 +1260,7 @@ break_shell:
 		clr.l	command_name(a5)
 		sf	exitflag(a5)
 		sf	in_getline_x(a5)
+		sf	do_buffering(a5)
 		*
 		move.l	d0,-(a7)
 		bsr	free_all_tmp_and_misc_buffers
@@ -1386,11 +1309,11 @@ stop_running:
 		tst.b	doing_logout
 		bne	longjmp_mainjmp
 
-		tst.b	exit_on_error(a5)
-		bne	exit_shell_d0
+		btst.b	#OPTION_e,flags(a5)
+		bne	abort_shell_d0
 
 		tst.b	input_is_tty(a5)
-		beq	exit_shell_d0
+		beq	abort_shell_d0
 longjmp_mainjmp:
 		movea.l	mainjmp(a5),a0
 		jmp	(a0)
@@ -1407,20 +1330,25 @@ shell_eof:
 		tst.b	i_am_login_shell(a5)
 		bne	shell_eof2
 
-		lea	msg_eof_exit,a0
+		tst.b	interactive_mode(a5)
+		beq	shell_eof2
+
+		lea	word_exit,a0
 		bsr	nputs
 shell_eof2:
 		cmp.l	#-1,d0
-		bne	exit_shell_1
+		bne	abort_shell_1
 shell_eol:
 		bsr	check_end
 		beq	exit_shell_status
-exit_shell_1:
+abort_shell_1:
 		moveq	#1,d0
-		bra	exit_shell_d0
+		bra	abort_shell_d0
 
-exit_shell_0:
-		moveq	#0,d0
+abort_shell_status:
+		bsr	get_status
+abort_shell_d0:
+		bset	#OPTION_f,flags(a5)
 		bra	exit_shell_d0
 
 exit_shell_status:
@@ -1430,37 +1358,47 @@ exit_shell_d0:
 		tst.l	fork_stackp(a5)
 		bne	longjmp_mainjmp
 
+		btst.b	#OPTION_f,flags(a5)		*  -f
+		bne	do_exit_shell
+
+		btst.b	#OPTION_t,flags(a5)		*  -t
+		bne	do_exit_shell
+
+		tst.l	arg_command(a5)			*  -c
+		bne	do_exit_shell
+
 		tst.b	i_am_login_shell(a5)
-		beq	do_exit_shell
+		beq	source_logout_done
 
 		lea	word_logout,a0
 		bsr	nputs
 logout:
-		st	doing_logout
 		lea	logout_terminated(pc),a0
 		move.l	a0,mainjmp(a5)
 		move.l	a7,stackp(a5)
-		lea	dot_logout,a1
-		bsr	run_home_source_if_any
-		bpl	logout_terminated
-
-		lea	percent_logout,a1
-		bsr	run_home_source_if_any
+		st	doing_logout
+		lea	etc_flogout,a1			*  /etc/flogout
+		bsr	run_etc_source_if_any
+		lea	dot_logout,a1			*  ~/.logout
+		bsr	run_home_dot_source_if_any
 logout_terminated:
+		sf	doing_logout
 		bsr	reset_delete_io
-
+source_logout_done:
 		bsr	disable_break
 		move.w	d0,-(a7)			*  現在のブレーク・フラグをスタックに保存
 		move.l	a7,stackp(a5)
 		lea	savedirs_terminated(pc),a0
 		move.l	a0,mainjmp(a5)
-
+		*
+		*  create ~/.fishdirs
+		*
 		tst.b	flag_savedirs(a5)
 		beq	savedirs_done
 
 		lea	dot_fishdirs,a1
-		bsr	make_home_filename
-		bmi	savedirs_try_percent
+		bsr	make_home_dot_filename
+		bmi	savedirs_done
 
 		bsr	create_savefile
 		bpl	do_savedirs
@@ -1468,18 +1406,15 @@ logout_terminated:
 		lea	tmpstatbuf,a1
 		bsr	stat
 		bpl	savedirs_done
-savedirs_try_percent:
-		lea	percent_fishdirs,a1
-		bsr	make_home_filename
-		bmi	savedirs_done
 
+		move.b	#'%',(a3)
 		bsr	create_savefile
 		bmi	savedirs_done
 do_savedirs:
 		move.l	d0,tmpfd(a5)
-		st	d1				*  D1.B : cdflag
 		movea.l	dirstack(a5),a0
 		move.w	dirstack_nelement(a0),d3
+		lea	word_builtin_cd,a2
 		bra	savedirs_continue
 
 savedirs_loop:
@@ -1493,9 +1428,16 @@ savedirs_loop:
 		adda.l	d2,a0
 		bsr	savedirs_one
 		bmi	savedirs_close
+
+		lea	word_builtin_pushd,a2
 savedirs_continue:
 		dbra	d3,savedirs_loop
 
+		lea	old_cwd(a5),a0
+		bsr	savedirs_one
+		bmi	savedirs_close
+
+		lea	word_builtin_cd,a2
 		lea	cwd(a5),a0
 		bsr	savedirs_one
 		bmi	savedirs_close
@@ -1512,7 +1454,9 @@ savedirs_close:
 savedirs_done:
 		lea	savehist_terminated(pc),a0
 		move.l	a0,mainjmp(a5)
-
+		*
+		*  create ~/.history
+		*
 		lea	word_savehist,a0
 		bsr	get_shellvar
 		beq	savehist_done
@@ -1522,20 +1466,17 @@ savedirs_done:
 
 		movea.l	a0,a2
 		lea	dot_history,a1
-		bsr	make_home_filename
-		bmi	savehist_try_percent
+		bsr	make_home_dot_filename
+		bmi	savehist_done
 
 		bsr	create_savefile
 		bpl	do_savehist
 
 		lea	tmpstatbuf,a1
 		bsr	stat
-		bpl	savedirs_done
-savehist_try_percent:
-		lea	percent_history,a1
-		bsr	make_home_filename
-		bmi	savehist_done
+		bpl	savehist_done
 
+		move.b	#'%',(a3)
 		bsr	create_savefile
 		bmi	savehist_done
 do_savehist:
@@ -1573,7 +1514,6 @@ do_exit_shell_cwd_ok:
 		bsr	resume_io
 		move.l	(a7)+,d0
 		sf	in_fish
-		sf	doing_logout
 		cmp.l	#$200,d0
 		blo	exit_process
 
@@ -1591,13 +1531,10 @@ exit_halt:
 savedirs_one:
 		move.l	a0,-(a7)
 		movea.l	tmpargs(a5),a0
-		lea	word_builtin_pushd,a1
-		tst.b	d1				*  D1.B : cdflag
-		beq	savedirs_one_1
-
-		lea	word_builtin_cd,a1
-		sf	d1
-savedirs_one_1:
+		lea	word_builtin_noabort,a1
+		bsr	stpcpy
+		move.b	#' ',(a0)+
+		movea.l	a2,a1
 		bsr	stpcpy
 		lea	str_option_s,a1
 		bsr	stpcpy
@@ -1620,7 +1557,6 @@ savedirs_one_2:
 savedirs_write:
 		lea	str_newline,a1
 		bsr	stpcpy
-		move.l	d1,-(a7)
 		move.l	a0,d0
 		movea.l	tmpargs(a5),a0
 		sub.l	a0,d0
@@ -1636,7 +1572,6 @@ savedirs_write:
 
 		moveq	#-23,d0
 savedirs_write_done:
-		move.l	(a7)+,d1
 		tst.l	d0
 		rts
 *****************************************************************
@@ -1668,7 +1603,7 @@ resume_io:
 * CALL
 *      A0     単語並び または 文字列
 *      D0.W   A0が単語並びならば単語数．A0が文字列ならば文字列の長さ
-*      D1.B   A0が単語並びならば0以外
+*      D1.B   bit0:A0が単語並びならば1; bit1:bg実行ならば1
 *      D2.B   -n フラグ
 *
 * RETURN
@@ -1703,8 +1638,13 @@ run_function_in_subshell:
 		bclr.b	#FUNCTYPEBIT_SOURCEONCE,FUNC_TYPE(a1)
 		rts
 
+run_command_in_bg:
+		moveq	#3,d1
+		bra	run_command_in_subshell_1
+
 run_command_in_subshell:
 		moveq	#1,d1
+run_command_in_subshell_1:
 		move.b	not_execute(a5),d2
 fork:
 		movem.l	d1-d7/a0-a4/a6,-(a7)
@@ -1857,15 +1797,14 @@ dup_keymacro_done:
 		movea.l	a2,a1
 		moveq	#0,d0
 		move.w	d3,d0
-		tst.b	d1
+		btst	#0,d1
 		bne	fork_wordlist
 
 		lea	line(a5),a0
 		bsr	memmovi
 		clr.b	(a0)
-		lea	line(a5),a0
-		sf	d0
-		bsr	do_line_substhist
+		sf	d7
+		bsr	do_line_substhist_line
 		bra	fork_ran0
 
 fork_wordlist:
@@ -1886,7 +1825,7 @@ fork_fail3:
 		movea.l	(a7)+,a5
 		bsr	reset_bss
 
-		st	d0
+		moveq	#1,d0
 		bsr	resume_cwd
 fork_fail2:
 		move.l	a4,d0
@@ -2108,26 +2047,41 @@ load_source_fail:
 		lea	msg_read_fail,a0
 		bra	print_shell_error
 ****************************************************************
-make_home_filename:
-		movem.l	d0/a1-a3,-(a7)
+* make_home_dot_filename
+*
+* CALL
+*      A1     ファイル名
+*
+* RETURN
+*      pathname_buf   パス名が格納される
+*      A0     パス名（pathname_buf の先頭）
+*      A3     パス名のファイル名部の先頭
+*      CCR    MI ならエラー
+*             o シェル変数 home が定義されていない
+*             o シェル変数 home の単語数が 0個である
+*             o シェル変数 home の 1番目の単語が空である
+*             o パス名が長過ぎる
+****************************************************************
+make_home_dot_filename:
+		movem.l	d0/a1-a2,-(a7)
 		movea.l	a1,a2
 		lea	word_home,a0
 		bsr	get_shellvar
-		beq	make_home_filename_fail
+		beq	make_home_dot_filename_fail
 
 		tst.b	(a0)
-		beq	make_home_filename_fail
+		beq	make_home_dot_filename_fail
 
 		movea.l	a0,a1
 		lea	pathname_buf,a0
 		bsr	cat_pathname
-make_home_filename_return:
-		movem.l	(a7)+,d0/a1-a3
+make_home_dot_filename_return:
+		movem.l	(a7)+,d0/a1-a2
 		rts
 
-make_home_filename_fail:
+make_home_dot_filename_fail:
 		moveq	#-1,d0
-		bra	make_home_filename_return
+		bra	make_home_dot_filename_return
 *****************************************************************
 * run_source - run source until EOF
 *
@@ -2141,19 +2095,26 @@ make_home_filename_fail:
 .xdef OpenLoadRun_source
 .xdef abort
 
-try_load_history:
-		moveq	#((1<<SOURCE_FLAGBIT_ONLYLOAD)|(1<<SOURCE_FLAGBIT_NOCOMMENT)|(1<<SOURCE_FLAGBIT_NOCONTLINE)),d7
-		bra	run_home_source_if_any_1
-
-try_run_fishdirs:
-		moveq	#(1<<SOURCE_FLAGBIT_NOSUBST),d7
-		bra	run_home_source_if_any_1
-
-run_home_source_if_any:
-		clr.b	d7
-run_home_source_if_any_1:
-		bsr	make_home_filename
+run_etc_source_if_any:
+		lea	pathname_buf,a0
+		bsr	make_sys_pathname
 		bmi	run_source_return
+
+		clr.b	d7
+		bra	run_source_if_any
+
+run_home_dot_source_if_any:
+		clr.b	d7
+run_home_dot_source_if_any_1:
+		bsr	make_home_dot_filename
+		bmi	run_source_return
+
+		movem.l	a0/a3,-(a7)
+		bsr	run_source_if_any
+		movem.l	(a7)+,a0/a3
+		beq	run_source_return
+
+		move.b	#'%',(a3)
 run_source_if_any:
 		st	d6
 		moveq	#-1,d1
@@ -2427,7 +2388,7 @@ do_line_getline_1:
 		beq	do_line_getline_3
 
 		sf	d2			*  コメントを削除しない
-		tst.b	flag_t(a5)
+		btst.b	#OPTION_t,flags(a5)
 		bne	do_line_getline_3
 
 		lea	put_prompt_1(pc),a1	*  A1 : プロンプト出力ルーチン
@@ -2443,21 +2404,15 @@ do_line_getline_script:
 		btst.b	#SOURCE_FLAGBIT_NOCONTLINE,SOURCE_FLAGS(a4)
 		seq	d3
 do_line_getline_3:
-		lea	line(a5),a0
-		move.w	#MAXLINELEN,d1
-		moveq	#0,d7
-		lea	getline_phigical(pc),a2
 		bsr	getline
 		bmi	do_line_just_return
 		bne	shell_error
-
-		st	d0
 *****************************************************************
 * do_line_substhist - 行を履歴置換、単語分け、verbose表示、履歴登録し、実行する
 *
 * CALL
+*      D7.B    0 でなければ履歴登録する
 *      A0      行
-*      D0.B    0 でなければ履歴登録する
 *
 * RETURN
 *      D0.L    0
@@ -2467,8 +2422,11 @@ do_line_getline_3:
 .xdef do_line_substhist
 .xdef do_line_v
 
+do_line_substhist_0:
+		st	d7
+do_line_substhist_line:
+		lea	line(a5),a0
 do_line_substhist:
-		move.b	d0,d7
 		**
 		**  履歴の置換を行う
 		**
@@ -2545,9 +2503,6 @@ find_words_1:
 		bra	do_line_return
 
 do_line_substhist_2:
-		tst.b	interactive_mode(a5)
-		beq	skip_enter_history
-
 		bsr	enter_history
 skip_enter_history:
 		btst	#0,d2			*  !:p
@@ -2889,7 +2844,7 @@ not_null_ampersand:
 
 		movea.l	a1,a0
 		move.w	d1,d0
-		bsr	run_command_in_subshell
+		bsr	run_command_in_bg
 		bsr	clear_status
 		bra	do_next_command_0
 ****************************************************************
@@ -2911,7 +2866,7 @@ find_command_separation:
 		bne	find_command_separation_continue
 
 		move.w	d7,d0
-		bsr	skip_paren
+		jsr	skip_paren
 		exg	d0,d7			* D7.W : ) 以降の単語数
 		sub.w	d7,d0			* D0.W : ( から ) の直前までの単語数
 		add.w	d0,d1
@@ -3013,7 +2968,7 @@ find_redirection:
 
 		movea.l	a0,a2
 		move.w	d7,d0
-		bsr	skip_paren
+		jsr	skip_paren
 		exg	d0,d7
 		sub.w	d7,d0
 		add.w	d0,argc(a5)
@@ -3259,7 +3214,7 @@ redirect_in_open:
 redirect_in_opened:
 		move.l	d1,undup_input(a5)		* デスクリプタを undup_input に覚えておく
 
-		bsr	isblkdev			* そいつがキャラクタ・デバイスで
+		bsr	ischardev			* そいつがキャラクタ・デバイスで
 		beq	redirect_in_ok			*   なければOK
 
 		tst.b	input_nonoclobber(a4)
@@ -3298,13 +3253,13 @@ heredoc_open_ok:
 		move.b	d0,d3				* D3 : 「クオートされている」フラグ
 heredoc_loop:
 		lea	line(a5),a0
-		movem	d1/d4,-(a7)
+		movem	d1/d4/a2,-(a7)
 		move.w	#MAXLINELEN,d1
 		suba.l	a1,a1				* プロンプト無し
-		moveq	#0,d0
+		movea.l	a0,a2
 		moveq	#0,d4
 		bsr	getline_phigical
-		movem	(a7)+,d1/d4
+		movem	(a7)+,d1/d4/a2
 		bmi	heredoc_eof
 		bne	shell_error
 
@@ -3460,7 +3415,7 @@ redirect_out_not_stdfd:
 			* みできない」となってしまうので、ここで予めチェックしておく
 
 redirect_out_device_check:
-		bsr	isblkdev			* そいつがキャラクタ・デバイスかどうかを
+		bsr	ischardev			* そいつがキャラクタ・デバイスかどうかを
 		move.b	d0,d1				*   D1にセット
 		moveq	#1,d0
 		tst.b	d1				* キャラクタ・デバイスで
@@ -3542,9 +3497,6 @@ redirect_out_ready:
 
 		tst.b	output_cat(a4)			* >> で
 		beq	do_redirect_out			*   なければシークしない
-
-		bsr	isblkdev			* リダイレクト先がシーク不可
-		bne	do_redirect_out			*   ならばシークしない
 
 		move.w	#2,-(a7)			* EOF
 		clr.l	-(a7)				* 　まで
@@ -3746,9 +3698,21 @@ skip_redirect_token_done:
 * CALL
 *      simple_args
 *      argc
-*      D1.B   消費時間報告  0:$timeに従う  1:常に行う
+*      D1.B   bit 0 : 消費時間報告  0:$timeに従う  1:常に行う
+*             bit 1 : 組み込みコマンドエラー  0:アボートする  1:アボートしない
+*             bit 2 : 外部コマンドに対する引数エンコード  0:する  1:しない
+*             bit 3-4 : 外部コマンドに対する引数が255バイトを超えた場合
+*                       bit4 bit3
+*                         0    0    $@hugearg に従う
+*                         0    1    force
+*                         1    0    indirect
+*                         1    1    error
+*             bit 5 : 外部コマンドによる作業ディレクトリ変更  0:許さない  1:許す
+*             bit 6 : 外部コマンドによる環境変数変更  0:許さない  1:許す
+*             bit 7 : 1:組み込みコマンドと関数を除外して外部コマンドのみ検索する
 *      D2.B   非0:再帰である..変数展開をしない，入出力をリセットしない
 *             負ならば，さらに一切の置換・展開をしない
+*      A2     D1.B bit4==1,bit3==0 のとき, indirect flag文字列
 *
 * RETURN
 *      全て   破壊
@@ -3757,15 +3721,24 @@ skip_redirect_token_done:
 .xdef DoSimpleCommand_recurse
 .xdef set_status
 
+FLAG_TIME_ALWAYS = 0
+FLAG_NO_ABORT    = 1
+FLAG_RAWARG      = 2
+FLAG_CDCMD       = 5
+FLAG_ENVCMD      = 6
+FLAG_NO_BUILTIN  = 7
+
 status = -4
 argp = status-4
 timer_exec_start_low = argp-4
 timer_exec_start_high = timer_exec_start_low-4
-timer_flag = timer_exec_start_high-1
-recursed = timer_flag-1
+DoSimpleCommand_indirect_flag = timer_exec_start_high-4
+DoSimpleCommand_flags = DoSimpleCommand_indirect_flag-1
+recursed = DoSimpleCommand_flags-1
 arg_is_huge = recursed-1
 status_ok = arg_is_huge-1
-pad = status_ok-0
+timer_ok = status_ok-1
+pad = timer_ok-1
 
 DoSimpleCommand_recurse_2:
 		move.w	d0,argc(a5)
@@ -3781,8 +3754,10 @@ DoSimpleCommand:
 		clr.l	user_command_signal
 		sf	cwd_changed(a5)
 		sf	status_ok(a6)
-		move.b	d1,timer_flag(a6)
+		sf	timer_ok(a6)
+		move.b	d1,DoSimpleCommand_flags(a6)
 		move.b	d2,recursed(a6)
+		move.l	a2,DoSimpleCommand_indirect_flag(a6)
 		move.w	argc(a5),d0
 		beq	simple_command_done_0
 
@@ -3884,6 +3859,9 @@ start_do_simple_command:
 		bra	print_shell_error
 
 command_name_ok:
+		btst.b	#FLAG_NO_BUILTIN,DoSimpleCommand_flags(a6)
+		bne	not_function
+
 		lea	program_name(a5),a0
 		lea	function_root(a5),a2
 		bsr	find_function
@@ -3941,6 +3919,11 @@ not_function:
 		lea	program_pathname(a5),a1
 		move.l	a1,d4				*  D4.L : exec(2) への引数
 		moveq	#0,d0
+		btst.b	#FLAG_NO_BUILTIN,DoSimpleCommand_flags(a6)
+		beq	do_simple_command_search_command
+
+		moveq	#1,d0				*  ~~ は検索しない
+do_simple_command_search_command:
 		bsr	search_command_0		*  検索する
 		cmp.l	#-1,d0
 		beq	command_not_found
@@ -4016,14 +3999,20 @@ run_builtin:
 		jsr	(a2)
 		movea.l	(a7)+,a6
 		tst.l	d0
-		bne	shell_error	* 組み込みコマンドのエラーは構文エラーと同じとする
-		bra	simple_command_done_0
+		beq	simple_command_done_0
+
+		*  組み込みコマンドのエラー
+		btst.b	#FLAG_NO_ABORT,DoSimpleCommand_flags(a6)
+		beq	shell_error			*  アボート
+
+		moveq	#1,d0
+		bra	simple_command_done_x		*  status に 1 をセットして正常終了
 
 simple_command_user_command:
 	*
 	*  プログラム・ファイル
 	*
-		move.l	d0,d2				* D2.L : 拡張子コード
+		move.l	d0,d2				*  D2.L : 拡張子コード
 
 		lea	simple_args(a5),a1
 		movea.l	a1,a0
@@ -4139,8 +4128,6 @@ do_script_initargs_ok:
 		bra	do_script_with_explicit_shell
 ****************
 do_script_with_batshell:
-		lea	program_pathname(a5),a0		*  スクリプトのパス名の
-		bsr	sltobsl				*  \ を / に変える
 		lea	word_batshell,a0
 do_script_with_implicit_shell:
 		clr.b	program_name(a5)
@@ -4160,7 +4147,7 @@ do_script_with_implicit_shell:
 		subq.l	#1,d1
 		movea.l	a3,a0
 		move.l	d3,d0
-		bsr	EncodeHUPAIR
+		bsr	EncodeHUPAIRx
 		bmi	simple_command_too_long_line
 
 		movea.l	a0,a3
@@ -4172,7 +4159,7 @@ do_script_with_explicit_shell:
 		moveq	#1,d1
 		movea.l	a3,a0
 		move.l	d3,d0
-		bsr	EncodeHUPAIR			*  コマンドラインにエンコードする
+		bsr	EncodeHUPAIRx			*  コマンドラインにエンコードする
 		bmi	simple_command_too_long_line
 
 		movea.l	a0,a3
@@ -4208,7 +4195,7 @@ do_binary_command:
 		move.w	argc(a5),d1
 		movea.l	a3,a0
 		move.l	d3,d0
-		bsr	EncodeHUPAIR
+		bsr	EncodeHUPAIRx
 		bmi	simple_command_too_long_line
 
 		lea	user_command_parameter(a5),a1	*  A1 : パラメータ行の先頭
@@ -4274,6 +4261,22 @@ load_binary_done:
 		lea	str_hupair,a1
 		bsr	strcmp
 		beq	do_exec				*  HUPAIR準拠である .. 実行する
+
+		move.b	DoSimpleCommand_flags(a6),d0
+		lsr.b	#3,d0
+		and.b	#3,d0
+		beq	hugearg_var			*  $@hugearg に従う
+
+		subq.b	#1,d0
+		beq	do_exec				*  force
+
+		subq.b	#1,d0
+		bne	hugearg_abort			*  error
+		*  indirect
+		movea.l	DoSimpleCommand_indirect_flag(a6),a1
+		bra	hugearg_indirect_check_flag
+
+hugearg_var:
 		*
 		*  シェル変数 hugearg を調べる
 		*
@@ -4307,15 +4310,16 @@ fail_hugearg:
 		jmp	(a4)
 
 hugearg_indirect:
-		lea	str_indirect_flag,a1
 		cmp.w	#2,d2
-		blo	hugearg_indirect_flag_ok
+		blo	hugearg_indirect_default_flag
 
 		bsr	strfor1
-		tst.b	(a0)
-		beq	hugearg_indirect_flag_ok
-
 		movea.l	a0,a1
+hugearg_indirect_check_flag:
+		tst.b	(a1)
+		bne	hugearg_indirect_flag_ok
+hugearg_indirect_default_flag:
+		lea	str_indirect_flag,a1
 hugearg_indirect_flag_ok:
 		lea	argument_pathname,a0
 		bsr	tmpfile
@@ -4341,7 +4345,6 @@ hugearg_indirect_flag_ok:
 		move.l	d0,d1
 		lea	argument_pathname,a1
 		bsr	strcpy
-		bsr	sltobsl
 		add.l	d1,d0
 		cmp.l	#255,d0
 		bhs	hugearg_indirect_too_long
@@ -4373,8 +4376,11 @@ loadprg_stop:
 		movem.l	(a7)+,a5-a6
 		st	in_fish
 		move.l	d0,-(a7)
-		sf	d0
+		btst	#FLAG_CDCMD,DoSimpleCommand_flags(a6)
+		sne	d0
 		bsr	resume_cwd
+		btst	#FLAG_ENVCMD,DoSimpleCommand_flags(a6)
+		sne	d0
 		bsr	resume_env
 		move.l	(a7)+,d0
 		bmi	exec_failure
@@ -4390,9 +4396,10 @@ exec_done:
 
 simple_command_done:
 		bsr	check_simple_command_signal
+		st	timer_ok(a6)
+simple_command_done_x:
 		move.l	d0,status(a6)
 		st	status_ok(a6)
-		bset.b	#1,timer_flag(a6)
 simple_command_done_0:
 		clr.l	command_name(a5)
 		tst.b	recursed(a6)
@@ -4402,10 +4409,10 @@ simple_command_done_0:
 not_reset_io:
 		move.l	timer_exec_start_low(a6),d2
 		move.l	timer_exec_start_high(a6),d3
-		btst.b	#0,timer_flag(a6)
+		btst.b	#FLAG_TIME_ALWAYS,DoSimpleCommand_flags(a6)
 		bne	report_command_time
 
-		btst.b	#1,timer_flag(a6)
+		tst.b	timer_ok(a6)
 		beq	simple_command_done_1
 
 		bsr	check_command_time
@@ -4459,8 +4466,8 @@ check_and_set_status:
 		bsr	put_newline
 		movem.l	(a7)+,d0-d4/a0-a2
 check_and_set_status_e:
-		tst.b	exit_on_error(a5)
-		bne	exit_shell_d0
+		btst.b	#OPTION_e,flags(a5)
+		bne	abort_shell_d0
 set_status:
 		movem.l	d1-d2/a0,-(a7)
 		exg	d0,d2
@@ -4572,6 +4579,36 @@ set_timer_exec_start:
 		move.l	d1,timer_exec_start_high(a6)
 		move.l	d0,timer_exec_start_low(a6)
 		movem.l	(a7)+,d0-d1
+		rts
+****************************************************************
+EncodeHUPAIRx:
+		btst.b	#FLAG_RAWARG,DoSimpleCommand_flags(a6)
+		beq	EncodeHUPAIR
+
+		movem.l	d1-d2/a1,-(a7)
+		move.l	d0,d2			*  D2.L : バッファの残り容量
+		bmi	rawarg_return
+rawarg_loop:
+		subq.l	#1,d1
+		bcs	rawarg_return
+
+		subq.l	#1,d2
+		bmi	rawarg_return
+
+		move.b	#' ',(a0)+		*  １文字のスペースを置いて、続く単語を区切る
+		exg	a0,a1
+		bsr	strlen
+		exg	a0,a1
+		sub.l	d0,d2
+		bmi	rawarg_return
+
+		bsr	memmovi
+		addq.l	#1,a1
+		bra	rawarg_loop
+
+rawarg_return:
+		move.l	d2,d0
+		movem.l	(a7)+,d1-d2/a1
 		rts
 ****************************************************************
 * test_command_file - コマンドファイルが実行可能かどうか調べる
@@ -4790,9 +4827,10 @@ remember_misc_environments:
 * resume_cwd - 自プロセスのcwdを復旧する
 *
 * CALL
-*      D0.B   非0なら必ず復旧する
-*             0 なら、実行したプログラムが cdcmds に設定されてい
+*      D0.B   0 なら、実行したプログラムが cdcmds に設定されてい
 *             るコマンド以外なら復旧する
+*             正なら必ず復旧する
+*             負なら決して復旧しない
 *
 * RETURN
 *      D0.L   破壊
@@ -4808,6 +4846,7 @@ resume_cwd:
 		beq	resume_cwd_return		*  作業ディレクトリは変わっていない
 
 		tst.b	d1
+		bmi	resume_cwd_change
 		bne	do_resume_cwd
 
 		lea	word_cdcmds,a0
@@ -4835,7 +4874,6 @@ do_resume_cwd:
 		lea	msg_change_cwd,a0
 		bsr	enputs
 resume_cwd_change:
-		bsr	set_oldcwd
 		bsr	reset_cwd
 		bra	resume_cwd_return
 
@@ -4849,13 +4887,18 @@ resume_cwd_return:
 *              ンドなら自プロセスの環境変数を変更する
 *
 * CALL
-*      none
+*      D0.B   0 なら、実行したプログラムが envcmds に設定されてい
+*             るコマンドなら変更する
+*             負なら必ず変更する
 *
 * RETURN
 *      D0.L   破壊
 ****************************************************************
 resume_env:
 		movem.l	a0-a1,-(a7)
+		tst.b	d0
+		bmi	resume_env_change
+
 		lea	word_envcmds,a0
 		bsr	get_shellvar
 		beq	free_userenv
@@ -4866,7 +4909,7 @@ resume_env:
 		movem.l	(a7)+,d0/a0
 		bsr	wordlistpcmp
 		bne	free_userenv
-
+resume_env_change:
 		movea.l	user_command_env(a5),a0
 		bsr	init_env
 free_userenv:
@@ -5181,6 +5224,7 @@ check_executable_suffix_done:
 *      A0     検索するコマンドのパス名
 *             ファイル名部は実際のファイル名に書き換えられるので，
 *             その分の余裕があること
+*             DOSのワイルドカードを含んでいないこと
 *
 *      D0.B   0ならば拡張子を補って検索する
 *
@@ -5308,6 +5352,9 @@ find_more_ok:
 		lea	realname(a6),a0
 		bsr	strcpy
 find_more_next:
+		tst.b	d3
+		bne	find_command_file_done
+
 		pea	statbuf(a6)
 		DOS	_NFILES
 		addq.l	#4,a7
@@ -5452,14 +5499,18 @@ search_command:
 		movem.l	search_command_reglist,-(a7)
 		move.b	d0,d4				*  D4.B : フラグ
 
+		bsr	headtail
+		tst.b	(a1)
+		beq	search_command_not_found
+
+		bsr	contains_dos_wildcard
+		bne	search_command_not_found
+
 		movea.l	a0,a1
 		lea	exp_command_name1(a6),a0
 		moveq	#MAXPATH,d0
 		bsr	fair_pathname
 		bcs	search_command_not_found
-
-		bsr	contains_dos_wildcard		*  Human のワイルドカードを含んで
-		bne	search_command_not_found	*  いるならば無効
 
 		bsr	split_pathname
 		cmp.l	#MAXDIR,d1			*  ディレクトリ部が
@@ -5539,7 +5590,7 @@ search_command_in_pathlist_loop:
 
 		*  ハッシュがヒットしていない．
 		*  それでも，相対パスである場合には探す
-		bsr	isfullpath
+		bsr	isfullpathx
 		beq	search_command_in_pathlist_next	*  絶対パスである
 
 		bsr	is_builtin_dir
@@ -5557,6 +5608,9 @@ search_command_hash_hit:
 		bsr	is_builtin_dir
 		bne	search_command_in_pathlist_next
 search_command_tryone:
+		bsr	contains_dos_wildcard		*  Human のワイルドカードを含んで
+		bne	search_command_in_pathlist_next	*  いるならば無効
+
 		bsr	is_dot
 		bne	search_command_tryone_cat
 
@@ -5696,9 +5750,10 @@ expand_a_word:
 	*
 		lea	tmpword01(a5),a1
 		move.l	#MAXWORDLEN+1,d1
-		moveq	#3,d2
-		bsr	expand_tilde
+		moveq	#0,d2
+		bsr	subst_directory
 		bmi	expand_a_word_fail
+		bne	expand_a_word_miss
 
 		lea	tmpword01(a5),a0	*  ここまでの結果は tmp1 にある
 		bsr	check_wildcard		*  単語が * ? [ を含んで
@@ -5971,7 +6026,7 @@ builtin_table:
 		*      さもなくばパイプのフリップ・フロップを反転する
 		*  8 : パイプの構成要素（最後を除く）ならばサブシェルで実行する
 		*
-		dc.l	word_exprmark
+		dc.l	word_exprat
 		dc.l	cmd_set_expression
 		dc.b	1+2,0
 
@@ -6010,11 +6065,15 @@ builtin_table:
 		dc.l	word_chdir
 		dc.l	cmd_cd
 		dc.b	0,0
-.if V9
+
+		dc.l	word_cmd
+		dc.l	cmd_cmd
+		dc.b	1,0
+
 		dc.l	word_complete
 		dc.l	cmd_complete
 		dc.b	1,0
-.endif
+
 		dc.l	word_continue
 		dc.l	cmd_continue
 		dc.b	0,0
@@ -6043,6 +6102,10 @@ builtin_table:
 		dc.l	cmd_functions
 		dc.b	0,0
 
+		dc.l	word_getopt
+		dc.l	cmd_getopt
+		dc.b	0,0
+
 		dc.l	word_glob
 		dc.l	cmd_glob
 		dc.b	0,0
@@ -6062,6 +6125,10 @@ builtin_table:
 		dc.l	word_logout
 		dc.l	cmd_logout
 		dc.b	0,0
+
+		dc.l	word_noabort
+		dc.l	cmd_noabort
+		dc.b	1,0
 
 		dc.l	word_nop
 		dc.l	cmd_nop
@@ -6126,11 +6193,11 @@ builtin_table:
 		dc.l	word_unalias
 		dc.l	cmd_unalias
 		dc.b	1,0
-.if V9
+
 		dc.l	word_uncomplete
 		dc.l	cmd_uncomplete
 		dc.b	1,0
-.endif
+
 		dc.l	word_undefun
 		dc.l	cmd_undefun
 		dc.b	1,0
@@ -6173,7 +6240,7 @@ word_switch:		dc.b	'switch',0
 word_while:		dc.b	'while',0
 word_close_brace:	dc.b	'}',0
 
-word_exprmark:		dc.b	'@',0
+word_exprat:		dc.b	'@',0
 word_unalias:		dc.b	'un'
 word_alias:		dc.b	'alias',0
 word_alloc:		dc.b	'alloc',0
@@ -6192,8 +6259,11 @@ word_eval:		dc.b	'eval',0
 word_exec:		dc.b	'exec',0
 word_exit:		dc.b	'exit',0
 word_functions:		dc.b	'functions',0
+word_getopt:		dc.b	'getopt',0
 word_goto:		dc.b	'goto',0
 word_hashstat:		dc.b	'hashstat',0
+word_builtin_noabort:	dc.b	'~~/'
+word_noabort:		dc.b	'noabort',0
 word_nop:		dc.b	'nop',0
 word_onintr:		dc.b	'onintr',0
 word_popd:		dc.b	'popd',0
@@ -6217,18 +6287,22 @@ word_unhash:		dc.b	'unhash',0
 word_which:		dc.b	'which',0
 word_xargs:		dc.b	'xargs',0
 
-init_batshell:		dc.b	'/bin/COMMAND.X',0
-init_shell:		dc.b	'/bin/fish.x',0
-init_shell_init_arg:	dc.b	'-f',0
+str_COM:		dc.b	'COM'
+word_COMFISHOPT:	dc.b	'COMFISHOPT',0
+init_batshell:		dc.b	'COMMAND',0
+init_shell:		dc.b	'fish',0,'-f',0
+config_refersysroot:	dc.b	'/etc/config/refersysroot',0
+etc_fishenv:		dc.b	'/etc/fishenv',0
+etc_fprofile:		dc.b	'/etc/fprofile',0
 etc_fishrc:		dc.b	'/etc/fishrc',0
-percent_fishrc:		dc.b	'%fishrc',0
+etc_flogin:		dc.b	'/etc/flogin',0
+etc_flogout:		dc.b	'/etc/flogout',0
+dot_fishenv:		dc.b	'.fishenv',0
+dot_fprofile:		dc.b	'.fprofile',0
 dot_fishrc:		dc.b	'.fishrc',0
-percent_login:		dc.b	'%login',0
 dot_login:		dc.b	'.login',0
-percent_logout:		dc.b	'%logout',0
 dot_logout:		dc.b	'.'
 word_logout:		dc.b	'logout',0
-percent_fishdirs:	dc.b	'%fishdirs',0
 dot_fishdirs:		dc.b	'.fishdirs',0
 word_upper_columns:	dc.b	'COLUMNS',0
 word_upper_gid:		dc.b	'GID',0
@@ -6238,20 +6312,19 @@ word_upper_shlvl:	dc.b	'SHLVL',0
 word_upper_term:	dc.b	'TERM',0
 word_upper_uid:		dc.b	'UID',0
 word_upper_user:	dc.b	'USER',0
-word_upper_fishconfig:	dc.b	'FISHCONFIG',0
 word_argv:		dc.b	'argv',0
 word_batshell:		dc.b	'batshell',0
 word_cdpath:		dc.b	'cd'	* "cdpath"
 word_path:		dc.b	'path',0
 word_cdcmds:		dc.b	'cdcmds',0
 word_columns:		dc.b	'columns',0
-word_cwdcmd:		dc.b	'cwdcmd',0
+word_cwdcmd:		dc.b	'cwd'
+word_cmd:		dc.b	'cmd',0
 word_envcmds:		dc.b	'envcmds',0
 word_envmargin:		dc.b	'envmargin',0
 word_force:		dc.b	'force',0
 word_gid:		dc.b	'gid',0
-percent_history:	dc.b	'%history',0
-dot_history:		dc.b	'.'	* ".history"
+dot_history:		dc.b	'.'
 word_history:		dc.b	'history',0
 word_home:		dc.b	'home',0
 word_hugearg:		dc.b	'hugearg',0
@@ -6316,7 +6389,6 @@ initial_vars_script_mode:
 
 			dc.l	0
 
-msg_no_home:			dc.b	'環境変数 HOME が定義されていません',0
 msg_dirnofile:			dc.b	' '
 msg_nofile:			dc.b	'ファイルがありません',0
 msg_nodir:			dc.b	'ディレクトリが見つかりません',0
@@ -6361,7 +6433,6 @@ msg_end_not_found:		dc.b	'end がありません',0
 msg_cannot_load_unseekable:	dc.b	'シークできないデバイスからはロードできません',0
 msg_cwd_failure:		dc.b	'作業ディレクトリが消失しました。',0
 msg_change_cwd:			dc.b	' を作業ディレクトリとします。',0
-msg_eof_exit:			dc.b	'[EOF] '
 msg_exit:			dc.b	'Exit ',0
 *****************************************************************
 *****************************************************************
@@ -6394,6 +6465,7 @@ dummy:			ds.b	1
 .xdef tmpstatbuf
 .xdef tmppwline
 .xdef tmppwbuf
+.xdef outbuf
 
 .even
 congetbuf:			ds.b	2+256
@@ -6412,10 +6484,8 @@ fatchkbuf2:			ds.b	14+8			* +8 : fatchkバグ対策
 tmpstatbuf:			ds.b	STATBUFSIZE
 tmppwline:			ds.b	PW_LINESIZE
 tmppwbuf:			ds.b	PW_SIZE
+outbuf:				ds.b	OUTBUF_SIZE
 *****************************************************************
-.even
-bsstop:
-
 .offset 0
 
 **  シェル／サブシェル毎のデータ
@@ -6426,6 +6496,7 @@ bsstop:
 .xdef fork_stackp
 .xdef dirstack
 .xdef cwd
+.xdef old_cwd
 .xdef lake_top
 .xdef tmplake_top
 .xdef shellvar_top
@@ -6464,11 +6535,11 @@ bsstop:
 .xdef wordchars
 .xdef flag_addsuffix
 .xdef flag_autolist
-.xdef flag_cdsysroot
 .xdef flag_cifilec
 .xdef flag_ciglob
 .xdef flag_echo
 .xdef flag_forceio
+.xdef flag_globdotA
 .xdef flag_ignoreeof
 .xdef flag_listexec
 .xdef flag_listlinks
@@ -6479,10 +6550,13 @@ bsstop:
 .xdef flag_noglob
 .xdef flag_nonomatch
 .xdef flag_nonullcommandc
+.xdef flag_nosort
+.xdef flag_noundefined
 .xdef flag_printexitvalue
 .xdef flag_pushdsilent
 .xdef flag_recexact
 .xdef flag_reconlyexec
+.xdef flag_refersysroot
 .xdef flag_savedirs
 .xdef flag_showdots
 .xdef flag_symlinks
@@ -6525,11 +6599,11 @@ hash_flag:		ds.b	1
 hash_table:		ds.b	1024
 flag_addsuffix:		ds.b	1
 flag_autolist:		ds.b	1
-flag_cdsysroot:		dc.b	1
 flag_cifilec:		ds.b	1
 flag_ciglob:		ds.b	1
 flag_echo:		ds.b	1
 flag_forceio:		ds.b	1
+flag_globdotA:		ds.b	1
 flag_ignoreeof:		ds.b	1
 flag_listexec:		ds.b	1
 flag_listlinks:		ds.b	1
@@ -6540,10 +6614,13 @@ flag_noclobber:		ds.b	1
 flag_noglob:		ds.b	1
 flag_nonomatch:		ds.b	1
 flag_nonullcommandc:	ds.b	1
+flag_nosort:		ds.b	1
+flag_noundefined:	ds.b	1
 flag_printexitvalue:	ds.b	1
 flag_pushdsilent:	ds.b	1
 flag_recexact:		ds.b	1
 flag_reconlyexec:	ds.b	1
+flag_refersysroot:	ds.b	1
 flag_savedirs:		ds.b	1
 flag_showdots:		ds.b	1
 flag_symlinks:		ds.b	1
@@ -6565,6 +6642,9 @@ keymacromap:		ds.l	128*3
 .xdef last_congetbuf
 .xdef linecutbuf
 .xdef tmpargs
+.xdef do_buffering
+.xdef outbuf_ptr
+.xdef outbuf_free
 
 .even
 pid:			ds.l	1
@@ -6573,17 +6653,19 @@ arg_script:		ds.l	1
 arg_command:		ds.l	1
 linecutbuf:		ds.l	1
 tmpargs:		ds.l	1
+outbuf_ptr:		ds.l	1
+outbuf_free:		ds.l	1
+do_buffering:		ds.b	1
 i_am_login_shell:	ds.b	1
 input_is_tty:		ds.b	1
 interactive_mode:	ds.b	1
-exit_on_error:		ds.b	1
 keep_cwd:		ds.b	1
-flag_t:			ds.b	1
 flags:			ds.b	1
 interrupted:		ds.b	1
 breaked:		ds.b	1
 last_congetbuf:		ds.b	1+256
 first_cwd:		ds.b	MAXPATH+1
+old_cwd:		ds.b	MAXPATH+1
 cwd:			ds.b	MAXPATH+1
 
 xbss_bottom:
@@ -6693,8 +6775,14 @@ EACH_SOURCE_BSS_SIZE	equ	each_source_bss_bottom-each_source_bss_top
 user_command_parameter:	ds.b	1+MAXLINELEN+1		*  ユーザ・コマンドへの引数
 
 .xdef bsssize		*  $7fff を超えていないかどうか確認する必要がある！！
+.even
 bsssize:
-
-.text
+*****************************************************************
+.bss
+.even
+bsstop:
+			ds.b	bsssize
+bssbot:
+*****************************************************************
 
 .end start

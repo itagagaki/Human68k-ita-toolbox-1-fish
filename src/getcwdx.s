@@ -3,12 +3,16 @@
 
 .xref issjis
 .xref tolower
-.xref toupper
 .xref strcpy
-.xref isfullpath
 .xref get_shellvar
+.xref isfullpath
+.xref make_sys_pathname
+
 .xref word_home
 
+.xref doscall_pathname
+
+.xref flag_refersysroot
 .xref cwd
 
 .text
@@ -39,7 +43,7 @@ getcwdx:
 * abbrev_directory - ディレクトリを省略形に書き換える
 *
 * CALL
-*      A0     ディレクトリ名
+*      A0     ディレクトリ名（ドライブ名つき完全パス）
 *
 * RETURN
 *      D0.L   ~で書き換えたならば 1，さもなくば 0．
@@ -48,10 +52,9 @@ getcwdx:
 * DESCRIPTION
 *      A0 の指す領域を直接書き換える
 *      元よりも長くはならないから大丈夫
+*      ディレクトリ名はドライブ名つき完全パスでなければならない
 *      ディレクトリ名のディレクトリの区切りは / でなければならない
 ****************************************************************
-.xdef abbrev_directory
-
 abbrev_directory:
 		bsr	is_under_home
 		beq	return
@@ -68,7 +71,7 @@ return:
 * is_under_home - ディレクトリ名がホーム・ディレクトリ下かどうか
 *
 * CALL
-*      A0     ディレクトリ名
+*      A0     ディレクトリ名（ドライブ名つき完全パス）
 *
 * RETURN
 *      D0.L   $home下であり、$home がルート・ディレクトリでなけ
@@ -78,6 +81,7 @@ return:
 *      CCR    TST.L D0
 *
 * NOTE
+*      ディレクトリ名はドライブ名つき完全パスでなければならない
 *      ディレクトリ名のディレクトリの区切りは / でなければならない
 ****************************************************************
 .xdef is_under_home
@@ -86,24 +90,32 @@ is_under_home:
 		movem.l	d1-d2/a0-a2,-(a7)
 		moveq	#0,d2			*  D2.L : 結果
 		movea.l	a0,a2			*  A2 : ディレクトリ名の先頭アドレス
-		bsr	isfullpath		*  ディレクトリ名は絶対パス
-		bne	is_under_home_return	*  ではない
-
 		lea	word_home,a0		*  シェル変数 home
 		bsr	get_shellvar		*  は
 		beq	is_under_home_return	*  は無いか空である
 
-		bsr	isfullpath		*  $home[1] は絶対パス名
+		tst.b	flag_refersysroot(a5)
+		beq	is_under_home_home_ok
+
+		cmpi.b	#'/',(a0)
+		bne	is_under_home_home_ok
+
+		movea.l	a0,a1
+		lea	doscall_pathname,a0
+		jsr	make_sys_pathname
+		bmi	is_under_home_return
+is_under_home_home_ok:
+		jsr	isfullpath		*  $home[1] は完全パス名
 		bne	is_under_home_return	*  ではない
 
 		tst.b	3(a0)			*  $home[1] は
 		beq	is_under_home_return	*  ルート・ディレクトリである
 
 		move.b	(a0),d0			*  $home[1] のドライブ名
-		bsr	toupper			*  を大文字にして
+		bsr	tolower			*  を小文字にして
 		move.b	d0,d1			*  D1.B に格納
 		move.b	(a2),d0			*  ディレクトリ名のドライブ名
-		bsr	toupper			*  を大文字にして
+		bsr	tolower			*  を小文字にして
 		cmp.b	d1,d0			*  比較
 		bne	is_under_home_return	*  一致しない
 

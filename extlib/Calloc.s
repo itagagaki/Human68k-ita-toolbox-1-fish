@@ -37,7 +37,11 @@ _malloc:
 	lea	lake_top_area,a5
 	bsr	allocate_memory_reg_saved
 	move.l	(sp)+,a5
+	cmpi.l	#-1,d0
+	bne	malloc_OK
+	moveq.l	#0,d0
 malloc_error:
+malloc_OK:
 	rts
 *
 	.end

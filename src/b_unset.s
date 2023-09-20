@@ -128,7 +128,7 @@ loop:
 		exg	a0,a2
 		bsr	unsetvar
 		exg	a0,a2
-		bsr	strfor1
+		jsr	strfor1
 		dbra	d2,loop
 
 		moveq	#0,d0

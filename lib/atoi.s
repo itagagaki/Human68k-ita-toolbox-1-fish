@@ -1,5 +1,6 @@
 * atoi.s
 * Itagaki Fumihiko 11-Jul-90  Create.
+* Itagaki Fumihiko 16-Jan-94  Debug.
 
 .xref atou
 
@@ -20,7 +21,6 @@
 .xdef atoi
 
 atoi:
-		move.l	a0,-(a7)
 		move.b	(a0)+,d0
 		cmpi.b	#'+',d0
 		beq	atoi_plus
@@ -32,7 +32,6 @@ atoi:
 atoi_plus:
 		jsr	atou
 atoi_return:
-		movea.l	(a7)+,a0
 		tst.l	d0
 		rts
 ****************
@@ -43,4 +42,3 @@ atoi_minus:
 ****************
 
 .end
-

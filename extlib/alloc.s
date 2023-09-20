@@ -17,6 +17,7 @@
 *             : 91/9/23	large size support	*
 *   ver 0.12  : 92/4/15	omitted MALLOC		*
 *   ver 0.15  : 92/11/2	shrink bug fix		*
+*   ver 1.00  : 94/8/7	fix realloc errors	*
 *						*
 *************************************************
 *
@@ -31,7 +32,7 @@
 	.xdef	allocate_memory_reg_saved
 	.xdef	allocate_memory
 *
-	dc.b	"Ext malloc library << lake >> Ver 0.16 for fish, ksh, zsh, and dis",0
+	dc.b	"Ext malloc library << lake >> Ver 1.00 for fish, ksh, zsh, and dis",0
 	.even
 *
 *
@@ -75,6 +76,9 @@ allocate_memory:
 *  a0	直前の free head へのポインタ
 *
 	move.l	d0,d1
+	bne	allocate_memory_zero_skip
+	addq.l	#1,d1		* サイズ 0 を要求されたらサイズ 1 にする
+allocate_memory_zero_skip:
 	addq.l	#1,d1		* バイトサイズは
 	andi.l	#$fffffffe,d1	* 偶数に整合させる
 	cmpi.l	#$00004000,d1

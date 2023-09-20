@@ -19,7 +19,7 @@ OBJS = \
 	setenv.o skipsl.o skipspc.o skiproot.o sltobsl.o splitpath.o \
 	stpcpy.o strazbot.o strazcpy.o strbot.o strchr.o strcmp.o strcpy.o \
 	strfor1.o strforn.o stricmp.o strlen.o strmem.o strmove.o strspc.o \
-	suffix.o tfopen.o tolower.o toupper.o utoa.o utoao.o utoax.o
+	suffix.o tfopen.o tolower.o toupper.o utoa.o utoab.o utoao.o utoax.o
 
 define newline
 

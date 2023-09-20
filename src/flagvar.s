@@ -5,11 +5,11 @@
 
 .xref flag_addsuffix
 .xref flag_autolist
-.xref flag_cdsysroot
 .xref flag_ciglob
 .xref flag_cifilec
 .xref flag_echo
 .xref flag_forceio
+.xref flag_globdotA
 .xref flag_ignoreeof
 .xref flag_listexec
 .xref flag_listlinks
@@ -20,10 +20,13 @@
 .xref flag_noglob
 .xref flag_nonomatch
 .xref flag_nonullcommandc
+.xref flag_nosort
+.xref flag_noundefined
 .xref flag_printexitvalue
 .xref flag_pushdsilent
 .xref flag_recexact
 .xref flag_reconlyexec
+.xref flag_refersysroot
 .xref flag_savedirs
 .xref flag_showdots
 .xref flag_symlinks
@@ -143,6 +146,7 @@ clear_flagvars_done:
 .xdef word_glob
 .xdef word_echo
 .xdef word_fignore
+.xdef word_refersysroot
 .xdef word_verbose
 
 .even
@@ -155,9 +159,6 @@ flagvar_table:
 		dc.w	word_autolist-flagvar_table
 		dc.w	flag_autolist
 
-		dc.w	word_cdsysroot-flagvar_table
-		dc.w	flag_cdsysroot
-
 		dc.w	word_cifilec-flagvar_table
 		dc.w	flag_cifilec
 
@@ -169,6 +170,9 @@ flagvar_table:
 
 		dc.w	word_forceio-flagvar_table
 		dc.w	flag_forceio
+
+		dc.w	word_globdotA-flagvar_table
+		dc.w	flag_globdotA
 
 		dc.w	word_ignoreeof-flagvar_table
 		dc.w	flag_ignoreeof
@@ -202,6 +206,12 @@ flagvar_table:
 		dc.w	word_nonullcommandc-flagvar_table
 		dc.w	flag_nonullcommandc
 
+		dc.w	word_nosort-flagvar_table
+		dc.w	flag_nosort
+
+		dc.w	word_noundefined-flagvar_table
+		dc.w	flag_noundefined
+
 		dc.w	word_printexitvalue-flagvar_table
 		dc.w	flag_printexitvalue
 
@@ -213,6 +223,9 @@ flagvar_table:
 
 		dc.w	word_reconlyexec-flagvar_table
 		dc.w	flag_reconlyexec
+
+		dc.w	word_refersysroot-flagvar_table
+		dc.w	flag_refersysroot
 
 		dc.w	word_savedirs-flagvar_table
 		dc.w	flag_savedirs
@@ -261,19 +274,21 @@ symlinks_values:
 
 word_addsuffix:		dc.b	'addsuffix',0
 word_autolist:		dc.b	'autolist',0
-word_cdsysroot:		dc.b	'cdsysroot',0
 word_cifilec:		dc.b	'cifilec',0
 word_ciglob:		dc.b	'ciglob',0
 word_echo:		dc.b	'echo',0
 word_fignore:		dc.b	'f'
 word_ignore:		dc.b	'ignore',0
 word_forceio:		dc.b	'forceio',0
+word_globdotA:		dc.b	'globdotA',0
 word_ignoreeof:		dc.b	'ignoreeof',0
 word_noalias:		dc.b	'noalias',0
 word_nobeep:		dc.b	'nobeep',0
 word_noclobber:		dc.b	'noclobber',0
 word_noglob:		dc.b	'no'
 word_glob:		dc.b	'glob',0
+word_nosort:		dc.b	'nosort',0
+word_noundefined:	dc.b	'noundefined',0
 word_listexec:		dc.b	'listexec',0
 word_listlinks:		dc.b	'listlinks',0
 word_matchbeep:		dc.b	'matchbeep',0
@@ -285,6 +300,7 @@ word_pushdsilent:	dc.b	'pushdsilent',0
 word_recexact:		dc.b	'rec'
 word_exact:		dc.b	'exact',0
 word_reconlyexec:	dc.b	'reconlyexec',0
+word_refersysroot:	dc.b	'refersysroot',0
 word_savedirs:		dc.b	'savedirs',0
 word_showdots:		dc.b	'showdots',0
 word_symlinks:		dc.b	'symlinks',0

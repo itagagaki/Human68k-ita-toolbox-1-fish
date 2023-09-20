@@ -100,6 +100,7 @@ _LOCK		equ	$ff5c
 *	reserved	$ff5d
 _NETINF		equ	$ff5e	*RESERVED
 _ASSIGN		equ	$ff5f
+_GETFCB		equ	$ff7c	* v2.01-
 _S_MALLOC	equ	$ff7d
 _S_MFREE	equ	$ff7e
 _S_PROCESS	equ	$ff7f

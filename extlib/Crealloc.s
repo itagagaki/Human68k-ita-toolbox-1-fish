@@ -15,6 +15,7 @@
 *   ver 0.01  : 91/9/22	lake_top(a5)		*
 *   ver 0.04  : 91/10/8	rewrite for C interface	*
 *   ver 0.14  : 92/5/17	add _realloc		*
+*   ver 1.00  : 94/8/7	fix realloc errors	*
 *						*
 *************************************************
 *
@@ -35,8 +36,8 @@ _realloc:
 	lea	lake_top_area,a5
 	bsr	realloc_memory_reg_saved
 	move.l	(sp)+,a5
-	bra	realloc_normal
-*
+	cmpi.l	#-1,d0
+	bne	realloc_normal
 realloc_error:
 	moveq.l	#0,d0
 realloc_normal

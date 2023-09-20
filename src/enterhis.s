@@ -75,13 +75,11 @@ enter_history_return:
 		rts
 
 no_space:
-		sf	loop_fail(a5)
+		st	loop_fail(a5)
 		lea	msg_cannot_enter_history,a0
 		bsr	cannot_because_no_memory
 		bra	enter_history_return
 ****************************************************************
-.xdef delete_old_history
-
 delete_old_history:
 		movem.l	d0-d1/a0-a2,-(a7)
 		tst.l	in_history_ptr(a5)

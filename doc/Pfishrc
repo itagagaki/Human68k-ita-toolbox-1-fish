@@ -1,0 +1,49 @@
+#  個人環境ファイル ~/[.%]fishrc のサンプル
+#  Copyright(C)1993 by Itagaki Fumihiko
+
+# これは、あくまでもサンプルです。
+
+# このサンプルでどのような設定が行われるかを把握せずにこのまま使って「具合
+# が悪い」と言われる方がいらっしゃいますが、まずは FISH.DOC を読んで、しっ
+# かり自分用に調整しましょう。
+
+# ...と言っても、そういう人はこのコメントなど読まないかも :-<
+
+
+onintr -		# 多少は速くなる効果*も*ある（気安め）
+
+setenv include  A:/usr/include
+setenv lib      A:/usr/lib
+setenv TODAYTBL A:/usr/lib/Calendar
+
+set path=(~~ . A:/bin A:/usr/bin A:/usr/ita A:/usr/pds A:/usr/local)
+set batshell=hcommand
+set cdpath=(~)
+set globdotA
+set forceio noclobber
+set symlinks=expand
+#set cdcmds=(DRIVE.X SUBST.X TF.X)
+#set envcmds=(TF.X)
+
+alias a alias
+alias h history
+alias . source
+alias ps PROCESS.X
+alias screen 'COMMAND.X /C SCREEN'
+alias lhv 'lhv -s'
+alias ls 'ls -Feq'
+alias calc 'printf "%d\n" \!*'
+alias ed 'echo -e "\033\060\c";ED.R \!*;echo -e "\033\061\c"'
+alias lk 'cmd -i-i lk'
+alias tf 'cmd -de tf'
+
+if (! $?prompt) return		#  スクリプト・モードや -c <コマンド> では，
+				#  これ以降は不要な設定であるから，
+				#  ここで実行を終了する．
+
+set history=30
+set prompt='%\!%% '
+set addsuffix autolist nonullcommandc matchbeep=nomatch listlinks listexec
+set fignore=(\~ \# .o .BAK '.$$$')
+
+bind ^Z eof

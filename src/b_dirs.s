@@ -20,15 +20,17 @@
 .xref rotate
 .xref memmovd
 .xref memmovi
-.xref isfullpath
+.xref isopt
+.xref isfullpathx
 .xref scan_drive_name
 .xref skip_slashes
-.xref find_slashes
 .xref headtail
 .xref cat_pathname
 .xref make_sys_pathname
 .xref get_fair_pathname
 .xref bsltosl
+.xref start_output
+.xref end_output
 .xref putc
 .xref puts
 .xref nputs
@@ -48,7 +50,6 @@
 .xref find_shellvar
 .xref set_shellvar
 .xref get_shellvar
-.xref fish_getenv
 .xref fish_setenv
 .xref get_var_value
 .xref perror
@@ -67,10 +68,11 @@
 .xref pathname_buf
 
 .xref cwd
+.xref old_cwd
 .xref dirstack
 .xref cwd_changed
-.xref flag_cdsysroot
 .xref flag_pushdsilent
+.xref flag_refersysroot
 .xref flag_symlinks
 
 cwdbuf = -(((MAXPATH+1)+1)>>1<<1)
@@ -116,7 +118,7 @@ getcdd:
 		DOS	_CURDIR
 		addq.l	#6,a7
 		movem.l	(a7)+,d0/a0
-		bra	bsltosl
+		jmp	bsltosl
 ****************************************************************
 .xdef is_nul_or_slash_or_backslash
 .xdef is_slash_or_backslash
@@ -137,31 +139,40 @@ is_nul_or_slash_or_backslash_return:
 * CALL
 *      A0     pathname
 *      A1     result buffer
+*      A2     cwd to refference
 *      D0.L   buffer size - 1（MAXPATH以上必要）
 *
 * RETURN
 *      D0.L   0 if success, otherwise -1.
 *      CCR    TST.L D0
 ****************************************************************
-.xdef normalize_pathname
-
 normalize_pathname:
 		link	a6,#cwdbuf
 		movem.l	d2-d3/a0-a3,-(a7)
 		move.l	d0,d2				*  D2.L : buffer size -1（\0 の分）
-		lea	cwd(a5),a2
 		bsr	scan_drive_name
 		exg	a0,a2				*  A0 : reference, A2 : expression
-		bne	normalize_pathname_1
+		bne	normalize_pathname_no_drive
 
 		addq.l	#2,a2
-		cmp.b	(a0),d0
-		beq	normalize_pathname_1
+		cmpa.l	#0,a0
+		beq	normalize_pathname_getcdd
 
+		cmp.b	(a0),d0
+		beq	normalize_pathname_start
+normalize_pathname_getcdd:
 		lea	cwdbuf(a6),a0
 		bsr	getcdd
-normalize_pathname_1:
-		exg	a0,a1
+		bra	normalize_pathname_start
+
+normalize_pathname_no_drive:
+		cmpa.l	#0,a0
+		bne	normalize_pathname_start
+
+		lea	cwdbuf(a6),a0
+		bsr	getcwd
+normalize_pathname_start:
+		exg	a0,a1				*  A0 : buffer, A1 : reference
 		movea.l	a0,a3
 		bsr	stpcpy
 		exg	a0,a3				*  A0 : operand top, A3 : operand bottom
@@ -252,35 +263,45 @@ normalize_pathname_buffer_over:
 		moveq	#-1,d0
 		bra	normalize_pathname_return
 ****************************************************************
-.xdef set_oldcwd
-
+* set_oldcwd
+*
+*      内部 cwd → 内部 old_cwd, シェル変数 oldcwd, 環境変数 OLDPWD
+****************************************************************
 set_oldcwd:
 		movem.l	d0-d1/a0-a1,-(a7)
-		*
-		*  $@cwd -> $@oldcwd
-		*
-		lea	word_cwd,a0
-		bsr	find_shellvar
-		bsr	var_value_a1
+		lea	cwd(a5),a1
+		lea	old_cwd(a5),a0
+		bsr	strcpy
 		lea	word_oldcwd,a0
 		moveq	#1,d0
 		sf	d1
 		bsr	set_shellvar
-		*
-		*  $%PWD -> $%OLDPWD
-		*
-		lea	word_upper_pwd,a0
-		bsr	fish_getenv
-		bsr	var_value_a1
 		lea	word_upper_oldpwd,a0
 		bsr	fish_setenv
-		*
 		movem.l	(a7)+,d0-d1/a0-a1
 		rts
 ****************************************************************
+* reset_cwd
+*
+*      内部 cwd → 内部 old_cwd, シェル変数 oldcwd, 環境変数 OLDPWD
+*      DOS cwd → 内部 cwd, シェル変数 cwd, 環境変数 PWD
+*
+* set_cwd
+*
+*      内部 cwd → シェル変数 cwd, 環境変数 PWD
+****************************************************************
+.xdef reset_cwd
+.xdef set_cwd
+
+reset_cwd:
+		bsr	set_oldcwd
+		move.l	a0,-(a7)
+		lea	cwd(a5),a0
+		bsr	getcwd
+		movea.l	(a7)+,a0
 set_cwd:
 		movem.l	d0-d1/a0-a1,-(a7)
-		movea.l	a0,a1
+		lea	cwd(a5),a1
 		lea	word_cwd,a0
 		moveq	#1,d0
 		sf	d1
@@ -289,16 +310,6 @@ set_cwd:
 		bsr	fish_setenv
 		st	cwd_changed(a5)
 		movem.l	(a7)+,d0-d1/a0-a1
-		rts
-****************************************************************
-.xdef reset_cwd
-
-reset_cwd:
-		move.l	a0,-(a7)
-		lea	cwd(a5),a0
-		bsr	getcwd
-		bsr	set_cwd
-		movea.l	(a7)+,a0
 		rts
 ****************************************************************
 * fish_chdir - カレント作業ディレクトリを変更する
@@ -317,93 +328,42 @@ reset_cwd:
 *      OLDPWD をセットし，内部フラグ cwd_changed をセットする．
 ****************************************************************
 fish_chdir:
-		tst.b	flag_cdsysroot(a5)
-		beq	fish_chdir2
+		tst.b	flag_refersysroot(a5)
+		beq	fish_chdir_1
 
 		cmpi.b	#'/',(a0)
-		bne	fish_chdir2
+		bne	fish_chdir_1
 
 		link	a6,#cwdbuf
 		movem.l	a0-a1,-(a7)
 		movea.l	a0,a1
 		lea	cwdbuf(a6),a0
 		bsr	make_sys_pathname
-		bmi	cdsysroot_fail
+		bmi	cdsysroot_error
 
-		bsr	fish_chdir2
+		bsr	fish_chdir_1
 cdsysroot_return:
 		movem.l	(a7)+,a0-a1
 		unlk	a6
 		rts
 
-cdsysroot_fail:
+cdsysroot_error:
 		moveq	#ENODIR,d0
 		bra	cdsysroot_return
-****
-fish_chdir2:
+
+fish_chdir_1:
 		link	a6,#cwdbuf
-		movem.l	a0-a4,-(a7)
-		move.l	a0,a4
+		movem.l	a0-a2,-(a7)
+		suba.l	a2,a2
 		move.b	flag_symlinks(a5),d0
-		beq	fish_chdir_normal		*  unset symlinks
+		beq	fish_chdir_ignore_links		*  unset symlinks
 
 		subq.b	#1,d0
 		beq	fish_chdir_chase_links		*  set symlinks=chase
-		bra	fish_chdir_ignore_links		*  set symlinks={ignore,expand}
-**
-fish_chdir_normal:
-		move.b	(a0),d0
-		bsr	is_nul_or_slash_or_backslash
-		beq	fish_chdir_chase_links		*  /* \* は chase する
 
-		bsr	scan_drive_name
-		bne	fish_chdir_normal_1
-
-		cmp.b	cwd(a5),d0
-		bne	fish_chdir_chase_links		*  違うドライブへの移動は chase する
-
-		move.b	2(a0),d0
-		bsr	is_nul_or_slash_or_backslash
-		beq	fish_chdir_chase_links		*  ?:/* ?:\* は chase する
-fish_chdir_normal_1:
-		*  シンボリック・リンクからの .. があるなら chase する
-		lea	cwd(a5),a1
-		movea.l	a0,a2
-		lea	cwdbuf(a6),a0
-		bsr	cat_pathname
-		bmi	fish_chdir_chase_links
-
-		exg	a0,a3
-fish_chdir_normal_check_loop:
-		cmpi.b	#'.',(a0)
-		bne	fish_chdir_normal_check_next
-
-		cmpi.b	#'.',1(a0)
-		bne	fish_chdir_normal_check_next
-
-		move.b	2(a0),d0
-		bsr	is_nul_or_slash_or_backslash
-		bne	fish_chdir_normal_check_next
-
-		clr.b	(a0)
-		exg	a0,a3
-		bsr	lgetmode
-		exg	a0,a3
-		move.b	#'.',(a0)
-		tst.l	d0
-		bmi	fish_chdir_normal_check_next
-
-		btst	#MODEBIT_LNK,d0
-		bne	fish_chdir_chase_links
-fish_chdir_normal_check_next:
-		bsr	find_slashes
-		beq	fish_chdir_ignore_links
-
-		bsr	skip_slashes
-		bne	fish_chdir_normal_check_loop
-**
+		*  set symlinks={ignore,expand}
+		lea	cwd(a5),a2
 fish_chdir_ignore_links:
-		movea.l	a4,a0
 		lea	cwdbuf(a6),a1
 		moveq	#MAXPATH,d0
 		bsr	normalize_pathname
@@ -420,19 +380,17 @@ fish_chdir_ignore_links:
 		bra	fish_chdir_success_return
 **
 fish_chdir_chase_links:
-		movea.l	a4,a0
 		bsr	get_fair_pathname
 		bcs	fish_chdir_fail
 
 		bsr	chdir
 		bmi	fish_chdir_return
 
-		bsr	set_oldcwd
 		bsr	reset_cwd
 fish_chdir_success_return:
 		moveq	#0,d0
 fish_chdir_return:
-		movem.l	(a7)+,a0-a4
+		movem.l	(a7)+,a0-a2
 		unlk	a6
 		rts
 
@@ -458,7 +416,7 @@ test_var:
 		bsr	get_shellvar
 		beq	return_1
 
-		bra	isfullpath
+		bra	isfullpathx
 ****************************************************************
 * chdir_var - Change current working drive/directory to $varname
 *
@@ -500,9 +458,30 @@ chdir_home:
 		bsr	chdir_var
 		beq	chdir_home_return
 		bmi	perror
-chdir_home_error:
-		lea	msg_no_home,a0
+bad_home:
+		lea	msg_bad_home,a0
 		bra	command_error
+****************************************************************
+* chdir_oldcwd - Change current working directory and drive to old_cwd
+*
+* CALL
+*      none
+*
+* RETURN
+*      A0     破壊
+*
+*      D0.L   old_cwd に chdir できたならば 1
+*             エラーならば負．（エラー・メッセージを出力する）
+*
+*      CCR    TST.L D0
+****************************************************************
+chdir_oldcwd:
+		lea	old_cwd(a5),a0
+		bsr	fish_chdir
+		bmi	perror
+
+		moveq	#1,d0
+		rts
 ****************************************************************
 * complex_chdir - Change current working directory and/or drive.
 *
@@ -688,7 +667,6 @@ do_cdd_1:
 		cmp.w	d1,d2
 		bne	cdd_return_0
 
-		bsr	set_oldcwd
 		bsr	reset_cwd
 cdd_return_0:
 		moveq	#0,d0
@@ -725,17 +703,13 @@ getopt:
 		lea	put_space(pc),a4
 		moveq	#0,d4
 getopt_loop1:
-		tst.w	d0
-		beq	getopt_ok
+		bsr	isopt
+		beq	getopt_loop2
+getopt_ok:
+		cmp.w	d0,d0
+getopt_return:
+		rts
 
-		cmpi.b	#'-',(a0)
-		bne	getopt_ok
-
-		tst.b	1(a0)
-		beq	getopt_ok
-
-		subq.w	#1,d0
-		addq.l	#1,a0
 getopt_loop2:
 		move.b	(a0)+,d2
 		beq	getopt_loop1
@@ -761,11 +735,6 @@ getopt_l:
 		bset	#0,d4
 		lea	puts(pc),a3
 		bra	getopt_loop2
-
-getopt_ok:
-		cmp.w	d0,d0
-getopt_return:
-		rts
 ****************************************************************
 test_arg_minus:
 		cmpi.b	#'-',(a0)
@@ -774,27 +743,20 @@ test_arg_minus:
 		tst.b	1(a0)
 		bne	test_arg_plus
 
-		lea	word_oldcwd,a0
-		bsr	test_var
-		beq	arg_minus_ok
-
-		lea	word_home,a0
-		bsr	test_var
-		bne	chdir_home_error	*  D0.L := 1 .. error
-arg_minus_ok:
-						*  A0 == value of var
+		lea	chdir_oldcwd(pc),a2
 arg_name:
-		moveq	#-1,d0			*  D0.L == -1 .. <name>
+		moveq	#-1,d0			*  D0.L := -1 .. <name>
 		rts
-****************************************************************
+
 test_arg_plus:
+		lea	complex_chdir(pc),a2
 		cmpi.b	#'+',(a0)
-		bne	arg_name		*  D0.L := -1 .. <name>
+		bne	arg_name
 
 		addq.l	#1,a0			*  + に続く
 		bsr	atou			*  数値をスキャンする
-		bmi	dirs_bad_arg		*  エラー（数字が無い） .. D0.L := 1 .. error
-		bne	dstack_not_deep		*  エラー（オーバーフロー） .. D0.L := 1 .. error
+		bmi	dirs_bad_arg		*  数字が無い .. D0.L := 1 .. error
+		bne	dstack_not_deep		*  オーバーフロー .. D0.L := 1 .. error
 
 		cmpi.b	#'.',(a0)
 		seq	d3			*  D3.B : dextract flag
@@ -837,6 +799,7 @@ check_not_empty:
 *
 *  Synopsis
 *       cd                go to home directory
+*       cd -              go to last directory
 *       cd +n             rotate to n'th be top
 *	cd +n.            extract n'th directory and go to it
 *	cd name           go to name
@@ -864,9 +827,9 @@ cmd_cd_plus:
 		bra	rotate_and_return		*  要素を循環送りする
 *  cd <name>
 cmd_cd_name:
-		bsr	complex_chdir			*  指定のディレクトリにcomplex_chdirする
-		neg.l	d0
-		bpl	cmd_cd_return
+		jsr	(a2)
+		bmi	cmd_cd_return
+		beq	cmd_cd_return
 		bra	pushd_popd_done
 ****************************************************************
 *  Name
@@ -874,6 +837,7 @@ cmd_cd_name:
 *
 *  Synopsis
 *       pushd               exchange current and top
+*       pushd -             push current and chdir to last directory
 *       pushd +n            rotate to let n'th be top
 *       pushd +n.           extract n'th and push it to top
 *	pushd directory     push current and chdir to directory
@@ -928,7 +892,7 @@ rotate_and_return:
 		move.l	dirstack_bottom(a0),d0
 		lea	(a0,d0.l),a2			*  A2 : 現在の末尾アドレス(+1)
 		lea	dirstack_top(a0),a0		*  A0 : 先頭の要素
-		bsr	rotate				*  要素を循環送りする
+		jsr	rotate				*  要素を循環送りする
 		bra	pushd_popd_done
 *  pushd <name>
 cmd_pushd_name:
@@ -939,7 +903,7 @@ cmd_pushd_name:
 		bsr	push_cwd			*  元のカレント・ディレクトリをプッシュする
 		beq	cmd_pushd_error_return
 
-		bsr	complex_chdir			*  指定のディレクトリにcomplex_chdirする
+		jsr	(a2)
 		bpl	pushd_popd_done
 cmd_pushd_fail:
 		move.l	#dirstack_top,d2		*  プッシュした先頭の要素を
@@ -1061,6 +1025,7 @@ cmd_dirs:
 		tst.w	d0
 		bne	dirs_too_many_args
 print_dirstack:
+		bsr	start_output
 		moveq	#0,d2
 		bsr	print_stacklevel
 		bsr	print_cwd
@@ -1082,6 +1047,7 @@ print_dirs_start:
 		dbra	d7,print_dirs_loop
 print_dirs_done:
 		bsr	put_newline
+		bsr	end_output
 		bra	print_dirs_return_0
 
 
@@ -1130,8 +1096,10 @@ cmd_pwd:
 		tst.w	d0
 		bne	dirs_too_many_args
 
+		bsr	start_output
 		bsr	print_cwd
 		bsr	put_newline
+		bsr	end_output
 		bra	cmd_pwd_return_0
 ****************************************************************
 print_cwd:
@@ -1259,14 +1227,14 @@ word_upper_oldpwd:	dc.b	'OLD'
 word_upper_pwd:		dc.b	'PWD',0
 word_oldcwd:		dc.b	'old'
 word_cwd:		dc.b	'cwd',0
-msg_cd_pushd_usage:	dc.b	'[-lvs] [<名前>|+<n>[.]|-]',0
+msg_cd_pushd_usage:	dc.b	'[-lvs] [--] [<名前>|+<n>[.]|-]',0
 msg_popd_usage:		dc.b	'[-lvs] [+<n>]',0
 msg_dirs_usage:		dc.b	'[-lv]',0
 msg_pwd_usage:		dc.b	'[-l]',0
 msg_directory_stack:	dc.b	'ディレクトリ・スタック',0
 msg_dstack_empty:	dc.b	'は空です',0
 msg_too_deep:		dc.b	'の要素数が制限一杯です',0
-msg_no_home:		dc.b	'シェル変数 home の設定が無効です',0
+msg_bad_home:		dc.b	'シェル変数 home の設定が無効です',0
 msg_illegal_cdd:	dc.b	'リンクです'
 str_nul:		dc.b	0
 

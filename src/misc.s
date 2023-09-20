@@ -1,5 +1,6 @@
 .include doscall.h
 .include chrcode.h
+.include ../src/fish.h
 
 .xref iscntrl
 .xref isodigit
@@ -13,6 +14,12 @@
 .xref scan_octal
 .xref printfi
 .xref str_newline
+
+.xref outbuf
+
+.xref do_buffering
+.xref outbuf_ptr
+.xref outbuf_free
 
 .text
 
@@ -28,25 +35,30 @@
 *      CCR    TST.B D0
 *****************************************************************
 ****************************************************************
-* isblkdev - キャラクタ・デバイスかどうかを調べる
+* ischardev - キャラクタ・デバイスかどうかを調べる
 *
 * CALL
 *      D0.W   ファイル・ハンドル
 *
 * RETURN
-*      D0.L   下位バイトはブロック・デバイスならば $00，キャラクタ・デバイスならば $FF
+*      D0.L   下位バイトはキャラクタ・デバイスならば $FF，さもなくば $00
 *             上位は破壊
 *      CCR    TST.B D0
 *****************************************************************
 .xdef isnotttyin
-.xdef isblkdev
+.xdef ischardev
 
 isnotttyin:
-isblkdev:
+ischardev:
 		move.w	d0,-(a7)
 		clr.w	-(a7)
 		DOS	_IOCTRL
 		addq.l	#4,a7
+		tst.l	d0
+		bpl	ischardev_1
+
+		moveq	#0,d0
+ischardev_1:
 		btst	#7,d0
 		sne	d0
 		tst.b	d0
@@ -84,8 +96,76 @@ xcputs_done:
 		movem.l	(a7)+,d0/a0
 		rts
 *****************************************************************
-.xdef cputc
 .xdef putc
+
+putc:
+		movem.l	d0/a0,-(a7)
+		tst.b	do_buffering(a5)
+		bne	putc_buffering
+
+		move.w	d0,-(a7)
+		DOS	_PUTCHAR
+		addq.l	#2,a7
+		bra	putc_done
+
+putc_buffering:
+		tst.l	outbuf_free(a5)
+		bne	putc_buffering_1
+
+		bsr	flush_outbuf
+putc_buffering_1:
+		movea.l	outbuf_ptr(a5),a0
+		move.b	d0,(a0)+
+		move.l	a0,outbuf_ptr(a5)
+		subq.l	#1,outbuf_free(a5)
+putc_done:
+		movem.l	(a7)+,d0/a0
+		rts
+*****************************************************************
+.xdef start_output
+.xdef end_output
+.xdef flush_outbuf
+
+end_output:
+		tst.b	do_buffering(a5)
+		beq	flush_return
+
+		sf	do_buffering(a5)
+flush_outbuf:
+		move.l	d0,-(a7)
+		move.l	#OUTBUF_SIZE,d0
+		sub.l	outbuf_free(a5),d0
+		beq	flush_done
+
+		move.l	d0,-(a7)
+		pea	outbuf
+		move.w	#1,-(a7)
+		DOS	_WRITE
+		lea	10(a7),a7
+		tst.l	d0
+		bmi	write_fail
+
+		cmp.l	-4(a7),d0
+		blo	write_fail
+init_buffering:
+		move.l	#outbuf,d0
+		move.l	d0,outbuf_ptr(a5)
+		move.l	#OUTBUF_SIZE,d0
+		move.l	d0,outbuf_free(a5)
+flush_done:
+write_fail:
+		move.l	(a7)+,d0
+flush_return:
+		rts
+
+start_output:
+		move.l	d0,-(a7)
+		moveq	#1,d0
+		bsr	ischardev
+		seq	do_buffering(a5)
+		bra	init_buffering
+*****************************************************************
+.xdef cputc
 
 cputc:
 		jsr	iscntrl
@@ -100,17 +180,20 @@ cputc:
 		bsr	putc
 		move.l	(a7)+,d0
 		rts
+*****************************************************************
+.xdef eputc
 
-putc:
+eputc:
 		move.l	d0,-(a7)
-		move.w	d0,-(a7)
-		DOS	_PUTCHAR
-		addq.l	#2,a7
+		move.l	#1,-(a7)
+		pea	7(a7)
+		move.w	#2,-(a7)
+		DOS	_WRITE
+		lea	10(a7),a7
 		move.l	(a7)+,d0
 		rts
 *****************************************************************
 .xdef ecputc
-.xdef eputc
 
 ecputc:
 		cmp.b	#$20,d0
@@ -124,25 +207,20 @@ ecputc:
 		bsr	eputc
 		move.l	(a7)+,d0
 		rts
-
-eputc:
-		move.l	d0,-(a7)
-		move.l	#1,-(a7)
-		pea	7(a7)
-		move.w	#2,-(a7)
-		DOS	_WRITE
-		lea	10(a7),a7
-		move.l	(a7)+,d0
-		rts
 ****************************************************************
 .xdef puts
 
 puts:
-		move.l	d0,-(a7)
-		move.l	a0,-(a7)
-		DOS	_PRINT
-		addq.l	#4,a7
-		move.l	(a7)+,d0
+		movem.l	d0/a0,-(a7)
+puts_loop:
+		move.b	(a0)+,d0
+		beq	puts_done
+
+		bsr	putc
+		bra	puts_loop
+
+puts_done:
+		movem.l	(a7)+,d0/a0
 		rts
 ****************************************************************
 .xdef eputs
@@ -152,21 +230,6 @@ eputs:
 		bsr	strlen
 		move.l	d0,-(a7)
 		move.l	a0,-(a7)
-		move.w	#2,-(a7)
-		DOS	_WRITE
-		lea	10(a7),a7
-		move.l	(a7)+,d0
-		rts
-****************************************************************
-.xdef enputs
-.xdef eput_newline
-
-enputs:
-		bsr	eputs
-eput_newline:
-		move.l	d0,-(a7)
-		move.l	#2,-(a7)
-		pea	str_newline
 		move.w	#2,-(a7)
 		DOS	_WRITE
 		lea	10(a7),a7
@@ -203,6 +266,21 @@ put_newline:
 		lea	str_newline,a0
 		bsr	puts
 		movem.l	(a7)+,d0/a0
+		rts
+****************************************************************
+.xdef enputs
+.xdef eput_newline
+
+enputs:
+		bsr	eputs
+eput_newline:
+		move.l	d0,-(a7)
+		move.l	#2,-(a7)
+		pea	str_newline
+		move.w	#2,-(a7)
+		DOS	_WRITE
+		lea	10(a7),a7
+		move.l	(a7)+,d0
 		rts
 *****************************************************************
 .xdef put_space
@@ -445,6 +523,58 @@ wordlistpcmp_continue:
 		moveq	#1,d0
 wordlistpcmp_return:
 		movem.l	(a7)+,d0-d1
+		rts
+*****************************************************************
+* isopt - 単語がオプション引数かどうかを調べる
+*
+* CALL
+*      A0     単語の先頭アドレス
+*      D0.W   単語数
+*
+* RETURN
+*      CCR    オプション引数ならば Z
+*
+*      単語がオプション引数であったなら
+*           A0     1文字進む
+*           D0.W   1減じられる
+*
+*      単語が '--' であったなら
+*           A0     1単語進む
+*           D0.W   1減じられる
+*
+*      さもなくば
+*           A0     変化しない
+*           D0.W   変化しない
+*****************************************************************
+.xdef isopt
+
+isopt:
+		tst.w	d0
+		beq	isopt_not
+
+		cmpi.b	#'-',(a0)
+		bne	isopt_not
+
+		tst.b	1(a0)
+		beq	isopt_not
+
+		subq.w	#1,d0
+		addq.l	#1,a0
+		cmpi.b	#'-',(a0)
+		bne	isopt_true
+
+		tst.b	1(a0)
+		bne	isopt_true
+
+		addq.l	#2,a0
+isopt_not:
+		movem.l	d0,-(a7)
+		moveq	#1,d0
+		movem.l	(a7)+,d0
+		rts
+
+isopt_true:
+		cmp.w	d0,d0
 		rts
 *****************************************************************
 

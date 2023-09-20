@@ -22,7 +22,7 @@
 .xref find_shellvar
 .xref get_var_value
 .xref is_builtin_dir
-.xref isfullpath
+.xref isfullpathx
 .xref dos_allfile
 .xref cat_pathname
 .xref strip_excessive_slashes
@@ -162,7 +162,7 @@ rehash_loop:
 		bsr	is_builtin_dir
 		bne	rehash_builtin
 
-		bsr	isfullpath
+		bsr	isfullpathx
 		bne	rehash_next
 ****************
 		movea.l	a1,a0

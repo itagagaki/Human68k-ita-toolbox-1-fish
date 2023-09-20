@@ -1,4 +1,4 @@
-* unpack.s
+* substdir.s
 * Itagaki Fumihiko 23-Sep-90  Create.
 
 .include limits.h
@@ -6,6 +6,7 @@
 .include ../src/fish.h
 .include ../src/dirstack.h
 
+.xref isdigit
 .xref iscsym
 .xref issjis
 .xref toupper
@@ -26,20 +27,27 @@
 .xref fgetpwnam
 .xref close_tmpfd
 .xref get_dstack_d0
-.xref word_home
+.xref search_command_0
 .xref get_shellvar
 .xref is_nul_or_slash_or_backslash
 .xref is_slash_or_backslash
 .xref pre_perror
 .xref perror
+.xref eputs
+.xref ecputs
 .xref enputs
+.xref perror_command_name
+.xref command_error
 .xref too_long_word
 .xref too_long_line
 .xref too_many_words
 .xref cannot_because_no_memory
 .xref dstack_not_deep
 
+.xref word_home
 .xref characters_to_be_escaped_3
+.xref msg_is
+.xref msg_not_found
 
 .xref subst_tmpword1
 .xref subst_tmpword2
@@ -52,6 +60,9 @@
 .xref tmpfd
 .xref cwd
 
+.xref flag_noglob
+.xref flag_nonomatch
+.xref flag_refersysroot
 .xref flag_symlinks
 
 .text
@@ -443,33 +454,29 @@ cannot_unpack:
 check_slash:
 		move.b	(a0),d0
 		cmp.b	#'\',d0
-		beq	check_slash_1
+		bne	check_slash_1
 
-		cmp.b	#'"',d0
-		beq	check_slash_1
-
-		cmp.b	#"'",d0
-		bne	check_slash_2
-check_slash_1:
 		move.b	1(a0),d0
-check_slash_2:
+check_slash_1:
+		btst	#1,d2
+		bne	is_slash_or_backslash
 		bra	is_nul_or_slash_or_backslash
 ****************************************************************
-* expand_tilde - ~ = .. を展開する
+* subst_directory - ~ = .. を置換する
 *
 * CALL
 *      A0     単語の先頭アドレス
 *      A1     展開するバッファのアドレス
 *      D1.L   バッファの容量
-*      D2.B   bit0 : 0 ならば、エラーコード -4 のエラー・メッセージ出力を抑止する
-*             bit1 : 0 ならば、.. を展開しない
+*      D2.B   bit0 : 非0 ならば、エラーコード -4 のエラー・メッセージ出力を抑止する
+*             bit1 : 非0 ならば、/ か \ の続かないtail部はディレクトリ置換しない
 *
 * RETURN
 *      A0     次の単語の先頭アドレス
 *      A1     バッファの次の格納位置
 *
-*      D0.L
-*              0  OK
+*      D0.L    0  OK
+*              1  単語が捨てられた
 *             -2  バッファの容量を超えた
 *             -3  単語の長さが規定を超えた
 *             -4  その他のエラー（メッセージが表示される）
@@ -479,47 +486,83 @@ check_slash_2:
 *
 *      CCR    TST.L D0
 *****************************************************************
-.xdef expand_tilde
+.xdef subst_directory
 
 source_ptr = -4
 dest_top = source_ptr-4
 dest_bot = dest_top-4
 dest_size = dest_bot-4
 dest_remain = dest_size-4
-slash = dest_remain-1
+subst_dotdot_top = dest_remain-4
+subst_dotdot_bot = subst_dotdot_top-4
+command_name = subst_dotdot_bot-(((MAXPATH+1)+1)>>1<<1)
+slash = command_name-1
 dotdot_substed = slash-1
 dotdot_slash_stat = dotdot_substed-1
-					*   1 : 先頭
-					*   2 : ?: の直後
-					*   3 : [?:]/ の直後
-					*  -1 : / の連続
+					*   1 : 空
+					*   2 : ?:
+					*   3 : [?:]/
+					*  -1 : */
 					*   0 : それ以外
 pad = dotdot_slash_stat-1
 
-expand_tilde:
+subst_directory:
 		link	a6,#pad
-		movem.l	d4-d6/a2-a4,-(a7)
+		movem.l	d3-d7/a2-a4,-(a7)
 		move.l	a1,dest_top(a6)
 		move.l	d1,dest_size(a6)
 		move.l	d1,d6
 		move.l	#MAXWORDLEN,d5
 		movea.l	a0,a2
+		tst.b	flag_noglob(a5)
+		bne	subst_directory_dup_remainder
 
 		move.b	(a0)+,d0
 		cmp.b	#'~',d0
 		beq	maybe_home_directory
 
 		cmp.b	#'=',d0
-		bne	expand_tilde_dup_remainder
+		bne	subst_directory_dup_remainder
 ****************
 ****************
 maybe_directory_stack:
-		cmpi.b	#'-',(a0)
+		move.b	(a0),d0
+		cmp.b	#'-',d0
 		beq	maybe_directory_stack_bottom
 
-		bsr	atou
-		bmi	expand_tilde_dup_remainder
+		bsr	isdigit
+		beq	maybe_directory_stack_n
 
+		*  which command
+
+		lea	subst_directory_command_not_found(pc),a3
+		move.l	a1,-(a7)
+		lea	command_name(a6),a1
+		moveq	#1,d0
+		bsr	search_command_0
+		movea.l	(a7)+,a1
+		tst.l	d0
+		bmi	subst_directory_nomatch
+
+		bsr	strfor1
+		movea.l	a0,a2
+		lea	command_name(a6),a0
+		bsr	strlen
+		sub.l	d0,d5
+		bcs	subst_directory_too_long
+
+		addq.l	#1,d0
+		sub.l	d0,d6
+		bcs	subst_directory_buffer_over
+
+		exg	a0,a1
+		bsr	strmove
+		movea.l	a2,a1
+		bra	subst_directory_dup_remainder_done
+
+maybe_directory_stack_n:
+		bsr	atou
+		bmi	subst_directory_dup_remainder
 		bra	maybe_directory_stack_check_slash
 
 maybe_directory_stack_bottom:
@@ -533,30 +576,32 @@ maybe_directory_stack_bottom:
 maybe_directory_stack_check_slash:
 		move.l	d0,d4
 		bsr	check_slash
-		bne	expand_tilde_dup_remainder
+		bne	subst_directory_dup_remainder
+
+		lea	dstack_not_deep(pc),a3
+		tst.l	d4
+		bne	subst_directory_nomatch
 
 		move.b	d0,slash(a6)
-		tst.l	d4
-		bne	expand_tilde_dstack_not_deep
-
-		movea.l	a0,a2
 		move.l	d1,d0
-		beq	expand_tilde_cwd
+		beq	subst_directory_cwd
 
 		move.l	d2,-(a7)
 		bsr	get_dstack_d0
 		move.l	d2,d0
 		move.l	(a7)+,d2
 		tst.l	d0
-		bmi	expand_tilde_dstack_not_deep
+		bmi	subst_directory_nomatch
 
+		movea.l	a0,a2
 		movea.l	dirstack(a5),a0
 		lea	(a0,d0.l),a0
-		bra	expand_tilde_copy_dir
+		bra	subst_directory_copy_dir
 ****************
-expand_tilde_cwd:
+subst_directory_cwd:
+		movea.l	a0,a2
 		lea	cwd(a5),a0
-		bra	expand_tilde_copy_dir
+		bra	subst_directory_copy_dir
 ****************
 ****************
 maybe_home_directory:
@@ -570,80 +615,96 @@ skip_username_loop:
 
 		subq.l	#1,a0
 		bsr	check_slash
-		bne	expand_tilde_dup_remainder
+		bne	subst_directory_dup_remainder
 
 		move.b	d0,slash(a6)
-		addq.l	#1,a2				*  A2 は ~ の次を指す
-		cmpa.l	a2,a0				*  D1.L : username の長さ
-		beq	expand_tilde_myhome
-****************
-		exg	a0,a2				*  A0 : ユーザ名の先頭  A2 : ユーザ名の次
+		move.l	a2,d0
+		addq.l	#1,d0
+		cmp.l	a0,d0
+		beq	subst_directory_myhome
 
+		*  A0 : ユーザ名の次
+		lea	subst_directory_unknown_user(pc),a3
 		bsr	open_passwd
-		bmi	expand_tilde_unknown_user	*  パスワード・ファイルが無い
+		bmi	subst_directory_nomatch		*  パスワード・ファイルが無い
 
 		move.l	d0,tmpfd(a5)
-		movem.l	d2/a0-a1,-(a7)
-		move.b	(a2),d2
-		clr.b	(a2)
-		move.l	a2,-(a7)
-		movea.l	a0,a2
+		move.b	(a0),d1
+		clr.b	(a0)
+		movem.l	d1/a0-a2,-(a7)
 		lea	tmppwbuf,a0
 		lea	tmppwline,a1
+		addq.l	#1,a2
 		move.l	#PW_LINESIZE,d1
 		bsr	fgetpwnam
-		movea.l	(a7)+,a2
-		move.b	d2,(a2)
-		movem.l	(a7)+,d2/a0-a1
+		movem.l	(a7)+,d1/a0-a2
+		move.b	d1,(a0)
 		bsr	close_tmpfd
-		bne	expand_tilde_unknown_user
+		tst.l	d0
+		bne	subst_directory_nomatch
 
+		movea.l	a0,a2
 		lea	tmppwbuf,a0
 		movea.l	PW_DIR(a0),a0
-		bra	expand_tilde_copy_dir
+		bra	subst_directory_copy_dir
 ****************
-expand_tilde_myhome:
-		lea	word_home,a0			*  シェル変数 home が
-		bsr	get_shellvar			*  定義されていないか空ならば
-		beq	expand_tilde_dup_remainder	*  ~ 以降をコピーするのみ
-****************
-expand_tilde_copy_dir:
+subst_directory_myhome:
+		lea	subst_directory_no_home(pc),a3
+		lea	word_home,a0
+		bsr	get_shellvar
+		beq	subst_directory_nomatch
+
+		addq.l	#1,a2
+subst_directory_copy_dir:
 		bsr	copy_dir
-		bmi	expand_tilde_return
-****************
-expand_tilde_dup_remainder:
+		bmi	subst_directory_return
+
+		tst.b	d3
+		beq	subst_directory_dup_remainder
+
+		tst.b	slash(a6)
+		beq	subst_directory_dup_remainder
+
+		move.b	(a2)+,d0
+		cmp.b	#'\',d0
+		bne	subst_directory_dup_remainder
+
+		addq.l	#1,a2
+subst_directory_dup_remainder:
 		movea.l	a2,a0
 		bsr	strlen
 		sub.l	d0,d5
-		bcs	expand_tilde_too_long
+		bcs	subst_directory_too_long
 
 		addq.l	#1,d0
 		sub.l	d0,d6
-		bcs	expand_tilde_buffer_over
+		bcs	subst_directory_buffer_over
 
 		exg	a0,a1
 		bsr	strmove
+subst_directory_dup_remainder_done:
 		move.l	a1,source_ptr(a6)
 		move.l	a0,dest_bot(a6)
 		move.l	d6,dest_remain(a6)
 
 		*  ~ と = の展開は完了．
 
-		*  ここで，symlinks=expand であれば，単語をパス名として正規化する．
-		*  エスケープされていない .. があり，その前後が / か \ か空であれば正規化する．
+		*  ここで，symlinks=expand であれば，
+		*    エスケープされていない .. があり，その前後が / か \ か空であれば
+		*    .. までの部分を正規化する．
 
-		btst	#1,d2
-		beq	expand_tilde_ok
+		tst.b	flag_noglob(a5)
+		bne	subst_directory_ok
 
 		cmpi.b	#3,flag_symlinks(a5)		*  set symlinks=expand ?
-		bne	expand_tilde_ok
+		bne	subst_directory_ok
 
 		sf	dotdot_substed(a6)
-		movea.l	dest_top(a6),a2
-		lea	subst_tmpword1,a3
+		movea.l	dest_top(a6),a2			*  A2 : sourceポインタ
+		lea	subst_tmpword1,a3		*  A3 : destバッファポインタ
+		move.l	a3,subst_dotdot_top(a6)
+		move.l	#MAXWORDLEN,d5			*  D5.L : バッファ容量カウンタ
 		move.b	#1,dotdot_slash_stat(a6)
-		movea.l	a3,a4
-		move.l	#MAXWORDLEN,d5
 subst_dotdot_loop:
 		tst.b	dotdot_slash_stat(a6)
 		beq	subst_dotdot_not_dotdot
@@ -658,32 +719,38 @@ subst_dotdot_loop:
 		bsr	check_slash
 		bne	subst_dotdot_not_dotdot
 
+		*  .. である
 		addq.l	#2,a2
 		move.b	d0,slash(a6)
+		move.l	a3,d0
 		tst.b	dotdot_slash_stat(a6)
-		bmi	subst_dotdot_terminate
+		bpl	subst_dotdot_terminate
 
-		movea.l	a3,a4
+		move.l	subst_dotdot_bot(a6),d0
 subst_dotdot_terminate:
-		clr.b	(a4)
-		tst.b	dotdot_substed(a6)
-		bne	subst_dotdot_do_one
-
-		bsr	subst_dotdot_check_root
-		beq	subst_dotdot_do_one_1
-
-		*  [?:]/ で始まっていない ... cwd または getcdd から始める．
+		movea.l	subst_dotdot_top(a6),a1
+		sub.l	a1,d0
 		lea	subst_tmpword2,a0
-		bsr	strmove
+		bsr	memmovi
+		clr.b	(a0)
+		tst.b	dotdot_substed(a6)
+		bne	subst_dotdot_non_first
+
+		*  最初の .. 置換
+		lea	subst_tmpword2,a0
+		bsr	subst_dotdot_check_root
+		beq	subst_dotdot_abs
+
+		*  [?:]/ で始まっていない ... cwd または `getcdd` から始める．
 		lea	cwd(a5),a0
 		moveq	#0,d0
 		move.b	d1,d0
-		beq	subst_dotdot_1st_catpath
+		beq	subst_dotdot_rel_copy_dir
 
 		bsr	toupper
 		move.l	d0,d1
 		cmp.b	(a0),d0
-		beq	subst_dotdot_1st_catpath
+		beq	subst_dotdot_rel_copy_dir
 
 		bsr	drvchk
 		bmi	subst_dotdot_bad_drive
@@ -691,70 +758,122 @@ subst_dotdot_terminate:
 		move.l	d1,d0
 		lea	pathname_buf,a0
 		bsr	getcdd
-subst_dotdot_1st_catpath:
-		lea	subst_tmpword1,a1
+subst_dotdot_rel_copy_dir:
+		movea.l	subst_dotdot_top(a6),a1
 		moveq	#-1,d6
 		bsr	copy_dir
-		bmi	expand_tilde_return
+		bmi	subst_directory_return
 
-		clr.b	(a1)
-		lea	subst_tmpword2,a0
-		bsr	strlen
-		tst.l	d0
-		beq	subst_dotdot_do_one
+		move.b	d3,dotdot_slash_stat(a6)
+		movea.l	a1,a0
+		lea	subst_tmpword2,a1
+		bra	subst_dotdot_fair_loop
 
-		addq.l	#1,d0
-		sub.l	d0,d5
-		bcs	expand_tilde_too_long
+subst_dotdot_abs:
+		lea	subst_tmpword2,a1
+		move.l	a0,d0
+		sub.l	a1,d0
+		movea.l	subst_dotdot_top(a6),a0
+		bsr	memmovi
+		st	dotdot_slash_stat(a6)
+		bra	subst_dotdot_fair_loop
 
-		exg	a0,a1
-		move.b	#'/',(a0)+
-		bsr	strmove
-subst_dotdot_do_one:
+subst_dotdot_non_first:
+		movea.l	subst_dotdot_top(a6),a0
+		clr.b	(a0)
+		lea	subst_tmpword1,a0
 		bsr	subst_dotdot_check_root
-subst_dotdot_do_one_1:
-		move.l	a2,-(a7)
-		movea.l	a1,a2
-subst_dotdot_do_one_loop:
-		movea.l	a2,a3
-subst_dotdot_skip_slashes_loop:
-		bsr	get_1char
-		beq	subst_dotdot_done_one
+		tst.b	(a0)
+		seq	dotdot_slash_stat(a6)
+		lea	subst_tmpword2,a1
+		bsr	subst_dotdot_find_slashes
+		move.b	d0,slash(a6)
+		movea.l	subst_dotdot_top(a6),a0
+subst_dotdot_fair_loop:
+		bsr	subst_dotdot_skip_slashes
+		beq	subst_dotdot_fair_done
+
+		movea.l	a1,a3
+		bsr	get_1char_a1
+		beq	subst_dotdot_fair_done
+
+		cmp.b	#'.',d0
+		bne	subst_dotdot_fair_dup
+
+		bsr	get_1char_a1
+		beq	subst_dotdot_fair_done
 
 		bsr	is_slash_or_backslash
-		beq	subst_dotdot_skip_slashes_loop
-		bra	subst_dotdot_find_slashes_continue
+		bne	subst_dotdot_fair_dup
 
-subst_dotdot_find_slashes_loop:
-		move.b	(a2),d0
-		beq	subst_dotdot_done_one
+		move.b	d0,slash(a6)
+		bra	subst_dotdot_fair_loop
 
+subst_dotdot_fair_dup:
+		tst.b	dotdot_slash_stat(a6)
+		bne	subst_dotdot_fair_dup_3
+
+		move.b	slash(a6),d0
 		cmp.b	#'\',d0
-		bne	subst_dotdot_find_slashes_1
+		bne	subst_dotdot_fair_dup_1
 
-		move.b	1(a2),d0
-		beq	subst_dotdot_done_one
-subst_dotdot_find_slashes_1:
-		bsr	is_slash_or_backslash
-		beq	subst_dotdot_do_one_loop
+		subq.l	#1,d5
+		bcs	subst_directory_too_long
 
-		bsr	get_1char
-subst_dotdot_find_slashes_continue:
-		bsr	issjis
-		bne	subst_dotdot_find_slashes_loop
+		move.b	#'\',(a0)+
+		bra	subst_dotdot_fair_dup_2
 
-		move.b	(a2)+,d0
-		beq	subst_dotdot_done_one
-		bra	subst_dotdot_find_slashes_loop
+subst_dotdot_fair_dup_1:
+		moveq	#'/',d0
+subst_dotdot_fair_dup_2:
+		subq.l	#1,d5
+		bcs	subst_directory_too_long
 
-subst_dotdot_done_one:
-		movea.l	(a7)+,a2
-		st	dotdot_substed(a6)
+		move.b	d0,(a0)+
+subst_dotdot_fair_dup_3:
+		bsr	subst_dotdot_find_slashes
+		move.b	d0,slash(a6)
+		exg	a1,a3
+		move.l	a3,d0
+		sub.l	a1,d0
+		bsr	memmovi
+		sf	dotdot_slash_stat(a6)
+		bra	subst_dotdot_fair_loop
+
+subst_dotdot_fair_done:
+		clr.b	(a0)
+		lea	subst_tmpword1,a0
+		bsr	subst_dotdot_check_root
+		movea.l	a0,a1
+		move.b	#3,dotdot_slash_stat(a6)
+		bra	subst_dotdot_set_cutpos_1
+
+subst_dotdot_set_cutpos:
 		clr.b	dotdot_slash_stat(a6)
+subst_dotdot_set_cutpos_1:
+		movea.l	a1,a3
+		bsr	subst_dotdot_skip_slashes
+		beq	subst_dotdot_done_one
+
+		bsr	subst_dotdot_find_slashes
+		bne	subst_dotdot_set_cutpos
+subst_dotdot_done_one:
+		st	dotdot_substed(a6)
 		lea	subst_tmpword1,a0
 		move.l	a0,d5
 		add.l	#MAXWORDLEN,d5
 		sub.l	a3,d5
+		move.l	a3,subst_dotdot_top(a6)
+		tst.b	dotdot_slash_stat(a6)
+		beq	subst_dotdot_not_dotdot
+
+		bsr	get_1char
+		beq	subst_dotdot_done
+
+		move.l	a3,subst_dotdot_bot(a6)
+		move.b	#-1,dotdot_slash_stat(a6)
+		bra	subst_dotdot_loop
+
 subst_dotdot_not_dotdot:
 		move.b	(a2)+,d0
 		cmp.b	#'"',d0
@@ -776,7 +895,7 @@ subst_dotdot_not_dotdot:
 		st	d4
 subst_dotdot_not_escape:
 		bsr	subst_dotdot_dup1
-		bcs	expand_tilde_too_long
+		bcs	subst_directory_too_long
 		bne	subst_dotdot_loop
 		bra	subst_dotdot_done
 
@@ -789,108 +908,105 @@ subst_dotdot_quote_loop:
 		beq	subst_dotdot_loop
 
 		bsr	subst_dotdot_dup1
-		bcs	expand_tilde_too_long
+		bcs	subst_directory_too_long
 		bne	subst_dotdot_quote_loop
 subst_dotdot_done:
 		tst.b	dotdot_substed(a6)
-		beq	expand_tilde_ok
+		beq	subst_directory_ok
 
 		clr.b	(a3)
 		lea	subst_tmpword1,a0
 		bsr	strlen
 		addq.l	#1,d0
 		sub.l	dest_size(a6),d0
-		bhi	expand_tilde_buffer_over
+		bhi	subst_directory_buffer_over
 
 		move.l	d0,dest_remain(a6)
 		movea.l	a0,a1
 		movea.l	dest_top(a6),a0
 		bsr	strmove
 		move.l	a0,dest_bot(a6)
-expand_tilde_ok:
+subst_directory_ok:
 		movea.l	source_ptr(a6),a0
 		movea.l	dest_bot(a6),a1
 		move.l	dest_remain(a6),d1
 		moveq	#0,d0
-expand_tilde_return:
-		movem.l	(a7)+,d4-d6/a2-a4
+subst_directory_return:
+		movem.l	(a7)+,d3-d7/a2-a4
 		unlk	a6
 		tst.l	d0
 		rts
 
-expand_tilde_buffer_over:
+subst_directory_buffer_over:
 		moveq	#-2,d0
-		bra	expand_tilde_return
+		bra	subst_directory_return
 
-expand_tilde_too_long:
+subst_directory_too_long:
 		moveq	#-3,d0
-		bra	expand_tilde_return
+		bra	subst_directory_return
 
 subst_dotdot_bad_drive:
 		btst	#0,d2
-		beq	expand_tilde_misc_error
+		bne	subst_directory_return_4
 
-		lea	subst_tmpword1,a0
+		bsr	perror_command_name
+		lea	subst_tmpword2,a0
 		bsr	perror
-		bra	expand_tilde_misc_error
-		
-expand_tilde_unknown_user:
-		btst	#0,d2
-		beq	expand_tilde_misc_error
+		bra	subst_directory_return_4
+****************
+subst_directory_nomatch:
+		move.b	flag_nonomatch(a5),d0
+		beq	subst_directory_error_4
 
+		subq.b	#1,d0
+		bne	subst_directory_dup_remainder	*  set nonomatch .. 単語をコピーする
+
+		*  set nonomatch=drop .. 単語を捨てる
+		movea.l	a2,a0
+		bsr	strfor1
+		move.l	d6,d1
+		moveq	#1,d0
+		bra	subst_directory_return
+
+subst_directory_error_4:
+		btst	#0,d2
+		bne	subst_directory_return_4
+
+		jsr	(a3)
+subst_directory_return_4:
+		moveq	#-4,d0
+		bra	subst_directory_return
+****************
+subst_directory_no_home:
+		lea	msg_no_home,a0
+		bra	command_error
+****************
+subst_directory_unknown_user:
+		bsr	perror_command_name
+		exg	a0,a2
 		move.b	(a2),d0
 		clr.b	(a2)
+		addq.l	#1,a0
 		bsr	pre_perror
 		move.b	d0,(a2)
 		lea	msg_unknown_user,a0
-		bsr	enputs
-expand_tilde_misc_error:
-		moveq	#-4,d0
-		bra	expand_tilde_return
-
-expand_tilde_dstack_not_deep:
-		btst	#0,d2
-		beq	expand_tilde_misc_error
-
-		bsr	dstack_not_deep
-		bra	expand_tilde_misc_error
+		bra	enputs
 ****************
-subst_dotdot_check_root:
-		lea	subst_tmpword1,a0
-		movea.l	a0,a1
-		move.l	a2,-(a7)
-		movea.l	a0,a2
-		moveq	#0,d1
-		bsr	get_1char
-		beq	subst_dotdot_check_root_drive_ok
-
-		cmpi.b	#':',(a2)
-		bne	subst_dotdot_check_root_drive_ok
-
-		move.b	d0,d1
-		addq.l	#1,a2
-		movea.l	a2,a1
-		bsr	get_1char
-subst_dotdot_check_root_drive_ok:
-		bsr	is_slash_or_backslash
-		bne	subst_dotdot_check_root_ok
-
-		movea.l	a2,a1
-		cmp.b	d0,d0
-subst_dotdot_check_root_ok:
-		movea.l	(a7)+,a2
-		rts
-****************
-subst_dotdot_check_escape:
-		lea	characters_to_be_escaped_3,a0
-		bra	strchr
-****************
+subst_directory_command_not_found:
+		bsr	perror_command_name
+		lea	1(a2),a0
+		bsr	ecputs
+		lea	msg_is,a0
+		bsr	eputs
+		lea	msg_not_found,a0
+		bra	enputs
+****************************************************************
 subst_dotdot_dup1:
 		tst.b	d0
-		beq	subst_dotdot_dup1_return	*  CC : CC, Z
+		beq	subst_dotdot_dup1_return	*  終わり; CC:CC,Z
 
 		subq.l	#1,d5
-		bcs	subst_dotdot_dup1_return	*  CC : CS
+		bcs	subst_dotdot_dup1_return	*  バッファ不足; CC:CS
 
 		bsr	is_slash_or_backslash
 		bne	subst_dotdot_dup1_not_slash
@@ -904,8 +1020,8 @@ subst_dotdot_dup1:
 		cmpi.b	#2,dotdot_slash_stat(a6)
 		beq	subst_dotdot_dup1_root
 
+		move.l	a3,subst_dotdot_bot(a6)
 		move.b	#-1,dotdot_slash_stat(a6)
-		movea.l	a3,a4
 		bra	subst_dotdot_dup1_not_sjis
 
 subst_dotdot_dup1_root:
@@ -938,41 +1054,175 @@ subst_dotdot_dup1_not_sjis:
 		tst.b	d4
 		beq	subst_dotdot_dup1_2
 
-		bsr	subst_dotdot_check_escape
+		lea	characters_to_be_escaped_3,a0
+		bsr	strchr
 		beq	subst_dotdot_dup1_2
 
 		move.b	#'\',(a3)+
-		bra	subst_dotdot_dup1_2
+		bra	subst_dotdot_dup1_1
 
 subst_dotdot_dup1_sjis:
 		move.b	d0,(a3)+
 		move.b	(a2)+,d0
-		beq	subst_dotdot_dup1_return	*  CC : CC, Z
-
+		beq	subst_dotdot_dup1_return	*  終わり; CC:CC,Z
+subst_dotdot_dup1_1:
 		subq.l	#1,d5
-		bcs	subst_dotdot_dup1_return	*  CC : CS
+		bcs	subst_dotdot_dup1_return	*  バッファ不足; CC:CS
 subst_dotdot_dup1_2:
-		move.b	d0,(a3)+			*  CC : CC, NZ
+		move.b	d0,(a3)+			*  CC:CC,NZ
 subst_dotdot_dup1_return:
 		rts
-****************
+****************************************************************
+* subst_dotdot_check_root - 文字列 が [?:]/ で始まっているかどうか調べる
+*
+* CALL
+*      A0     文字列
+*
+* RETURN
+*      A0     [?:]/ の次のアドレス（[?:]/ で始まっていなければ不定）
+*      D1.L   ドライブ名（なければ 0）
+*      CCR    [?:]/ で始まっていれば EQ
+*      D0.L   破壊
+****************************************************************
+subst_dotdot_check_root:
+		move.l	a2,-(a7)
+		movea.l	a0,a2
+		moveq	#0,d1
+		bsr	get_1char
+		beq	subst_dotdot_check_root_drive_ok
+
+		move.b	d0,d1
+		movea.l	a2,a0
+		bsr	get_1char
+		cmp.b	#':',d0
+		bne	subst_dotdot_check_root_no_drive
+
+		bsr	get_1char
+		bra	subst_dotdot_check_root_drive_ok
+
+subst_dotdot_check_root_no_drive:
+		move.b	d1,d0
+		movea.l	a0,a2
+		moveq	#0,d1
+subst_dotdot_check_root_drive_ok:
+		movea.l	a2,a0
+		movea.l	(a7)+,a2
+		bsr	is_slash_or_backslash
+		rts
+****************************************************************
+* subst_dotdot_skip_slashes - / か \ をスキップする
+*
+* CALL
+*      A1     文字列
+*
+* RETURN
+*      A1     最初の / でも \ でもない文字の位置
+*      D0     最初の / でも \ でもない文字
+*      CCR    TST.B D0
+****************************************************************
+subst_dotdot_skip_slashes:
+		move.b	(a1),d0
+		beq	subst_dotdot_find_slashes_done
+
+		cmp.b	#'\',d0
+		bne	subst_dotdot_skip_slashes_1
+
+		move.b	1(a1),d0
+		beq	subst_dotdot_find_slashes_done
+subst_dotdot_skip_slashes_1:
+		bsr	is_slash_or_backslash
+		bne	subst_dotdot_find_slashes_done
+
+		bsr	get_1char_a1
+		bra	subst_dotdot_skip_slashes
+****************************************************************
+* subst_dotdot_find_slashes - / か \ を探す
+*
+* CALL
+*      A1     文字列
+*
+* RETURN
+*      A1     最初の / か \ か NUL の位置
+*      D0     最初の / か \ か NUL
+*      CCR    TST.B D0
+****************************************************************
+subst_dotdot_find_slashes:
+		move.b	(a1),d0
+		beq	subst_dotdot_find_slashes_done
+
+		cmp.b	#'\',d0
+		bne	subst_dotdot_find_slashes_1
+
+		move.b	1(a1),d0
+		beq	subst_dotdot_find_slashes_done
+subst_dotdot_find_slashes_1:
+		bsr	is_slash_or_backslash
+		beq	subst_dotdot_find_slashes_done
+
+		bsr	get_1char_a1
+subst_dotdot_find_slashes_continue:
+		bsr	issjis
+		bne	subst_dotdot_find_slashes
+
+		move.b	(a1)+,d0
+		bne	subst_dotdot_find_slashes
+
+		subq.l	#1,a1
+subst_dotdot_find_slashes_done:
+		tst.b	d0
+		rts
+****************************************************************
+get_1char_a1:
+		exg	a1,a2
+		bsr	get_1char
+		exg	a1,a2
+		rts
+****************************************************************
+* copy_dir
+*
+* CALL
+*      A0     source
+*      A1     destination
+*      D5.L   destination の規定容量（単語の長さカウンタ）
+*      D6.L   destination の許容量（バッファ容量カウンタ）
+*
+* RETURN
+*      D0.L    0  OK
+*             -2  バッファの容量を超えた
+*             -3  単語の長さが規定を超えた
+*
+*      D3.B   / か \ で終わったならば 非0
+*
+*      A1     進む
+*
+*      D4-D7/A0/A3     破壊
+****************************************************************
 copy_dir:
 		movea.l	a0,a3
 		sf	d4				*  D4.B : sjis flag
+		clr.b	d7				*  D7.B : slash
+		st	d3
+		tst.b	flag_refersysroot(a5)
+		bne	copy_dir_loop_1
 copy_dir_loop:
+		move.b	slash(a6),d7
+copy_dir_loop_1:
 		move.b	(a3)+,d0
 		beq	copy_dir_done
 
+		sf	d3
 		tst.b	d4
 		sf	d4
 		bne	copy_dir_1
 
+		st	d3
 		cmp.b	#'/',d0
 		beq	copy_dir_slash
 
 		cmp.b	#'\',d0
 		beq	copy_dir_backslash
 
+		sf	d3
 		jsr	issjis
 		seq	d4
 		beq	copy_dir_1
@@ -983,28 +1233,28 @@ copy_dir_loop:
 		bra	copy_dir_escape
 
 copy_dir_backslash:
-		cmpi.b	#'/',slash(a6)
+		cmp.b	#'/',d7
 		bne	copy_dir_escape
 
-		move.b	#'/',d0
+		move.b	d7,d0
 		bra	copy_dir_1
 
 copy_dir_slash:
-		cmpi.b	#'\',slash(a6)
+		cmp.b	#'\',d7
 		bne	copy_dir_1
 
-		move.b	#'\',d0
+		move.b	d7,d0
 copy_dir_escape:
 		subq.l	#1,d6
-		bcs	expand_tilde_buffer_over
+		bcs	copy_dir_buffer_over
 
 		subq.l	#1,d5
-		bcs	expand_tilde_too_long
+		bcs	copy_dir_too_long
 
 		move.b	#'\',(a1)+
 copy_dir_1:
 		subq.l	#1,d6
-		bcs	expand_tilde_buffer_over
+		bcs	copy_dir_buffer_over
 
 		subq.l	#1,d5
 		bcs	copy_dir_too_long
@@ -1051,22 +1301,23 @@ unpack_wordlist:
 		bmi	unpack_wordlist_error
 
 		move.w	d0,d3			*  D3.W : {}展開後の単語数
-		move.w	d3,d4			*  D4 : カウンタ
+		moveq	#0,d4			*  D4 : 単語数カウンタ
 		lea	tmpline(a5),a0
 		movea.l	a2,a1
 		move.l	#MAXWORDLISTSIZE,d1	*  D1.L : 最大文字数
-		moveq	#3,d2			*  Unknown user メッセージを抑止しない
-						*  symlinks=expand なら .. を展開する
-		bra	expand_tilde_wordlist_continue
+		moveq	#0,d2
+		bra	subst_dir_wordlist_continue
 
-expand_tilde_wordlist_loop:
-		bsr	expand_tilde
+subst_dir_wordlist_loop:
+		bsr	subst_directory
 		bmi	unpack_wordlist_error
-expand_tilde_wordlist_continue:
-		dbra	d4,expand_tilde_wordlist_loop
-****************
-		moveq	#0,d0
-		move.w	d3,d0
+		bne	subst_dir_wordlist_continue
+
+		addq.l	#1,d4
+subst_dir_wordlist_continue:
+		dbra	d3,subst_dir_wordlist_loop
+
+		move.l	d4,d0
 unpack_wordlist_return:
 		movem.l	(a7)+,d1-d4/a0-a2
 		tst.l	d0
@@ -1097,7 +1348,8 @@ unpack_wordlist_error_return:
 
 .data
 
-msg_cannot_unpack:		dc.b	' {} を展開できません',0
-msg_unknown_user:		dc.b	'このようなユーザは登録されていません',0
+msg_cannot_unpack:	dc.b	' {} を展開できません',0
+msg_unknown_user:	dc.b	'このようなユーザは登録されていません',0
+msg_no_home:		dc.b	'シェル変数 home が定義されていません',0
 
 .end
