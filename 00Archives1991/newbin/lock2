@@ -1,0 +1,4 @@
+#
+restart:
+lock || goto restart
+

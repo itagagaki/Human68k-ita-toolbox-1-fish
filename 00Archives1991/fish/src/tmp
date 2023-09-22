@@ -1,0 +1,112 @@
+****************************************************************
+* test_directory - パス名のディレクトリが存在するかどうかを調べる
+*
+* CALL
+*      A0     パス名
+*
+* RETURN
+*      D0.L   存在するならば0
+*      CCR    TST.L D0
+*
+* NOTE
+*      ディレクトリ名の区切り文字は / のみを認める
+*      flag_ciglob(B) が効く
+****************************************************************
+filebuf = -53
+pathname_buf = filebuf-(MAXPATH+1)
+pad = pathname_buf-(pathname_buf.MOD.2)
+
+test_directory:
+		link	a6,#pad
+		movem.l	d1-d2/a0-a3,-(a7)
+		lea	pathname_buf(a6),a2
+		moveq	#0,d2
+get_firstdir_restart:
+		movea.l	a0,a3
+		move.b	(a0)+,d0
+		beq	get_firstdir_done
+
+		cmp.b	#'/',d0
+		beq	get_firstdir_root
+
+		tst.w	d2
+		bne	get_firstdir_done
+
+		bsr	issjis
+		beq	get_firstdir_done
+
+		move.b	d0,d1
+		move.b	(a0)+,d0
+		beq	get_firstdir_done
+
+		cmp.b	#':',d0
+		bne	get_firstdir_done
+
+		move.b	d1,(a2)+
+		move.b	d0,(a2)+
+		moveq	#1,d2
+		bra	get_firstdir_restart
+
+get_firstdir_root:
+		move.b	d0,(a2)+
+		movea.l	a0,a3
+get_firstdir_done:
+		clr.b	(a2)
+		lea	pathname_buf(a6),a0
+		bsr	test_drive_path			* ドライブ名は有効か
+		bne	test_directory_false		* 無効 .. false
+test_directory_loop:
+		*
+		*  A2 : 検索名バッファのケツ
+		*  A3 : 現在着目しているエレメントの先頭
+		*
+		movea.l	a3,a0				* 現在着目しているエレメントの後ろに
+		moveq	#'/',d0				* / が
+		bsr	strchr				* あるか？
+		moveq	#0,d0
+		tst.b	(a0)
+		beq	test_directory_true		* 無い .. true
+
+		move.l	a0,d2
+		sub.l	a3,d2				* D2.L : エレメントの長さ
+		move.w	#%010000,-(a7)			* ディレクトリのみを検索
+		pea	pathname_buf(a6)
+		pea	filebuf(a6)
+		movea.l	a2,a0
+		lea	dos_allfile,a1
+		bsr	strcpy
+		DOS	_FILES
+		lea	10(a7),a7
+test_directory_find_loop:
+		tst.l	d0
+		bmi	test_directory_false		* エントリが無い .. false
+
+		lea	filebuf+30(a6),a0
+		movea.l	a3,a1
+		move.l	d2,d0
+		move.b	flag_ciglob,d1
+		bsr	memxcmp
+		beq	test_directory_found
+
+		pea	filebuf(a6)
+		DOS	_NFILES
+		addq.l	#4,a7
+		bra	test_directory_find_loop
+
+test_directory_found:
+		move.l	d2,d0
+		addq.l	#1,d0
+		exg	a1,a3
+		exg	a0,a2
+		bsr	memmove_inc
+		exg	a0,a2
+		exg	a1,a3
+		clr.b	(a2)
+		bra	test_directory_loop
+
+test_directory_return:
+		movem.l	(a7)+,d1-d2/a0-a3
+		unlk	a6
+		tst.l	d0
+		rts
+

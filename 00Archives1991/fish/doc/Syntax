@@ -1,0 +1,29 @@
+line	: command(s)
+	| if (expr) command
+	| if (expr) then
+	| else if (expr) then
+	| else
+	| endif
+	| foreach var (wordlist)
+	| while (expr)
+	| end
+	| switch (str)
+	| case pat:
+	| default:
+	| endsw
+	| label:
+	| break
+	| continue
+	| goto label
+	| shift name
+	| shift
+	| :str
+
+command	: pipeline
+	| command ; pipeline
+	| command && pipeline
+	| command || pipeline
+
+pipeline: simplecommand
+	| pipeline | simplecommand
+

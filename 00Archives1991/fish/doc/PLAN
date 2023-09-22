@@ -1,0 +1,442 @@
+単純コマンドの実行			△
+					引数並びの新しい受け渡し
+					ステータス・コード
+
+パラメータ行展開			△
+
+;  &&  ||				○
+
+|  |&					○
+
+>  >!  >>  >>!  >&  >&!  >>&  >>&!	○
+
+<  <!					○
+
+<<					○
+
+ハッシング				○
+
+クォーティング				△混沌
+
+サブシェル実行				△
+					仕様に曖昧な点あり
+					forkのエラーを検査していない
+
+ファイル名展開				△　大文字と小文字を区別すべきか？
+
+コマンド置換え				△
+					仕様に曖昧な点あり
+					forkのエラーを検査していない
+
+シェル変数				○
+
+変数置換え
+	$<				△
+
+別名					○
+
+別名置換え				別名と本名の比較が甘い
+
+履歴					△（制限付き）
+
+履歴置換え
+	!#
+
+シェルスクリプト			△
+
+起動オプション				△	引数をさらに分割していない
+						厳密なチェック
+
+%fishrc					○
+%history
+%login					△　ログインシェルかどうかの判断がまだ曖昧
+%logout
+%yow					△
+/etc/cshrc
+
+式評価					○
+環境変数の inport			○
+シェル変数の export			○
+
+ジョブ制御				不可能
+
+履歴のテンプレート登録			まだ
+
+行編集機能				△途中
+	1文字前進				^F
+	1文字後退				^B
+	1語前進					ESC-F
+	1語後退					ESC-B
+	行末に移動				^E
+	行頭に移動				^A
+	1文字削除				^D
+	後方の1文字削除			○	^H
+	1語削除					ESC-D
+	後方の1語削除			
+	カーソル以降削除		○	^K
+	行頭からカーソル直前まで削除	○	^U
+	行削除					^X
+	1文字大文字化
+	1文字小文字化
+	1語大文字化				ESC-U
+	1語小文字化				ESC-L
+	1語 / \\ 置換
+	1文字交換				^T
+	制御文字入力				^V
+	順方向履歴行呼び出し			^N
+	逆方向履歴行呼び出し			^P
+	順方向履歴単語呼び出し
+	逆方向履歴単語呼び出し
+	順方向パターン履歴行呼び出し
+	逆方向パターン履歴行呼び出し
+	順方向パターン履歴単語呼び出し
+	逆方向パターン履歴単語呼び出し
+	再表示				○	^L
+	挿入上書切替				^O
+	ファイル名完成			△	ESC-ESC		大文字と小文字を区別すべきか？
+	ファイル名リスト		○	ESC-^Z
+
+組み込みコマンド
+	%				不可能
+	@				○
+	alias				△ -l -s がまだ
+	alloc
+	bg				不可能
+	cd				○
+	chdir				○
+	chsh
+	dirs				○
+	echo				△　仕様が未定
+	eval				○
+	exec
+	exit				△ ログイン・シェルであるときの特別処理がまだ
+	fg				不可能
+	glob				○
+	goto				○
+	hashstat			△ x がまだ
+	history				○
+	jobs				不可能
+	kill				不可能
+	limit				不可能
+	login
+	logout
+	nice				不可能
+	nohup
+	notify
+	onintr				○
+	popd				○
+	pushd				○
+	pwd				○
+	rehash				○
+	repeat				○
+	set				○
+	setenv				○
+	shift				○
+	source				△ -h にバグ有り
+	stop				不可能
+	suspend
+	time				△
+	umask
+	unalias				○
+	unhash				○
+	unlimit				不可能
+	unset				○
+	unsetenv			△ pattern マッチングしていない
+	wait				不可能
+	which				○
+
+制御文
+	if
+	elif
+	then
+	else
+	endif
+
+	switch
+	case label:
+	default:
+	breaksw
+	endsw
+
+	while
+	foreach
+	continue
+	break
+	end
+
+	label:				△
+
+特別なシェル変数
+	argv				○
+	cdpath				○
+	child
+	cwd				○
+	echo				○
+	fignore				○
+	filec				○
+	histchars			○
+	history				○
+	home				○
+	ignoreeof			○
+	mail
+	nobeep				○
+	noclobber			○
+	noglob				○
+	nonomatch			○
+	notify
+	path				○
+	prompt				暫定
+	prompt2				暫定
+	savehist
+	shell				暫定
+	status				暫定
+	temp				○
+	term				○
+	time				○
+	user				○
+	verbose				○
+	yow				○
+
+環境変数への対応
+	HOME
+	LOGNAME
+	MAIL
+	PWD
+	SHELL
+	TERM
+	TERMCAP
+	USER
+	path
+	temp
+
+特別ファイルへの対応
+	/etc/cshrc
+	/etc/group
+	/etc/passwd
+	/etc/termcap
+	/usr/lib/terminfo/*
+	/usr/mail
+	/usr/spool/mail
+	~/.cshrc
+	~/.history
+	~/.login
+	~/.logout
+
+外部コマンド
+	MAKEHOSTS
+	accton
+	adduser
+	apply
+	ar
+	as				HU FW
+	at
+	awk				GNU
+	banner(BSD)
+	banner(V)
+	basename
+	batch
+	bc
+	bdiff
+	bfs
+	biff
+	cal
+	calendar
+	captoinfo
+	cat				ITA△
+	catman
+	cb
+	cc				HU GNU
+	chfn
+	chnice
+	chmod
+	chsh
+	ci
+	clean				ITA△termcapを見ていない
+	cmp
+	co
+	cookie
+	col
+	colcrt
+	compress
+	cp
+	cpp
+	csplit
+	cut
+	date
+	dbx
+	dc
+	dd
+	delta
+	df				FW ITA△
+	diff
+	diff3
+	dirname
+	dtree
+	du
+	echo
+	ed
+	edit
+	egrep
+	emacs				GNU
+	env
+	error
+	etoj
+	etos
+	ex
+	expand
+	expr
+	f
+	fe
+	f77
+	false
+	fgrep
+	file
+	find
+	finger
+	from
+	fsck
+	ftp
+	fullpath
+	get
+	gets
+	getty
+	gnuplot
+	grep				GNU
+	grpck
+	halt
+	head
+	help
+	hd
+	hostid
+	hostname
+	id
+	imake
+	init
+	install
+	jis
+	jtoe
+	jtos
+	kermit
+	kterm
+	last
+	lastcomm
+	ld
+	leave
+	less
+	line
+	lint
+	lock				ITA○
+	login
+	logname
+	ln
+	lpr
+	ls				FW ITA△
+	mail
+	mailx
+	make				GNU HU(ITA)△
+	man				(FW)
+	mesg
+	mf				ITA○
+	mh
+	mid
+	mkdir
+	mkmf				FW
+	mkprof
+	more				(HU)
+	mount
+	mv
+	mvdir
+	nap
+	ncol
+	netstat
+	newgrp
+	news
+	nice
+	njk
+	nl
+	nroff
+	od
+	pack
+	page
+	pause				ITA○
+	pg
+	ping
+	pr
+	prof
+	ps				(HU)
+	pse
+	pwck
+	pwd				ITA○
+	rcp
+	reboot
+	red
+	rlogin
+	rm				ITA△
+	rmail
+	rmdir
+	rsh (remote)
+	rsh (restricted)
+	rup
+	ruptime
+	rwall
+	rwho
+	sccsdiff
+	sed				FW
+	sh
+	shutacct
+	shutdown
+	size
+	sleep
+	split
+	startup
+	stoe
+	stoj
+	stty
+	su
+	sync
+	tail
+	taka
+	talk
+	tar
+	tee
+	telnet
+	test
+	tic
+	time
+	true
+	troff
+	tset
+	tty
+	ul
+	uncompress
+	unexpand
+	unmount
+	unpack
+	uptime
+	users
+	uucp
+	vi
+	vipw
+	w
+	wall
+	what
+	whatis
+	whereis
+	which
+	who
+	whoami
+	whodo
+	whois
+	write
+	x68000
+	zcat
+
+パラメーター受け渡し
+対話的行編集
+ステータス
+yow
+ログインシェル
+プログラム制御
+引数解釈
+シェル・スクリプト
+
