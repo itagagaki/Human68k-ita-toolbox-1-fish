@@ -117,6 +117,7 @@ PDB_stackPtr	equ	$f8
 .xref set_shellvar_nul
 .xref get_shellvar
 .xref get_var_value
+.xref freevar
 .xref dupvar
 .xref varsize
 .xref reset_cwd
@@ -4679,8 +4680,9 @@ check_executable_magic_error:
 init_env:
 		movem.l	d1/a0-a1,-(a7)
 		movea.l	a0,a1
-		lea	env_top(a5),a0
-		bsr	free_env_list
+		movea.l	env_top(a5),a0
+		bsr	freevar
+		clr.l	env_top(a5)
 		cmpa.l	#-1,a1
 		beq	init_env_done
 
@@ -4718,19 +4720,6 @@ init_env_return:
 init_env_no_memory:
 		moveq	#-1,d0
 		bra	init_env_return
-
-free_env_list:
-		move.l	(a0),d0
-		beq	9f
-		clr.l	(a0)
-		movea.l	d0,a0
-@@:
-		movea.l	var_next(a0),a0
-		bsr	free
-		move.l	a0,d0
-		bne	@b
-9:
-		rts
 ****************************************************************
 built_user_env:
 		movem.l	d1-d2/a0-a2,-(a7)
