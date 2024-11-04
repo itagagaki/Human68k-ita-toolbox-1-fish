@@ -5900,7 +5900,7 @@ fish_author:	dc.b	'”ÂŠ_ Žj•F ( Itagaki Fumihiko )',0
 
 fish_version:	dc.b	'0',0		*  major version
 		dc.b	'8',0		*  minor version
-		dc.b	'1',0		*  patch level
+		dc.b	'2',0		*  patch level
 
 .even
 statement_table:
